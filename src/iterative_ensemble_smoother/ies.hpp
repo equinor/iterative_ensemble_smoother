@@ -1,7 +1,7 @@
 /*
   Copyright (C) 2019  Equinor ASA, Norway.
 
-  The file 'ies_enkf.h' is part of ERT - Ensemble based Reservoir Tool.
+  The file 'ies_enkf.hpp' is part of ERT - Ensemble based Reservoir Tool.
 
   ERT is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -18,40 +18,46 @@
 
 #ifndef IES_ENKF_H
 #define IES_ENKF_H
+#include <variant>
 
-#include <ert/util/bool_vector.hpp>
-#include <ert/util/rng.hpp>
+#include <Eigen/Dense>
+#include <ert/analysis/ies/ies_config.hpp>
+#include <ert/analysis/ies/ies_data.hpp>
 
-#include <ert/analysis/module_info.hpp>
-#include <ert/res_util/matrix.hpp>
+namespace ies {
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+void linalg_store_active_W(Data &data, const Eigen::MatrixXd &W0);
 
-void ies_enkf_init_update(void * arg ,
-                          const bool_vector_type * ens_mask ,
-                          const bool_vector_type * obs_mask ,
-                          const matrix_type * S ,
-                          const matrix_type * R ,
-                          const matrix_type * dObs ,
-                          const matrix_type * E ,
-                          const matrix_type * D,
-                          rng_type * rng);
+void init_update(Data &module_data, const std::vector<bool> &ens_mask,
+                 const std::vector<bool> &obs_mask);
 
+Eigen::MatrixXd makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
+                      const Eigen::MatrixXd &R, const Eigen::MatrixXd &E,
+                      const Eigen::MatrixXd &D,
+                      const ies::inversion_type ies_inversion,
+                      const std::variant<double, int> &truncation,
+                      Eigen::MatrixXd &W0, double ies_steplength,
+                      int iteration_nr);
 
-void ies_enkf_updateA( void * module_data,
-                       matrix_type * A ,      // Updated ensemble A retured to ERT.
-                       matrix_type * Yin ,    // Ensemble of predicted measurements
-                       matrix_type * Rin ,    // Measurement error covariance matrix (not used)
-                       matrix_type * dObs ,   // Actual observations (not used)
-                       matrix_type * Ein ,    // Ensemble of observation perturbations
-                       matrix_type * Din ,    // (d+E-Y) Ensemble of perturbed observations - Y
-                       const module_info_type * module_info,
-                       rng_type * rng);
+void updateA(Data &data,
+             // Updated ensemble A returned to ERT.
+             Eigen::Ref<Eigen::MatrixXd> A,
+             // Ensemble of predicted measurements
+             const Eigen::MatrixXd &Yin,
+             // Measurement error covariance matrix (not used)
+             const Eigen::MatrixXd &Rin,
+             // Ensemble of observation perturbations
+             const Eigen::MatrixXd &Ein,
+             // (d+E-Y) Ensemble of perturbed observations - Y
+             const Eigen::MatrixXd &Din,
+             const ies::inversion_type ies_inversion,
+             const std::variant<double, int> &truncation,
+             double ies_steplength);
 
-#ifdef __cplusplus
-}
-#endif
+Eigen::MatrixXd makeE(const Eigen::VectorXd &obs_errors,
+                      const Eigen::MatrixXd &noise);
+Eigen::MatrixXd makeD(const Eigen::VectorXd &obs_values,
+                      const Eigen::MatrixXd &E, const Eigen::MatrixXd &S);
+} // namespace ies
 
 #endif

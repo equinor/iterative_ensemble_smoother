@@ -1,7 +1,7 @@
 /*
    Copyright (C) 2019  Equinor ASA, Norway.
 
-   The file 'ies_enkf_config.c' is part of ERT - Ensemble based Reservoir Tool.
+   The file 'ies_config.cpp' is part of ERT - Ensemble based Reservoir Tool.
 
    ERT is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -16,180 +16,81 @@
    for more details.
 */
 
+#include <algorithm>
+#include <cmath>
+#include <ert/python.hpp>
+#include <stdexcept>
+#include <variant>
 
-#include <ert/util/util.hpp>
-#include <ert/util/type_macros.hpp>
+#include <ert/analysis/ies/ies_config.hpp>
 
-#include <ert/analysis/std_enkf.hpp>
-#include <ert/analysis/analysis_module.hpp>
+#define DEFAULT_IES_MAX_STEPLENGTH 0.60
+#define DEFAULT_IES_MIN_STEPLENGTH 0.30
+#define DEFAULT_IES_DEC_STEPLENGTH 2.50
+#define MIN_IES_DEC_STEPLENGTH 1.1
+#define DEFAULT_IES_INVERSION ies::IES_INVERSION_EXACT
 
-#include <ies_enkf_config.h>
-
-
-
-
-#define INVALID_TRUNCATION             -1
-#define INVALID_SUBSPACE_DIMENSION     -1
-#define DEFAULT_ENKF_TRUNCATION        0.98
-#define DEFAULT_ENKF_SUBSPACE_DIMENSION     INVALID_SUBSPACE_DIMENSION
-
-#define DEFAULT_IES_MAX_STEPLENGTH     0.60
-#define DEFAULT_IES_MIN_STEPLENGTH     0.30
-#define DEFAULT_IES_DEC_STEPLENGTH     2.50
-#define DEFAULT_IES_SUBSPACE           false
-#define DEFAULT_IES_INVERSION          IES_INVERSION_SUBSPACE_EXACT_R
-#define DEFAULT_IES_LOGFILE            "ies.log"
-#define DEFAULT_IES_DEBUG              true
-#define DEFAULT_IES_AAPROJECTION       false
-
-
-
-#define IES_ENKF_CONFIG_TYPE_ID 196402021
-
-struct ies_enkf_config_struct {
-  UTIL_TYPE_ID_DECLARATION;
-  double    truncation;            // Controlled by config key: ENKF_TRUNCATION_KEY
-  int       subspace_dimension;    // Controlled by config key: ENKF_SUBSPACE_DIMENSION_KEY (-1: use Truncation instead)
-  long      option_flags;
-  double    ies_max_steplength;    // Controlled by config key: DEFAULT_IES_MAX_STEPLENGTH_KEY
-  double    ies_min_steplength;    // Controlled by config key: DEFAULT_IES_MIN_STEPLENGTH_KEY
-  double    ies_dec_steplength;    // Controlled by config key: DEFAULT_IES_DEC_STEPLENGTH_KEY
-  bool      ies_subspace;          // Controlled by config key: DEFAULT_IES_SUBSPACE
-  int       ies_inversion;         // Controlled by config key: DEFAULT_IES_INVERSION
-  char    * ies_logfile;           // Controlled by config key: DEFAULT_IES_LOGFILE
-  bool      ies_debug;             // Controlled by config key: DEFAULT_IES_DEBUG
-  bool      ies_aaprojection;      // Controlled by config key: DEFAULT_IES_AAPROJECTION
-};
-
-
-ies_enkf_config_type * ies_enkf_config_alloc() {
-  ies_enkf_config_type * config = util_malloc( sizeof * config );
-  UTIL_TYPE_ID_INIT( config , IES_ENKF_CONFIG_TYPE_ID );
-  config->ies_logfile = NULL;
-  ies_enkf_config_set_truncation( config , DEFAULT_ENKF_TRUNCATION);
-  ies_enkf_config_set_enkf_subspace_dimension( config , DEFAULT_ENKF_SUBSPACE_DIMENSION);
-  ies_enkf_config_set_option_flags( config , ANALYSIS_NEED_ED + ANALYSIS_UPDATE_A + ANALYSIS_ITERABLE + ANALYSIS_SCALE_DATA);
-  ies_enkf_config_set_ies_max_steplength( config , DEFAULT_IES_MAX_STEPLENGTH );
-  ies_enkf_config_set_ies_min_steplength( config , DEFAULT_IES_MIN_STEPLENGTH );
-  ies_enkf_config_set_ies_dec_steplength( config , DEFAULT_IES_DEC_STEPLENGTH );
-  ies_enkf_config_set_ies_subspace( config , DEFAULT_IES_SUBSPACE );
-  ies_enkf_config_set_ies_inversion( config , DEFAULT_IES_INVERSION );
-  ies_enkf_config_set_ies_logfile( config , DEFAULT_IES_LOGFILE );
-  ies_enkf_config_set_ies_debug( config , DEFAULT_IES_DEBUG );
-  ies_enkf_config_set_ies_aaprojection( config , DEFAULT_IES_AAPROJECTION );
-
-  return config;
-}
+ies::Config::Config(bool ies_mode)
+    : m_truncation(DEFAULT_TRUNCATION), inversion(DEFAULT_IES_INVERSION),
+      iterable(ies_mode), max_steplength(DEFAULT_IES_MAX_STEPLENGTH),
+      min_steplength(DEFAULT_IES_MIN_STEPLENGTH),
+      m_dec_steplength(DEFAULT_IES_DEC_STEPLENGTH) {}
 
 /*------------------------------------------------------------------------------------------------*/
 /* TRUNCATION -> SUBSPACE_DIMENSION */
-double ies_enkf_config_get_truncation( const ies_enkf_config_type * config ) {
-  return config->truncation;
+
+const std::variant<double, int> &ies::Config::get_truncation() const {
+    return this->m_truncation;
 }
 
-void ies_enkf_config_set_truncation( ies_enkf_config_type * config , double truncation) {
-  config->truncation = truncation;
-  if (truncation > 0.0)
-    config->subspace_dimension = INVALID_SUBSPACE_DIMENSION;
+void ies::Config::set_truncation(double truncation) {
+    this->m_truncation = truncation;
 }
 
-/*------------------------------------------------------------------------------------------------*/
-/* SUBSPACE_DIMENSION -> TRUNCATION */
-int ies_enkf_config_get_enkf_subspace_dimension( const ies_enkf_config_type * config ) {
-  return config->subspace_dimension;
+void ies::Config::subspace_dimension(int subspace_dimension) {
+    this->m_truncation = subspace_dimension;
 }
 
-void ies_enkf_config_set_enkf_subspace_dimension( ies_enkf_config_type * config , int subspace_dimension) {
-  config->subspace_dimension = subspace_dimension;
-  if (subspace_dimension > 0)
-    config->truncation = INVALID_TRUNCATION;
+double ies::Config::get_dec_steplength() const {
+    return this->m_dec_steplength;
 }
 
-/*------------------------------------------------------------------------------------------------*/
-/* OPTION_FLAGS */
-
-long ies_enkf_config_get_option_flags( const ies_enkf_config_type * config ) {
-  return config->option_flags;
+void ies::Config::set_dec_steplength(double dec_step) {
+    this->m_dec_steplength = std::max(dec_step, MIN_IES_DEC_STEPLENGTH);
 }
 
-void ies_enkf_config_set_option_flags( ies_enkf_config_type * config , long flags) {
-  config->option_flags = flags;
+double ies::Config::get_steplength(int iteration_nr) const {
+    double ies_max_step = this->max_steplength;
+    double ies_min_step = this->min_steplength;
+    double ies_decline_step = this->m_dec_steplength;
+
+    /*
+      This is an implementation of Eq. (49) from the book:
+
+      Geir Evensen, Formulating the history matching problem with consistent error statistics,
+      Computational Geosciences (2021) 25:945 –970: https://doi.org/10.1007/s10596-021-10032-7
+    */
+
+    double ies_steplength =
+        ies_min_step + (ies_max_step - ies_min_step) *
+                           pow(2, -(iteration_nr - 1) / (ies_decline_step - 1));
+
+    return ies_steplength;
 }
 
-/*------------------------------------------------------------------------------------------------*/
-/* IES_MAX_STEPLENGTH */
-double ies_enkf_config_get_ies_max_steplength( const ies_enkf_config_type * config ) {
-   return config->ies_max_steplength;
-}
-void ies_enkf_config_set_ies_max_steplength( ies_enkf_config_type * config , double ies_max_steplength) {
-   config->ies_max_steplength = ies_max_steplength;
-}
-/*------------------------------------------------------------------------------------------------*/
-/* IES_MIN_STEPLENGTH */
-double ies_enkf_config_get_ies_min_steplength( const ies_enkf_config_type * config ) {
-   return config->ies_min_steplength;
-}
-void ies_enkf_config_set_ies_min_steplength( ies_enkf_config_type * config , double ies_min_steplength) {
-   config->ies_min_steplength = ies_min_steplength;
-}
+ERT_CLIB_SUBMODULE("ies", m) {
+    using namespace py::literals;
+    py::class_<ies::Config, std::shared_ptr<ies::Config>>(m, "Config")
+        .def(py::init<bool>())
+        .def("get_steplength", &ies::Config::get_steplength)
+        .def("get_truncation", &ies::Config::get_truncation)
+        .def_readwrite("iterable", &ies::Config::iterable)
+        .def_readwrite("inversion", &ies::Config::inversion);
 
-/*------------------------------------------------------------------------------------------------*/
-/* IES_DEC_STEPLENGTH */
-double ies_enkf_config_get_ies_dec_steplength( const ies_enkf_config_type * config ) {
-   return config->ies_dec_steplength;
-}
-void ies_enkf_config_set_ies_dec_steplength( ies_enkf_config_type * config , double ies_dec_steplength) {
-   config->ies_dec_steplength = ies_dec_steplength;
-}
-
-/*------------------------------------------------------------------------------------------------*/
-/* IES_INVERSION          */
-ies_inversion_type ies_enkf_config_get_ies_inversion( const ies_enkf_config_type * config ) {
-   return config->ies_inversion;
-}
-void ies_enkf_config_set_ies_inversion( ies_enkf_config_type * config , ies_inversion_type ies_inversion ) {
-   config->ies_inversion = ies_inversion;
-}
-
-
-/*------------------------------------------------------------------------------------------------*/
-/* IES_SUBSPACE      */
-bool ies_enkf_config_get_ies_subspace( const ies_enkf_config_type * config ) {
-   return config->ies_subspace;
-}
-void ies_enkf_config_set_ies_subspace( ies_enkf_config_type * config , bool ies_subspace ) {
-   config->ies_subspace = ies_subspace;
-}
-
-/*------------------------------------------------------------------------------------------------*/
-/* IES_DEBUG         */
-bool ies_enkf_config_get_ies_debug( const ies_enkf_config_type * config ) {
-   return config->ies_debug;
-}
-void ies_enkf_config_set_ies_debug( ies_enkf_config_type * config , bool ies_debug ) {
-   config->ies_debug = ies_debug;
-}
-
-/*------------------------------------------------------------------------------------------------*/
-/* IES_AAPROJECTION         */
-bool ies_enkf_config_get_ies_aaprojection( const ies_enkf_config_type * config ) {
-   return config->ies_aaprojection;
-}
-void ies_enkf_config_set_ies_aaprojection( ies_enkf_config_type * config , bool ies_aaprojection ) {
-   config->ies_aaprojection = ies_aaprojection;
-}
-
-/*------------------------------------------------------------------------------------------------*/
-/* IES_LOGFILE       */
-char * ies_enkf_config_get_ies_logfile( const ies_enkf_config_type * config ) {
-   return config->ies_logfile;
-}
-void ies_enkf_config_set_ies_logfile( ies_enkf_config_type * config , const char * ies_logfile ) {
-   config->ies_logfile = util_realloc_string_copy( config->ies_logfile , ies_logfile );
-}
-
-/*------------------------------------------------------------------------------------------------*/
-/* FREE_CONFIG */
-void ies_enkf_config_free(ies_enkf_config_type * config) {
-  free( config );
+    py::enum_<ies::inversion_type>(m, "inversion_type")
+        .value("EXACT", ies::inversion_type::IES_INVERSION_EXACT)
+        .value("EE_R", ies::inversion_type::IES_INVERSION_SUBSPACE_EE_R)
+        .value("EXACT_R", ies::inversion_type::IES_INVERSION_SUBSPACE_EXACT_R)
+        .value("SUBSPACE_RE", ies::inversion_type::IES_INVERSION_SUBSPACE_RE)
+        .export_values();
 }
