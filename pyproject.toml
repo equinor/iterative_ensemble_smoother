@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=45", "setuptools_scm[toml]>=6.2", "wheel", "pybind11~=2.6.1", "conan"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iterative_ensemble_smoother"
+description="A library for the iterative ensemble smoother algorithm."
+readme = "README.md"
+classifiers=[
+    "Development Status :: 1 - Planning",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+]
+dependencies = ["numpy"]
+dynamic=["version"]
+
+authors = [
+    {name="Equinor", email="fg_sib-scout@equinor.com"},
+]
+
+maintainers = [
+    {name="Eivind Jahren", email="ejah@equinor.com"},
+    {name="Eirik Leikvoll", email="eleik@equinor.com"},
+]
+
+[project.license]
+text = "GPL-3.0"
+
+[project.urls]
+"Homepage" = "https://github.com/equinor/iterative_ensemble_smoother"
+"Repository" = "https://github.com/equinor/iterative_ensemble_smoother"
+"Bug Tracker" = "https://github.com/equinor/iterative_ensemble_smoother/issues"
+
+[project.optional-dependencies]
+doc = [
+    "sphinx",
+    "sphinx-rtd-theme",
+]
+dev = [
+    "pytest",
+    "tox",
+    "pre-commit",
+    "matplotlib",
+    "scipy"
+]
+
+[tool.setuptools_scm]
