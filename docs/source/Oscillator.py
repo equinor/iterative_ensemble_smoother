@@ -37,6 +37,12 @@
 # Simple plotting of forward-model with a single response and parameters
 from matplotlib import pyplot as plt
 
+# Estimating parameters of an anharmonic oscillator
+
+# The anharnomic oscillator can be modelled by a non-linear partial differential
+# equation as described in section 6.4.3 of the book Fundamentals of Algorithms
+# and Data Assimilation by Mark Asch, Marc Bocquet and Maëlle Nodet.
+
 
 def plot_result(
     A, response_x_axis, trans_func=lambda x: x, priors=None, show_params=False
