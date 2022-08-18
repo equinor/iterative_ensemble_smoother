@@ -1,16 +1,9 @@
-from typing import Optional, Union, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional, Union
+
 import numpy as np
-import ert._c_wrappers
 
 # pylint: disable=import-error
-from ert._clib.ies import (
-    Config,
-    ModuleData,
-    init_update,
-    inversion_type,
-    make_D,
-    make_E,
-)
+from ._ies import Config, ModuleData, init_update, inversion_type, make_D, make_E
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -30,7 +23,7 @@ def make_X(  # pylint: disable=too-many-arguments
 ) -> Any:
     if W0 is None:
         W0 = np.zeros((Y.shape[1], Y.shape[1]))
-    return ert._clib.ies.make_X(  # pylint: disable=no-member, c-extension-no-member
+    return _ies.make_X(  # pylint: disable=no-member, c-extension-no-member
         A,
         Y,
         R,
@@ -58,7 +51,7 @@ def update_A(  # pylint: disable=too-many-arguments
 
     if not A.flags.fortran:
         raise TypeError("A matrix must be F_contiguous")
-    ert._clib.ies.update_A(  # pylint: disable=no-member, c-extension-no-member
+    _ies.update_A(  # pylint: disable=no-member, c-extension-no-member
         data, A, Y, R, E, D, ies_inversion, truncation, step_length
     )
 

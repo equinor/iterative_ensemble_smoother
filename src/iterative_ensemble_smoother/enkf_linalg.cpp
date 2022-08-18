@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <ert/analysis/enkf_linalg.hpp>
+#include <enkf_linalg.hpp>
 
 /**
  * Implements parts of Eq. 14.31 in the book Data Assimilation,
