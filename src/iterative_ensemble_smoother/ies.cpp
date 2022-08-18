@@ -24,13 +24,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <ert/python.hpp>
-
-#include <ert/analysis/enkf_linalg.hpp>
-
-#include <ert/analysis/ies/ies.hpp>
-#include <ert/analysis/ies/ies_config.hpp>
-#include <ert/analysis/ies/ies_data.hpp>
+#include <pybind11/pybind11.h>
+#include <pybind11/numpy.h>
+#include <enkf_linalg.hpp>
+#include <ies.hpp>
+#include <ies_config.hpp>
+#include <ies_data.hpp>
 
 using Eigen::MatrixXd;
 
@@ -55,9 +54,6 @@ void linalg_exact_inversion(Eigen::MatrixXd &W0, const Eigen::MatrixXd &S,
                             const Eigen::MatrixXd &H, double ies_steplength);
 } // namespace ies
 
-namespace {
-auto logger = ert::get_logger("ies");
-} // namespace
 
 void ies::init_update(ies::Data &module_data, const std::vector<bool> &ens_mask,
                       const std::vector<bool> &obs_mask) {
@@ -79,13 +75,13 @@ ies::makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
     Eigen::MatrixXd Y = Y0;
 
     /* Normalized predicted ensemble anomalies.
-       Line 4 of Algorithm 1, also (Eq. 30) 
+       Line 4 of Algorithm 1, also (Eq. 30)
     */
     Y = (1.0 / sqrt(ens_size - 1.0)) * (Y.colwise() - Y.rowwise().mean());
 
     /* A^+A projection is necessary when the parameter matrix has less rows than columns,
        and when the forward model is non-linear.
-       Section 2.4.3 
+       Section 2.4.3
     */
     if (A.rows() > 0 && A.cols() > 0) {
         const int state_size = A.rows();
@@ -100,13 +96,13 @@ ies::makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
     Omega.diagonal().array() += 1.0;
 
     /* Solving for the average sensitivity matrix.
-       Line 6 of Algorithm 1, also Section 2.5 
+       Line 6 of Algorithm 1, also Section 5
     */
     Omega.transposeInPlace();
     Eigen::MatrixXd S = Omega.fullPivLu().solve(Y.transpose()).transpose();
 
     /* Similar to the innovation term.
-       Differs in that `D` here is defined as dobs + E - Y instead of just dobs + E as in the paper. 
+       Differs in that `D` here is defined as dobs + E - Y instead of just dobs + E as in the paper.
        Line 7 of Algorithm 1, also Section 2.6
     */
     Eigen::MatrixXd H = D + S * W0;
@@ -165,7 +161,6 @@ ies::makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
     }
     local_costf = local_costf / ens_size;
 
-    logger->info("IES  iter:{} cost function: {}", iteration_nr, local_costf);
     return X;
 }
 
@@ -355,7 +350,12 @@ Eigen::MatrixXd ies::makeD(const Eigen::VectorXd &obs_values,
     return D;
 }
 
-ERT_CLIB_SUBMODULE("ies", m) {
+namespace py = pybind11;
+PYBIND11_MODULE(_ies, m) {
+    using namespace py::literals;
+    py::class_<ies::Data, std::shared_ptr<ies::Data>>(m, "ModuleData")
+        .def(py::init<int>())
+        .def_readwrite("iteration_nr", &ies::Data::iteration_nr);
     m.def("make_X", ies::makeX, py::arg("A"), py::arg("Y0"), py::arg("R"),
           py::arg("E"), py::arg("D"), py::arg("ies_inversion"),
           py::arg("truncation"), py::arg("W0"), py::arg("ies_steplength"),
@@ -368,4 +368,17 @@ ERT_CLIB_SUBMODULE("ies", m) {
           py::arg("inversion"), py::arg("truncation"), py::arg("step_length"));
     m.def("init_update", ies::init_update, py::arg("module_data"),
           py::arg("ens_mask"), py::arg("obs_mask"));
+    py::class_<ies::Config, std::shared_ptr<ies::Config>>(m, "Config")
+        .def(py::init<bool>())
+        .def("get_steplength", &ies::Config::get_steplength)
+        .def("get_truncation", &ies::Config::get_truncation)
+        .def_readwrite("iterable", &ies::Config::iterable)
+        .def_readwrite("inversion", &ies::Config::inversion);
+
+    py::enum_<ies::inversion_type>(m, "inversion_type")
+        .value("EXACT", ies::inversion_type::IES_INVERSION_EXACT)
+        .value("EE_R", ies::inversion_type::IES_INVERSION_SUBSPACE_EE_R)
+        .value("EXACT_R", ies::inversion_type::IES_INVERSION_SUBSPACE_EXACT_R)
+        .value("SUBSPACE_RE", ies::inversion_type::IES_INVERSION_SUBSPACE_RE)
+        .export_values();
 }

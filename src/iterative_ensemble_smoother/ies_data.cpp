@@ -1,8 +1,8 @@
 #include <algorithm>
 #include <memory>
 
-#include <ert/analysis/ies/ies_data.hpp>
-#include <ert/python.hpp>
+#include <pybind11/pybind11.h>
+#include <ies_data.hpp>
 
 /*
   The configuration data used by the ies_enkf module is contained in a
@@ -173,10 +173,4 @@ Eigen::MatrixXd ies::Data::make_activeW() const {
 Eigen::MatrixXd ies::Data::make_activeA() const {
     std::vector<bool> row_mask(this->A0.rows(), true);
     return make_active(this->A0, row_mask, this->m_ens_mask);
-}
-
-ERT_CLIB_SUBMODULE("ies", m) {
-    py::class_<ies::Data, std::shared_ptr<ies::Data>>(m, "ModuleData")
-        .def(py::init<int>())
-        .def_readwrite("iteration_nr", &ies::Data::iteration_nr);
 }
