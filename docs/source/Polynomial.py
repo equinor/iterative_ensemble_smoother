@@ -95,7 +95,7 @@ plot_result(A, response_x_axis, uniform, priors, True)
 
 # %%
 import numpy as np
-from ert.analysis import ies
+import iterative_ensemble_smoother as ies
 
 
 def ensemble_smoother():
@@ -121,7 +121,7 @@ ensemble_smoother()
 # %%
 import numpy as np
 from matplotlib import pyplot as plt
-from ert.analysis import ies
+import iterative_ensemble_smoother as ies
 
 
 def iterative_smoother():
