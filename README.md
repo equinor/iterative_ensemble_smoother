@@ -24,8 +24,16 @@ conan profile update "settings.compiler=11.2" default
 
 To build iterative_ensemble_moother from source:
 
-```
+```bash
 git clone https://github.com/equinor/iterative_ensemble_moother.git
 cd iterative_ensemble_smoother
 pip install .
+```
+
+### build the documentation
+
+```bash
+apt install pandoc # Building the doc requires pandoc
+pip install .[doc]
+spinx-build -c docs/source/ -b html docs/source/ docs/build/html/
 ```
