@@ -1,0 +1,10 @@
+conanfile.txt
+conanbuildinfo.txt
+conanbuildinfo.args
+conaninfo.txt
+graph_info.json
+build/
+*.egg-info
+*.so
+.tox
+conan.lock
