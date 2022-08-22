@@ -39,6 +39,7 @@ text = "GPL-3.0"
 doc = [
     "sphinx",
     "sphinx-rtd-theme",
+    "nbsphinx",
 ]
 dev = [
     "pytest",

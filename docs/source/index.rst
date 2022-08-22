@@ -1,7 +1,7 @@
-:orphan:
+Iterative Ensemble Smoother
+===========================
 
 .. toctree::
    :maxdepth: 1
-   :hidden:
 
-   api
+   examples
