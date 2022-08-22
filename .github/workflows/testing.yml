@@ -16,6 +16,9 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: install pandoc
+        run: sudo apt-get update && sudo apt-get install -y pandoc
       - name: Install tox
         run: pip install tox tox-gh-actions
       - name: Test with tox
