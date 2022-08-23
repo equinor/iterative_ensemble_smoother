@@ -85,9 +85,23 @@ def ensemble_smoother_update_step(
 
 
 class IterativeEnsembleSmoother:
-    def __init__(self, ensemble_size):
+    def __init__(
+        self, ensemble_size, max_steplength=0.6, min_steplength=0.3, dec_steplength=2.5
+    ):
         self._module_data = ModuleData(ensemble_size)
         self._config = Config(True)
+        self.max_steplength = max_steplength
+        self.min_steplength = min_steplength
+        self.dec_steplength = dec_steplength
+
+    def _get_steplength(self, iteration_nr: int) -> float:
+        # This is an implementation of Eq. (49) from the book:
+        # Geir Evensen, Formulating the history matching problem with consistent error statistics,
+        # Computational Geosciences (2021) 25:945 –970: https://doi.org/10.1007/s10596-021-10032-7
+        steplength = self.min_steplength + (
+            self.max_steplength - self.min_steplength
+        ) * pow(2, -(iteration_nr - 1) / (self.dec_steplength - 1))
+        return steplength
 
     def update_step(
         self,
@@ -103,7 +117,7 @@ class IterativeEnsembleSmoother:
         inversion=inversion_type.EXACT,
     ):
         if step_length is None:
-            step_length = self._config.get_steplength(self._module_data.iteration_nr)
+            step_length = self._get_steplength(self._module_data.iteration_nr)
 
         E = make_E(observation_errors, noise)
         R = np.identity(len(observation_errors), dtype=np.double)

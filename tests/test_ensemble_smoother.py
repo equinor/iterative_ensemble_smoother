@@ -4,6 +4,7 @@ from typing import Tuple
 
 import iterative_ensemble_smoother as ies
 import numpy as np
+from numpy import testing
 import pytest
 from scipy.special import erf
 
@@ -150,3 +151,21 @@ def test_ensemble_smoother_update_step(snapshot, initial_A, initial_S):
     assert new_A.shape == initial_A.shape
     assert new_A.dtype == initial_A.dtype
     snapshot.assert_match(to_csv(new_A), "test_ensemble_smoother_update_step.csv")
+
+
+def test_get_steplength():
+    expected = [
+        7.762203155904597862e-01,
+        5.999999999999999778e-01,
+        4.889881574842309675e-01,
+        4.190550788976149521e-01,
+        3.750000000000000000e-01,
+        3.472470393710577197e-01,
+        3.297637697244037436e-01,
+        3.187499999999999778e-01,
+        3.118117598427644355e-01,
+        3.074409424311009276e-01,
+    ]
+    iterative_es = ies.IterativeEnsembleSmoother(0)
+    steplengths = [iterative_es._get_steplength(i) for i in range(10)]
+    testing.assert_array_equal(expected, steplengths)
