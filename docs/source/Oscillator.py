@@ -139,6 +139,7 @@ plot_result(A, response_x_axis, uniform, priors, True)
 # %%
 import numpy as np
 from matplotlib import pyplot as plt
+
 import iterative_ensemble_smoother as ies
 
 
@@ -165,6 +166,7 @@ ensemble_smoother()
 # %%
 import numpy as np
 from matplotlib import pyplot as plt
+
 import iterative_ensemble_smoother as ies
 
 
