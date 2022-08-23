@@ -5,3 +5,4 @@ Iterative Ensemble Smoother
    :maxdepth: 1
 
    examples
+   glossary
