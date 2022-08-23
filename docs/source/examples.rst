@@ -5,5 +5,5 @@ Example Usage
    :maxdepth: 2
    :caption: Contents:
 
-   Polynomial.ipynb
-   Oscillator.ipynb
+   Polynomial
+   Oscillator

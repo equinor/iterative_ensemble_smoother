@@ -4,6 +4,6 @@ author = "Equinor"
 release = "0.0.1"
 
 
-extensions = ["sphinx.ext.autodoc", "sphinx.ext.doctest"]
+extensions = ["sphinx.ext.autodoc", "sphinx.ext.doctest", "nbsphinx"]
 language = "python"
 html_theme = "sphinx_rtd_theme"
