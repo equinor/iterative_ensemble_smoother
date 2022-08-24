@@ -85,7 +85,7 @@ observation_errors = np.array([0.5 * (x + 1) for x, _ in enumerate(observation_v
 @pytest.fixture
 def initial_A():
     """Initial guess at parameters for the ensemble"""
-    return np.asfortranarray(np.random.normal(0, 1, size=(3, number_of_realizations)))
+    return np.random.normal(0, 1, size=(3, number_of_realizations))
 
 
 @pytest.fixture
