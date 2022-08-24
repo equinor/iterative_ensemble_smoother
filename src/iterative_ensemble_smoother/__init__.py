@@ -104,6 +104,7 @@ class IterativeEnsembleSmoother:
     ):
         self._module_data = ModuleData(ensemble_size)
         self._config = Config(True)
+        self._ensemble_size = ensemble_size
         self.max_steplength = max_steplength
         self.min_steplength = min_steplength
         self.dec_steplength = dec_steplength
@@ -138,6 +139,10 @@ class IterativeEnsembleSmoother:
             step_length = self._get_steplength(self._module_data.iteration_nr)
         if noise is None:
             noise = np.random.rand(*S.shape)
+        if ensemble_mask is None:
+            ensemble_mask = [True] * self._ensemble_size
+        if observation_mask is None:
+            observation_mask = [True] * len(observation_values)
 
         E = make_E(observation_errors, noise)
         R = np.identity(len(observation_errors), dtype=np.double)
