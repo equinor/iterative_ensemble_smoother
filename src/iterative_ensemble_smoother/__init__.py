@@ -61,10 +61,12 @@ def ensemble_smoother_update_step(
     A,
     observation_errors,
     observation_values,
-    noise,
+    noise=None,
     truncation=0.98,
     inversion=inversion_type.EXACT,
 ):
+    if noise is None:
+        noise = np.random.rand(*S.shape)
     E = make_E(observation_errors, noise)
     R = np.identity(len(observation_errors), dtype=np.double)
     D = make_D(observation_values, E, S)
@@ -109,8 +111,8 @@ class IterativeEnsembleSmoother:
         A,
         observation_errors,
         observation_values,
-        truncation=0.98,
         noise=None,
+        truncation=0.98,
         step_length=None,
         ensemble_mask=None,
         observation_mask=None,
@@ -118,6 +120,8 @@ class IterativeEnsembleSmoother:
     ):
         if step_length is None:
             step_length = self._get_steplength(self._module_data.iteration_nr)
+        if noise is None:
+            noise = np.random.rand(*S.shape)
 
         E = make_E(observation_errors, noise)
         R = np.identity(len(observation_errors), dtype=np.double)
@@ -148,10 +152,13 @@ def ensemble_smoother_update_step_row_scaling(
     A_with_row_scaling,
     observation_errors,
     observation_values,
-    noise,
+    noise=None,
     truncation=0.98,
     inversion=inversion_type.EXACT,
 ):
+    if noise is None:
+        noise = np.random.rand(*S.shape)
+
     E = make_E(observation_errors, noise)
     R = np.identity(len(observation_errors), dtype=np.double)
     D = make_D(observation_values, E, S)
