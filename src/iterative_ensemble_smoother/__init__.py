@@ -1,3 +1,12 @@
+""" Module which implements the iterative ensemble smoother history matching algorithm.
+
+See  Evensen, Geir. "Analysis of iterative ensemble smoothers for solving
+inverse problems." Computational Geosciences 22.3 (2018): 885-908 (`Evensen[1]`_) for details
+about the algorithm.
+
+.. _`Evensen[1]`: https://link.springer.com/article/10.1007/s10596-018-9731-y
+
+"""
 from typing import TYPE_CHECKING, Any, Optional, Union
 
 import numpy as np
@@ -84,6 +93,15 @@ def ensemble_smoother_update_step(
 
 
 class IterativeEnsembleSmoother:
+    """IterativeEnsembleSmoother performs the update step of the iterative ensemble ensemble
+    algorithm. See `Evensen[1]`_.
+
+    :param ensemble_size: The number of realizations in the ensemble model.
+    :param max_steplength: parameter used to tweaking the step length.
+    :param min_steplength: parameter used to tweaking the step length.
+    :param dec_steplength: parameter used to tweaking the step length.
+    """
+
     def __init__(
         self, ensemble_size, max_steplength=0.6, min_steplength=0.3, dec_steplength=2.5
     ):
@@ -94,9 +112,15 @@ class IterativeEnsembleSmoother:
         self.dec_steplength = dec_steplength
 
     def _get_steplength(self, iteration_nr: int) -> float:
-        # This is an implementation of Eq. (49) from the book:
-        # Geir Evensen, Formulating the history matching problem with consistent error statistics,
-        # Computational Geosciences (2021) 25:945 –970: https://doi.org/10.1007/s10596-021-10032-7
+        """
+        This is an implementation of Eq. (49), which calculates a suitable step length for
+        the update step, from the book:
+
+        Geir Evensen, Formulating the history matching problem with consistent error statistics,
+        Computational Geosciences (2021) 25:945 –970: (`Evensen[2]`_)
+
+        .. _`Evensen[2]`: https://doi.org/10.1007/s10596-021-10032-7
+        """
         steplength = self.min_steplength + (
             self.max_steplength - self.min_steplength
         ) * pow(2, -(iteration_nr - 1) / (self.dec_steplength - 1))
