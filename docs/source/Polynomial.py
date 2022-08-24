@@ -13,31 +13,14 @@
 #     name: python3
 # ---
 
-# %%
-# flake8: noqa
-# ---
-# jupyter:
-#   jupytext:
-#     formats: ipynb,py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.13.8
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
-# %% [markdown]
+# %% [markdown] pycharm={"name": "#%% md\n"}
 # # Example: Polynomial function
 #
 #
 # The following is an example of history matching with the
 # iterative_ensemble_smoother library.
 
-# %%
+# %% pycharm={"name": "#%%\n"}
 # Simple plotting of forward-model with a single response and parameters
 from matplotlib import pyplot as plt
 
@@ -62,7 +45,28 @@ def plot_result(
     plt.show()
 
 
-# %%
+# %% [markdown]
+# ## Setup
+#
+# The setup contains a forward model (a second degree polynomial in this case),
+# where the coefficents of the polynomial is the model parameters.
+#
+# There are 5 time steps t=0,1,2,3,4 and 3 observations at t=0,2,4.
+#
+# Before history matching, these observations are predicted by the forward
+# model with the priors.
+#
+# The priors at t=0,2,4 are assumed uniform in [0,1], [0,2] and [0,5]
+# respectively.
+#
+# As input to the history matching we have the observed values in
+# `observation_values`. These would normally be historic measurements.
+#
+# The observed values have the measurement errors in `observation_errors`.
+#
+# A is populated with initial guesses for the parameters of the ensemble.
+
+# %% pycharm={"name": "#%%\n"}
 # Polynomial forward model with observations
 import numpy as np
 from scipy.special import erf
@@ -95,32 +99,30 @@ priors = [(0, 1), (0, 2), (0, 5)]
 A = np.asfortranarray(np.random.normal(0, 1, size=(3, realizations)))
 plot_result(A, response_x_axis, uniform, priors, True)
 
-# %%
+# %% [markdown]
+# ## Update step
 
-# %%
+# %% pycharm={"name": "#%%\n"}
 import numpy as np
 import iterative_ensemble_smoother as ies
 
+# Plot the initial guesses before the update step
+plot_result(A, response_x_axis, uniform, priors, True)
 
-def ensemble_smoother():
-    plot_result(A, response_x_axis, uniform, priors, True)
-    responses_before = forward_model(A, priors, response_x_axis)
-    S = responses_before[observation_x_axis]
-    noise = np.random.rand(*S.shape)
-    E = ies.make_E(observation_errors, noise)
-    R = np.identity(len(observation_errors))
-    D = ies.make_D(observation_values, E, S)
-    D = (D.T / observation_errors).T
-    E = (E.T / observation_errors).T
-    S = (S.T / observation_errors).T
+responses_before = forward_model(A, priors, response_x_axis)
+S = responses_before[observation_x_axis]
+noise = np.random.rand(*S.shape)
 
-    X = ies.make_X(S, R, E, D)
-    new_A = A @ X
+# Update step
+new_A = ies.ensemble_smoother_update_step(
+    S, A, observation_errors, observation_values, noise
+)
 
-    plot_result(new_A, response_x_axis, uniform, priors, True)
+# Plot after update step
+plot_result(new_A, response_x_axis, uniform, priors, True)
 
-
-ensemble_smoother()
+# %% [markdown]
+# ## Iterative smoother
 
 # %%
 import numpy as np
@@ -131,41 +133,27 @@ import iterative_ensemble_smoother as ies
 def iterative_smoother():
     A_current = np.copy(A)
     iterations = 4
-    obs_mask = [True for _ in observation_values]
-    ens_mask = [True for _ in range(realizations)]
-    module_data = ies.ModuleData(realizations)
-    module_config = ies.Config(True)
+    obs_mask = [True] * len(observation_values)
+    ens_mask = [True] * realizations
+    smoother = ies.IterativeEnsembleSmoother(realizations)
 
     for i in range(iterations):
-
         plot_result(A_current, response_x_axis, uniform, priors, True)
         responses_before = forward_model(A_current, priors, response_x_axis)
         S = responses_before[observation_x_axis]
         noise = np.random.rand(*S.shape)
-        E = ies.make_E(observation_errors, noise)
-        R = np.identity(len(observation_errors))
-        D = ies.make_D(observation_values, E, S)
-        D = (D.T / observation_errors).T
-        E = (E.T / observation_errors).T
-        S = (S.T / observation_errors).T
-
-        ies.init_update(module_data, ens_mask, obs_mask)
-        iteration_nr = module_data.iteration_nr
-        step_length = module_config.get_steplength(iteration_nr)
-        ies.update_A(
-            module_data,
-            A_current,
+        A_current = smoother.update_step(
             S,
-            R,
-            E,
-            D,
-            step_length=step_length,
+            A,
+            observation_errors,
+            observation_values,
+            noise=noise,
+            ensemble_mask=ens_mask,
+            observation_mask=obs_mask,
         )
-        module_data.iteration_nr += 1
-
     plot_result(A_current, response_x_axis, uniform, priors, True)
 
 
 iterative_smoother()
 
-# %%
+# %% pycharm={"name": "#%%\n"}
