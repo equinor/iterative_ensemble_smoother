@@ -1,6 +1,8 @@
 Iterative Ensemble Smoother
 ===========================
 
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 A library for the iterative ensemble smoother algorithm
 
 ## building
