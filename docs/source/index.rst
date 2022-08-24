@@ -9,13 +9,13 @@ Iterative Ensemble Smoother
    examples
    api
    glossary
+   bibliography
 
 
 A library for the iterative ensemble smoother algorithm.
 
 The algorithm performs :term:`history matching` based on the method developed
-in Evensen, Geir. "Analysis of iterative ensemble smoothers for solving inverse
-problems." Computational Geosciences 22.3 (2018): 885-908.
+in :cite:`evensen2018analysis`.
 
 
 
