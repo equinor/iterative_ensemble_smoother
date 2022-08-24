@@ -40,7 +40,8 @@ doc = [
     "sphinx",
     "sphinx-rtd-theme",
     "nbsphinx",
-    "sphinxcontrib.bibtex"
+    "sphinxcontrib.bibtex",
+    "matplotlib"
 ]
 dev = [
     "pytest",
