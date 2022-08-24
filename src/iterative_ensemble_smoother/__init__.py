@@ -2,14 +2,13 @@ from typing import TYPE_CHECKING, Any, Optional, Union
 
 import numpy as np
 
-# pylint: disable=import-error
 from ._ies import Config, ModuleData, init_update, inversion_type, make_D, make_E
 
 if TYPE_CHECKING:
     import numpy.typing as npt
 
 
-def make_X(  # pylint: disable=too-many-arguments
+def make_X(
     Y: "npt.NDArray[np.double]",
     R: "npt.NDArray[np.double]",
     E: "npt.NDArray[np.double]",
@@ -23,7 +22,7 @@ def make_X(  # pylint: disable=too-many-arguments
 ) -> Any:
     if W0 is None:
         W0 = np.zeros((Y.shape[1], Y.shape[1]))
-    return _ies.make_X(  # pylint: disable=no-member, c-extension-no-member
+    return _ies.make_X(
         A,
         Y,
         R,
@@ -37,7 +36,7 @@ def make_X(  # pylint: disable=too-many-arguments
     )
 
 
-def update_A(  # pylint: disable=too-many-arguments
+def update_A(
     data: ModuleData,
     A: "npt.NDArray[np.double]",
     Y: "npt.NDArray[np.double]",
@@ -51,9 +50,7 @@ def update_A(  # pylint: disable=too-many-arguments
 
     if not A.flags.fortran:
         raise TypeError("A matrix must be F_contiguous")
-    _ies.update_A(  # pylint: disable=no-member, c-extension-no-member
-        data, A, Y, R, E, D, ies_inversion, truncation, step_length
-    )
+    _ies.update_A(data, A, Y, R, E, D, ies_inversion, truncation, step_length)
 
 
 def ensemble_smoother_update_step(
