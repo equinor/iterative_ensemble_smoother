@@ -4,6 +4,12 @@ author = "Equinor"
 release = "0.0.1"
 
 
-extensions = ["sphinx.ext.autodoc", "sphinx.ext.doctest", "nbsphinx"]
+extensions = [
+    "sphinx.ext.autodoc",
+    "sphinx.ext.doctest",
+    "nbsphinx",
+    "sphinxcontrib.bibtex",
+]
+bibtex_bibfiles = ["refs.bib"]
 language = "python"
 html_theme = "sphinx_rtd_theme"

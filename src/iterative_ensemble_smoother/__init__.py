@@ -1,10 +1,7 @@
 """ Module which implements the iterative ensemble smoother history matching algorithm.
 
-See  Evensen, Geir. "Analysis of iterative ensemble smoothers for solving
-inverse problems." Computational Geosciences 22.3 (2018): 885-908 (`Evensen[1]`_) for details
-about the algorithm.
-
-.. _`Evensen[1]`: https://link.springer.com/article/10.1007/s10596-018-9731-y
+See  Evensen, G. "Analysis of iterative ensemble smoothers for solving inverse
+problems." for details about the algorithm.
 
 """
 from typing import TYPE_CHECKING, Any, Optional, Union
@@ -117,9 +114,7 @@ class IterativeEnsembleSmoother:
         the update step, from the book:
 
         Geir Evensen, Formulating the history matching problem with consistent error statistics,
-        Computational Geosciences (2021) 25:945 –970: (`Evensen[2]`_)
-
-        .. _`Evensen[2]`: https://doi.org/10.1007/s10596-021-10032-7
+        Computational Geosciences (2021) 25:945 –970
         """
         steplength = self.min_steplength + (
             self.max_steplength - self.min_steplength
