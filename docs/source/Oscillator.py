@@ -6,14 +6,14 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.13.8
+#       jupytext_version: 1.14.1
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
 
-# %%
+# %% pycharm={"name": "#%%\n"}
 # flake8: noqa
 # ---
 # jupyter:
@@ -30,25 +30,20 @@
 #     name: python3
 # ---
 
-# %% [markdown]
+# %% [markdown] pycharm={"name": "#%% md\n"}
 # # Example: Oscillator
+#
+# Estimating parameters of an anharmonic oscillator.
+# The anharnomic oscillator can be modelled by a non-linear partial differential
 
-# %%
+# %% pycharm={"name": "#%%\n"}
 # Simple plotting of forward-model with a single response and parameters
 from matplotlib import pyplot as plt
 
-# Estimating parameters of an anharmonic oscillator
-
-# The anharnomic oscillator can be modelled by a non-linear partial differential
-# equation as described in section 6.4.3 of the book Fundamentals of Algorithms
-# and Data Assimilation by Mark Asch, Marc Bocquet and Maëlle Nodet.
-
 
 def plot_result(
-    A, response_x_axis, trans_func=lambda x: x, priors=None, show_params=False
+    A, response_x_axis, trans_func=lambda x: x, priors=[], show_params=False
 ):
-    if priors is None:
-        priors = []
     responses = forward_model(A, priors, response_x_axis)
     plt.rcParams["figure.figsize"] = [15, 4]
     figures = 1 + len(A) if show_params else 1
@@ -64,11 +59,13 @@ def plot_result(
     plt.show()
 
 
-from math import sqrt
+# %% [markdown]
+# ## Setup
 
-# %%
+# %% pycharm={"name": "#%%\n"}
 # Oscilator example
 import numpy as np
+from math import sqrt
 from scipy.special import erf
 
 
@@ -136,75 +133,45 @@ priors = [(2.5e-2, 4.5e-2), (2.0e-4, 4.0e-4)]
 plot_result(A, response_x_axis, uniform, priors, True)
 
 
+# %% [markdown]
+# ## Update step
+
 # %%
 import numpy as np
-from matplotlib import pyplot as plt
-
 import iterative_ensemble_smoother as ies
 
+plot_result(A, response_x_axis, uniform, priors, True)
 
-def ensemble_smoother():
-    plot_result(A, response_x_axis, uniform, priors, True)
-    responses_before = forward_model(A, priors, response_x_axis)
-    S = responses_before[observation_x_axis]
-    noise = np.random.rand(*S.shape)
-    E = ies.make_E(observation_errors, noise)
-    R = np.identity(len(observation_errors))
-    D = ies.make_D(observation_values, E, S)
-    D = (D.T / observation_errors).T
-    E = (E.T / observation_errors).T
-    S = (S.T / observation_errors).T
+responses_before = forward_model(A, priors, response_x_axis)
+S = responses_before[observation_x_axis]
 
-    X = ies.make_X(S, R, E, D)
-    new_A = A @ X
+new_A = ies.ensemble_smoother_update_step(S, A, observation_errors, observation_values)
 
-    plot_result(new_A, response_x_axis, uniform, priors, True)
+plot_result(new_A, response_x_axis, uniform, priors, True)
 
-
-ensemble_smoother()
+# %% [markdown]
+# ## Iterative smoother
 
 # %%
 import numpy as np
 from matplotlib import pyplot as plt
-
 import iterative_ensemble_smoother as ies
 
 
 def iterative_smoother():
     A_current = np.copy(A)
-    iterations = 1
-    obs_mask = [True for _ in observation_values]
-    ens_mask = [True for _ in range(realizations)]
-    module_data = ies.ModuleData(realizations)
-    module_config = ies.Config(True)
+    iterations = 4
+    smoother = ies.IterativeEnsembleSmoother(realizations)
 
     for i in range(iterations):
-
         plot_result(A_current, response_x_axis, uniform, priors, True)
+
         responses_before = forward_model(A_current, priors, response_x_axis)
         S = responses_before[observation_x_axis]
-        noise = np.random.rand(*S.shape)
-        E = ies.make_E(observation_errors, noise)
-        R = np.identity(len(observation_errors))
-        D = ies.make_D(observation_values, E, S)
-        D = (D.T / observation_errors).T
-        E = (E.T / observation_errors).T
-        S = (S.T / observation_errors).T
 
-        ies.init_update(module_data, ens_mask, obs_mask)
-        iteration_nr = module_data.iteration_nr
-        step_length = module_config.get_steplength(iteration_nr)
-        ies.update_A(
-            module_data,
-            A_current,
-            S,
-            R,
-            E,
-            D,
-            step_length=step_length,
+        A_current = smoother.update_step(
+            S, A_current, observation_errors, observation_values
         )
-        module_data.iteration_nr += 1
-
     plot_result(A_current, response_x_axis, uniform, priors, True)
 
 
