@@ -32,6 +32,9 @@
 
 # %% [markdown] pycharm={"name": "#%% md\n"}
 # # Example: Oscillator
+#
+# Estimating parameters of an anharmonic oscillator.
+# The anharnomic oscillator can be modelled by a non-linear partial differential
 
 # %% pycharm={"name": "#%%\n"}
 # Simple plotting of forward-model with a single response and parameters
@@ -55,6 +58,9 @@ def plot_result(
         axs.plot(response_x_axis, responses)
     plt.show()
 
+
+# %% [markdown]
+# ## Setup
 
 # %% pycharm={"name": "#%%\n"}
 # Oscilator example
@@ -127,6 +133,9 @@ priors = [(2.5e-2, 4.5e-2), (2.0e-4, 4.0e-4)]
 plot_result(A, response_x_axis, uniform, priors, True)
 
 
+# %% [markdown]
+# ## Update step
+
 # %%
 import numpy as np
 import iterative_ensemble_smoother as ies
@@ -139,6 +148,9 @@ S = responses_before[observation_x_axis]
 new_A = ies.ensemble_smoother_update_step(S, A, observation_errors, observation_values)
 
 plot_result(new_A, response_x_axis, uniform, priors, True)
+
+# %% [markdown]
+# ## Iterative smoother
 
 # %%
 import numpy as np
