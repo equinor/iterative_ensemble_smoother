@@ -1,32 +1,17 @@
-/*
-  Copyright (C) 2019  Equinor ASA, Norway.
-
-  The file 'ies_enkf.hpp' is part of ERT - Ensemble based Reservoir Tool.
-
-  ERT is free software: you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
-
-  ERT is distributed in the hope that it will be useful, but WITHOUT ANY
-  WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.
-
-  See the GNU General Public License at <http://www.gnu.org/licenses/gpl.html>
-  for more details.
-*/
-
-#ifndef IES_ENKF_H
-#define IES_ENKF_H
+#pragma once
 #include <variant>
 
 #include <Eigen/Dense>
-#include <ies_config.hpp>
 #include <ies_data.hpp>
 
 namespace ies {
 
-void linalg_store_active_W(Data &data, const Eigen::MatrixXd &W0);
+typedef enum {
+    IES_INVERSION_EXACT = 0,
+    IES_INVERSION_SUBSPACE_EXACT_R = 1,
+    IES_INVERSION_SUBSPACE_EE_R = 2,
+    IES_INVERSION_SUBSPACE_RE = 3
+} inversion_type;
 
 void init_update(Data &module_data, const std::vector<bool> &ens_mask,
                  const std::vector<bool> &obs_mask);
@@ -59,5 +44,3 @@ Eigen::MatrixXd makeE(const Eigen::VectorXd &obs_errors,
 Eigen::MatrixXd makeD(const Eigen::VectorXd &obs_values,
                       const Eigen::MatrixXd &E, const Eigen::MatrixXd &S);
 } // namespace ies
-
-#endif

@@ -1,20 +1,3 @@
-/*
-   Copyright (C) 2019  Equinor ASA, Norway.
-
-   The file 'ies_enkf.cpp' is part of ERT - Ensemble based Reservoir Tool.
-
-   ERT is free software: you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by
-   the Free Software Foundation, either version 3 of the License, or
-   (at your option) any later version.
-
-   ERT is distributed in the hope that it will be useful, but WITHOUT ANY
-   WARRANTY; without even the implied warranty of MERCHANTABILITY or
-   FITNESS FOR A PARTICULAR PURPOSE.
-
-   See the GNU General Public License at <http://www.gnu.org/licenses/gpl.html>
-   for more details.
-*/
 #include <algorithm>
 #include <variant>
 #include <vector>
@@ -24,38 +7,34 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <ies.hpp>
+#include <ies_data.hpp>
+#include <linalg.hpp>
+#include <pybind11/eigen.h>
+#include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
-#include <pybind11/numpy.h>
-#include <pybind11/eigen.h>
-#include <enkf_linalg.hpp>
-#include <ies.hpp>
-#include <ies_config.hpp>
-#include <ies_data.hpp>
 
 using Eigen::MatrixXd;
 
-/**
- * @brief Implementation of algorithm as described in
+/** Implementation of algorithm as described in
  * "Efficient Implementation of an Iterative Ensemble Smoother for Data Assimilation and Reservoir History Matching"
  * https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full
- *
  */
 namespace ies {
-void linalg_compute_AA_projection(const Eigen::MatrixXd &A, Eigen::MatrixXd &Y);
+namespace linalg {
+void compute_AA_projection(const Eigen::MatrixXd &A, Eigen::MatrixXd &Y);
 
-void linalg_subspace_inversion(Eigen::MatrixXd &W0, const int ies_inversion,
-                               const Eigen::MatrixXd &E,
-                               const Eigen::MatrixXd &R,
-                               const Eigen::MatrixXd &S,
-                               const Eigen::MatrixXd &H,
-                               const std::variant<double, int> &truncation,
-                               double ies_steplength);
+void subspace_inversion(Eigen::MatrixXd &W0, const int ies_inversion,
+                        const Eigen::MatrixXd &E, const Eigen::MatrixXd &R,
+                        const Eigen::MatrixXd &S, const Eigen::MatrixXd &H,
+                        const std::variant<double, int> &truncation,
+                        double ies_steplength);
 
-void linalg_exact_inversion(Eigen::MatrixXd &W0, const Eigen::MatrixXd &S,
-                            const Eigen::MatrixXd &H, double ies_steplength);
+void exact_inversion(Eigen::MatrixXd &W0, const Eigen::MatrixXd &S,
+                     const Eigen::MatrixXd &H, double ies_steplength);
+} // namespace linalg
 } // namespace ies
-
 
 void ies::init_update(ies::Data &module_data, const std::vector<bool> &ens_mask,
                       const std::vector<bool> &obs_mask) {
@@ -88,7 +67,7 @@ ies::makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
     if (A.rows() > 0 && A.cols() > 0) {
         const int state_size = A.rows();
         if (state_size <= ens_size - 1) {
-            ies::linalg_compute_AA_projection(A, Y);
+            ies::linalg::compute_AA_projection(A, Y);
         }
     }
 
@@ -144,10 +123,10 @@ ies::makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
      */
 
     if (ies_inversion != ies::IES_INVERSION_EXACT) {
-        ies::linalg_subspace_inversion(W0, ies_inversion, E, R, S, H,
-                                       truncation, ies_steplength);
+        ies::linalg::subspace_inversion(W0, ies_inversion, E, R, S, H,
+                                        truncation, ies_steplength);
     } else if (ies_inversion == ies::IES_INVERSION_EXACT) {
-        ies::linalg_exact_inversion(W0, S, H, ies_steplength);
+        ies::linalg::exact_inversion(W0, S, H, ies_steplength);
     }
 
     /* Line 9 of Algorithm 1 */
@@ -164,6 +143,34 @@ ies::makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
     local_costf = local_costf / ens_size;
 
     return X;
+}
+
+
+/**
+* the updated W is stored for each iteration in data->W. If we have lost
+* realizations we copy only the active rows and cols from W0 to data->W which
+* is then used in the algorithm.  (note the definition of the pointer dataW to
+* data->W)
+*/
+static void store_active_W(ies::Data &data, const Eigen::MatrixXd &W0) {
+    int ens_size_msk = data.ens_mask_size();
+    int i = 0;
+    int j;
+    Eigen::MatrixXd &dataW = data.getW();
+    const std::vector<bool> &ens_mask = data.ens_mask();
+    dataW.setConstant(0.0);
+    for (int iens = 0; iens < ens_size_msk; iens++) {
+        if (ens_mask[iens]) {
+            j = 0;
+            for (int jens = 0; jens < ens_size_msk; jens++) {
+                if (ens_mask[jens]) {
+                    dataW(iens, jens) = W0(i, j);
+                    j += 1;
+                }
+            }
+            i += 1;
+        }
+    }
 }
 
 void ies::updateA(Data &data,
@@ -211,7 +218,7 @@ void ies::updateA(Data &data,
     X = makeX(A, Yin, Rin, E, D, ies_inversion, truncation, W0, ies_steplength,
               iteration_nr);
 
-    ies::linalg_store_active_W(data, W0);
+    store_active_W(data, W0);
 
     /* COMPUTE NEW ENSEMBLE SOLUTION FOR CURRENT ITERATION  Ei=A0*X (Line 11)*/
     Eigen::MatrixXd A0 = data.make_activeA();
@@ -219,8 +226,8 @@ void ies::updateA(Data &data,
 }
 
 /* Section 2.4.3 */
-void ies::linalg_compute_AA_projection(const Eigen::MatrixXd &A,
-                                       Eigen::MatrixXd &Y) {
+void ies::linalg::compute_AA_projection(const Eigen::MatrixXd &A,
+                                        Eigen::MatrixXd &Y) {
 
     Eigen::MatrixXd Ai = A;
     Ai = Ai.colwise() - Ai.rowwise().mean();
@@ -234,7 +241,7 @@ void ies::linalg_compute_AA_projection(const Eigen::MatrixXd &A,
 *  The standard inversion works on the equation
 *          S'*(S*S'+R)^{-1} H           (a)
 */
-void ies::linalg_subspace_inversion(
+void ies::linalg::subspace_inversion(
     Eigen::MatrixXd &W0, const int ies_inversion, const Eigen::MatrixXd &E,
     const Eigen::MatrixXd &R, const Eigen::MatrixXd &S,
     const Eigen::MatrixXd &H, const std::variant<double, int> &truncation,
@@ -250,38 +257,37 @@ void ies::linalg_subspace_inversion(
     if (ies_inversion == IES_INVERSION_SUBSPACE_RE) {
         Eigen::MatrixXd scaledE = E;
         scaledE *= nsc;
-        enkf_linalg_lowrankE(S, scaledE, X1, eig, truncation);
+        ies::linalg::lowrankE(S, scaledE, X1, eig, truncation);
 
     } else if (ies_inversion == IES_INVERSION_SUBSPACE_EE_R) {
         Eigen::MatrixXd Et = E.transpose();
         MatrixXd Cee = E * Et;
         Cee *= 1.0 / ((ens_size - 1) * (ens_size - 1));
 
-        enkf_linalg_lowrankCinv(S, Cee, X1, eig, truncation);
+        ies::linalg::lowrankCinv(S, Cee, X1, eig, truncation);
 
     } else if (ies_inversion == IES_INVERSION_SUBSPACE_EXACT_R) {
         Eigen::MatrixXd scaledR = R;
         scaledR *= nsc * nsc;
-        enkf_linalg_lowrankCinv(S, scaledR, X1, eig, truncation);
+        ies::linalg::lowrankCinv(S, scaledR, X1, eig, truncation);
     }
 
-    /*
-        X3 = X1 * diag(eig) * X1' * H (Similar to Eq. 14.31, Evensen (2007))
-    */
+    // X3 = X1 * diag(eig) * X1' * H (Similar to Eq. 14.31, Evensen (2007))
     Eigen::Map<Eigen::VectorXd> eig_vector(eig.data(), eig.size());
-    Eigen::MatrixXd X3 = enkf_linalg_genX3(X1, H, eig_vector);
+    Eigen::MatrixXd X3 = ies::linalg::genX3(X1, H, eig_vector);
 
-    /*    Update data->W = (1-ies_steplength) * data->W +  ies_steplength * S' * X3                          (Line 9)    */
+    // Update data->W = (1-ies_steplength) * data->W +  ies_steplength * S' * X3 (Line 9)
     W0 = ies_steplength * S.transpose() * X3 + (1.0 - ies_steplength) * W0;
 }
 
-/* Section 3.2 - Exact inversion */
-// This calculates (S^T*S + I_N)^{-1} by taking the SVD of (S^T*S + I_N),
-// and since (S^T*S + I_N) is symmetric positive semi-definite we have that U=V and hence
-// (S^T*S + I_N)^{-1} = U * \Sigma^{-1} * U^T.
-void ies::linalg_exact_inversion(Eigen::MatrixXd &W0, const Eigen::MatrixXd &S,
-                                 const Eigen::MatrixXd &H,
-                                 double ies_steplength) {
+/** Section 3.2 - Exact inversion
+* This calculates (S^T*S + I_N)^{-1} by taking the SVD of (S^T*S + I_N),
+* and since (S^T*S + I_N) is symmetric positive semi-definite we have that U=V and hence
+* (S^T*S + I_N)^{-1} = U * \Sigma^{-1} * U^T.
+*/
+void ies::linalg::exact_inversion(Eigen::MatrixXd &W0, const Eigen::MatrixXd &S,
+                                  const Eigen::MatrixXd &H,
+                                  double ies_steplength) {
     int ens_size = S.cols();
 
     MatrixXd StS = S.transpose() * S + MatrixXd::Identity(ens_size, ens_size);
@@ -295,33 +301,8 @@ void ies::linalg_exact_inversion(Eigen::MatrixXd &W0, const Eigen::MatrixXd &S,
     for (int i = 0; i < ens_size; i++)
         ZtStH.row(i) /= eig[i];
 
-    /*    Update data->W = (1-ies_steplength) * data->W +  ies_steplength * Z * (Lamda^{-1}) Z' S' H         (Line 9)    */
+    // Update data->W = (1-ies_steplength) * data->W +  ies_steplength * Z * (Lamda^{-1}) Z' S' H (Line 9)
     W0 = ies_steplength * Z * ZtStH + (1.0 - ies_steplength) * W0;
-}
-
-/**
-* the updated W is stored for each iteration in data->W. If we have lost realizations we copy only the active rows and cols from
-* W0 to data->W which is then used in the algorithm.  (note the definition of the pointer dataW to data->W)
-*/
-void ies::linalg_store_active_W(ies::Data &data, const Eigen::MatrixXd &W0) {
-    int ens_size_msk = data.ens_mask_size();
-    int i = 0;
-    int j;
-    Eigen::MatrixXd &dataW = data.getW();
-    const std::vector<bool> &ens_mask = data.ens_mask();
-    dataW.setConstant(0.0);
-    for (int iens = 0; iens < ens_size_msk; iens++) {
-        if (ens_mask[iens]) {
-            j = 0;
-            for (int jens = 0; jens < ens_size_msk; jens++) {
-                if (ens_mask[jens]) {
-                    dataW(iens, jens) = W0(i, j);
-                    j += 1;
-                }
-            }
-            i += 1;
-        }
-    }
 }
 
 Eigen::MatrixXd ies::makeE(const Eigen::VectorXd &obs_errors,
@@ -370,14 +351,7 @@ PYBIND11_MODULE(_ies, m) {
           py::arg("inversion"), py::arg("truncation"), py::arg("step_length"));
     m.def("init_update", ies::init_update, py::arg("module_data"),
           py::arg("ens_mask"), py::arg("obs_mask"));
-    py::class_<ies::Config, std::shared_ptr<ies::Config>>(m, "Config")
-        .def(py::init<bool>())
-        .def("get_steplength", &ies::Config::get_steplength)
-        .def("get_truncation", &ies::Config::get_truncation)
-        .def_readwrite("iterable", &ies::Config::iterable)
-        .def_readwrite("inversion", &ies::Config::inversion);
-
-    py::enum_<ies::inversion_type>(m, "inversion_type")
+    py::enum_<ies::inversion_type>(m, "InversionType")
         .value("EXACT", ies::inversion_type::IES_INVERSION_EXACT)
         .value("EE_R", ies::inversion_type::IES_INVERSION_SUBSPACE_EE_R)
         .value("EXACT_R", ies::inversion_type::IES_INVERSION_SUBSPACE_EXACT_R)
