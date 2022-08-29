@@ -122,7 +122,7 @@ observations, observation_x_axis = _generate_observations(len(response_x_axis))
 observation_values = observations[:, 0]
 observation_errors = observations[:, 1]
 
-A = np.asfortranarray(np.random.normal(0, 1, size=(2, realizations)))
+A = np.random.normal(0, 1, size=(2, realizations))
 
 priors = [(2.5e-2, 4.5e-2), (2.0e-4, 4.0e-4)]
 plot_result(A, response_x_axis, uniform, priors)

@@ -55,8 +55,9 @@ def update_A(
 ) -> None:
 
     if not A.flags.fortran:
-        raise TypeError("A matrix must be F_contiguous")
+        A = np.asfortranarray(A)
     _ies.update_A(data, A, Y, R, E, D, ies_inversion, truncation, step_length)
+    return A
 
 
 def ensemble_smoother_update_step(
@@ -153,7 +154,7 @@ class IterativeEnsembleSmoother:
 
         init_update(self._module_data, ensemble_mask, observation_mask)
 
-        update_A(
+        A = update_A(
             self._module_data,
             A,
             S,
