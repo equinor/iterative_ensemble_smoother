@@ -1,26 +1,8 @@
 #include <algorithm>
 #include <memory>
 
-#include <pybind11/pybind11.h>
 #include <ies_data.hpp>
-
-/*
-  The configuration data used by the ies_enkf module is contained in a
-  ies_data_struct instance. The data type used for the ies_enkf
-  module is quite simple; with only a few scalar variables, but there
-  are essentially no limits to what you can pack into such a datatype.
-
-  All the functions in the module have a void pointer as the first argument,
-  this will immediately be cast to an ies::data_type instance, to get some
-  type safety the UTIL_TYPE_ID system should be used.
-
-  The data structure holding the data for your analysis module should
-  be created and initialized by a constructor, which should be
-  registered with the '.alloc' element of the analysis table; in the
-  same manner the desctruction of this data should be handled by a
-  destructor or free() function registered with the .freef field of
-  the analysis table.
-*/
+#include <pybind11/pybind11.h>
 
 ies::Data::Data(int ens_size) : W(Eigen::MatrixXd::Zero(ens_size, ens_size)) {}
 
@@ -41,8 +23,10 @@ int ies::Data::obs_mask_size() const { return this->m_obs_mask.size(); }
 
 int ies::Data::ens_mask_size() const { return (this->m_ens_mask.size()); }
 
-/** We store the initial observation perturbations in E, corresponding to active data->obs_mask0
-   in data->E. The unused rows in data->E corresponds to false data->obs_mask0 */
+/** We store the initial observation perturbations in E, corresponding to
+ * active data->obs_mask0 in data->E. The unused rows in data->E corresponds to
+ * false data->obs_mask0
+ */
 void ies::Data::store_initialE(const Eigen::MatrixXd &E0) {
     if (E.rows() != 0 || E.cols() != 0)
         return;
@@ -66,8 +50,9 @@ void ies::Data::store_initialE(const Eigen::MatrixXd &E0) {
     }
 }
 
-/** We augment the additional observation perturbations arriving in later iterations, that was not stored before,
-   in data->E. */
+/** We augment the additional observation perturbations arriving in later
+ * iterations, that was not stored before, in data->E.
+ */
 void ies::Data::augment_initialE(const Eigen::MatrixXd &E0) {
 
     int obs_size_msk = this->obs_mask_size();

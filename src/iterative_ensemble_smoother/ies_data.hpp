@@ -1,6 +1,4 @@
-#ifndef IES_DATA_H
-#define IES_DATA_H
-
+#pragma once
 #include <Eigen/Dense>
 #include <vector>
 
@@ -51,5 +49,3 @@ private:
 };
 
 } // namespace ies
-
-#endif

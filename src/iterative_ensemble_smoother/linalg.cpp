@@ -5,7 +5,33 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <enkf_linalg.hpp>
+#include <linalg.hpp>
+
+static int calc_num_significant(const Eigen::VectorXd &singular_values,
+                                double truncation) {
+    int num_significant = 0;
+    double total_sigma2 = singular_values.squaredNorm();
+
+    /*
+     * Determine the number of singular values by enforcing that
+     * less than a fraction @truncation of the total variance be
+     * accounted for.
+     */
+    double running_sigma2 = 0;
+    for (auto sig : singular_values) {
+        if (running_sigma2 / total_sigma2 <
+            truncation) { /* Include one more singular value ? */
+            num_significant++;
+            running_sigma2 += sig * sig;
+        } else
+            break;
+    }
+
+    return num_significant;
+}
+
+namespace ies {
+namespace linalg {
 
 /**
  * Implements parts of Eq. 14.31 in the book Data Assimilation,
@@ -13,9 +39,8 @@
  * Specifically, this implements
  * X_1 (I + \Lambda_1)^{-1} X_1^T (D - M[A^f])
 */
-Eigen::MatrixXd enkf_linalg_genX3(const Eigen::MatrixXd &W,
-                                  const Eigen::MatrixXd &D,
-                                  const Eigen::VectorXd &eig) {
+Eigen::MatrixXd genX3(const Eigen::MatrixXd &W, const Eigen::MatrixXd &D,
+                      const Eigen::VectorXd &eig) {
     const int nrmin = std::min(D.rows(), D.cols());
     // Corresponds to (I + \Lambda_1)^{-1} since `eig` has already been transformed.
     Eigen::MatrixXd Lambda_inv = eig(Eigen::seq(0, nrmin - 1)).asDiagonal();
@@ -27,34 +52,8 @@ Eigen::MatrixXd enkf_linalg_genX3(const Eigen::MatrixXd &W,
     return X3;
 }
 
-static int enkf_linalg_num_significant(const Eigen::VectorXd &singular_values,
-                                       double truncation) {
-    int num_significant = 0;
-    double total_sigma2 = singular_values.squaredNorm();
-
-    /*
-     * Determine the number of singular values by enforcing that
-     * less than a fraction @truncation of the total variance be
-     * accounted for.
-     */
-    {
-        double running_sigma2 = 0;
-        for (auto sig : singular_values) {
-            if (running_sigma2 / total_sigma2 <
-                truncation) { /* Include one more singular value ? */
-                num_significant++;
-                running_sigma2 += sig * sig;
-            } else
-                break;
-        }
-    }
-
-    return num_significant;
-}
-
-int enkf_linalg_svdS(const Eigen::MatrixXd &S,
-                     const std::variant<double, int> &truncation,
-                     Eigen::VectorXd &inv_sig0, Eigen::MatrixXd &U0) {
+int svdS(const Eigen::MatrixXd &S, const std::variant<double, int> &truncation,
+         Eigen::VectorXd &inv_sig0, Eigen::MatrixXd &U0) {
 
     int num_significant = 0;
 
@@ -65,8 +64,8 @@ int enkf_linalg_svdS(const Eigen::MatrixXd &S,
     if (std::holds_alternative<int>(truncation)) {
         num_significant = std::get<int>(truncation);
     } else {
-        num_significant = enkf_linalg_num_significant(
-            singular_values, std::get<double>(truncation));
+        num_significant =
+            calc_num_significant(singular_values, std::get<double>(truncation));
     }
 
     inv_sig0 = singular_values.cwiseInverse();
@@ -80,13 +79,13 @@ int enkf_linalg_svdS(const Eigen::MatrixXd &S,
  Routine computes X1 and eig corresponding to Eqs 14.54-14.55
  Geir Evensen
 */
-void enkf_linalg_lowrankE(
+void lowrankE(
     const Eigen::MatrixXd &S, /* (nrobs x nrens) */
     const Eigen::MatrixXd &E, /* (nrobs x nrens) */
     Eigen::MatrixXd
         &W, /* (nrobs x nrmin) Corresponding to X1 from Eqs. 14.54-14.55 */
     Eigen::VectorXd
-        &eig, /* (nrmin)         Corresponding to 1 / (1 + Lambda1^2) (14.54) */
+        &eig, /* (nrmin) Corresponding to 1 / (1 + Lambda1^2) (14.54) */
     const std::variant<double, int> &truncation) {
 
     const int nrobs = S.rows();
@@ -97,7 +96,7 @@ void enkf_linalg_lowrankE(
     Eigen::MatrixXd U0(nrobs, nrmin);
 
     /* Compute SVD of S=HA`  ->  U0, invsig0=sig0^(-1) */
-    enkf_linalg_svdS(S, truncation, inv_sig0, U0);
+    svdS(S, truncation, inv_sig0, U0);
 
     Eigen::MatrixXd Sigma_inv = inv_sig0.asDiagonal();
 
@@ -116,7 +115,7 @@ void enkf_linalg_lowrankE(
     W = U0 * Sigma_inv.transpose() * svd.matrixU();
 }
 
-void enkf_linalg_lowrankCinv(
+void lowrankCinv(
     const Eigen::MatrixXd &S, const Eigen::MatrixXd &R,
     Eigen::MatrixXd &W,   /* Corresponding to X1 from Eq. 14.29 */
     Eigen::VectorXd &eig, /* Corresponding to 1 / (1 + Lambda_1) (14.29) */
@@ -130,7 +129,7 @@ void enkf_linalg_lowrankCinv(
     Eigen::MatrixXd Z(nrmin, nrmin);
 
     Eigen::VectorXd inv_sig0(nrmin);
-    enkf_linalg_svdS(S, truncation, inv_sig0, U0);
+    svdS(S, truncation, inv_sig0, U0);
 
     Eigen::MatrixXd Sigma_inv = inv_sig0.asDiagonal();
 
@@ -150,3 +149,5 @@ void enkf_linalg_lowrankCinv(
 
     W = U0 * Z; /* X1 = W = U0 * Z2 = U0 * Sigma0^(+') * Z    */
 }
+} // namespace linalg
+} // namespace ies
