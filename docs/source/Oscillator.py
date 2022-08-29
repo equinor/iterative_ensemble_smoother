@@ -13,7 +13,7 @@
 #     name: python3
 # ---
 
-# %% pycharm={"name": "#%%\n"}
+# %%
 # flake8: noqa
 # ---
 # jupyter:
@@ -30,39 +30,34 @@
 #     name: python3
 # ---
 
-# %% [markdown] pycharm={"name": "#%% md\n"}
-# # Example: Oscillator
-#
-# Estimating parameters of an anharmonic oscillator.
-# The anharnomic oscillator can be modelled by a non-linear partial differential
+# %% [markdown]
+# # Example: Estimating parameters of an anharmonic oscillator
 
-# %% pycharm={"name": "#%%\n"}
+# The anharnomic oscillator can be modelled by a non-linear partial differential
+# equation as described in section 6.4.3 of the book Fundamentals of Algorithms
+# and Data Assimilation by Mark Asch, Marc Bocquet and Maëlle Nodet.
+
+# %%
 # Simple plotting of forward-model with a single response and parameters
 from matplotlib import pyplot as plt
 
 
-def plot_result(
-    A, response_x_axis, trans_func=lambda x: x, priors=[], show_params=False
-):
+def plot_result(A, response_x_axis, trans_func=lambda x: x, priors=[]):
     responses = forward_model(A, priors, response_x_axis)
     plt.rcParams["figure.figsize"] = [15, 4]
-    figures = 1 + len(A) if show_params else 1
-    fig, axs = plt.subplots(1, figures)
+    _, axs = plt.subplots(1, 1 + len(A))
 
-    if show_params:
-        axs[0].plot(response_x_axis, responses)
-        for i, param in enumerate(A):
-            A_trans = np.array([trans_func(v, *priors[i]) for v in param])
-            axs[i + 1].hist(A_trans, bins=10)
-    else:
-        axs.plot(response_x_axis, responses)
+    axs[0].plot(response_x_axis, responses)
+    for i, param in enumerate(A):
+        A_trans = np.array([trans_func(v, *priors[i]) for v in param])
+        axs[i + 1].hist(A_trans, bins=10)
     plt.show()
 
 
 # %% [markdown]
 # ## Setup
 
-# %% pycharm={"name": "#%%\n"}
+# %%
 # Oscilator example
 import numpy as np
 from math import sqrt
@@ -130,7 +125,7 @@ observation_errors = observations[:, 1]
 A = np.asfortranarray(np.random.normal(0, 1, size=(2, realizations)))
 
 priors = [(2.5e-2, 4.5e-2), (2.0e-4, 4.0e-4)]
-plot_result(A, response_x_axis, uniform, priors, True)
+plot_result(A, response_x_axis, uniform, priors)
 
 
 # %% [markdown]
@@ -140,14 +135,14 @@ plot_result(A, response_x_axis, uniform, priors, True)
 import numpy as np
 import iterative_ensemble_smoother as ies
 
-plot_result(A, response_x_axis, uniform, priors, True)
+plot_result(A, response_x_axis, uniform, priors)
 
 responses_before = forward_model(A, priors, response_x_axis)
 S = responses_before[observation_x_axis]
 
 new_A = ies.ensemble_smoother_update_step(S, A, observation_errors, observation_values)
 
-plot_result(new_A, response_x_axis, uniform, priors, True)
+plot_result(new_A, response_x_axis, uniform, priors)
 
 # %% [markdown]
 # ## Iterative smoother
@@ -163,8 +158,8 @@ def iterative_smoother():
     iterations = 4
     smoother = ies.IterativeEnsembleSmoother(realizations)
 
-    for i in range(iterations):
-        plot_result(A_current, response_x_axis, uniform, priors, True)
+    for _ in range(iterations):
+        plot_result(A_current, response_x_axis, uniform, priors)
 
         responses_before = forward_model(A_current, priors, response_x_axis)
         S = responses_before[observation_x_axis]
@@ -172,7 +167,7 @@ def iterative_smoother():
         A_current = smoother.update_step(
             S, A_current, observation_errors, observation_values
         )
-    plot_result(A_current, response_x_axis, uniform, priors, True)
+    plot_result(A_current, response_x_axis, uniform, priors)
 
 
 iterative_smoother()

@@ -13,147 +13,166 @@
 #     name: python3
 # ---
 
-# %% [markdown] pycharm={"name": "#%% md\n"}
+# %% [markdown]
 # # Example: Polynomial function
 #
 #
 # The following is an example of history matching with the
 # iterative_ensemble_smoother library.
 
-# %% pycharm={"name": "#%%\n"}
-# Simple plotting of forward-model with a single response and parameters
-from matplotlib import pyplot as plt
-
-
-def plot_result(
-    A, response_x_axis, trans_func=lambda x: x, priors=None, show_params=False
-):
-    if priors is None:
-        priors = []
-    responses = forward_model(A, priors, response_x_axis)
-    plt.rcParams["figure.figsize"] = [15, 4]
-    figures = 1 + len(A) if show_params else 1
-    fig, axs = plt.subplots(1, figures)
-
-    if show_params:
-        axs[0].plot(response_x_axis, responses)
-        for i, param in enumerate(A):
-            A_trans = np.array([trans_func(v, *priors[i]) for v in param])
-            axs[i + 1].hist(A_trans, bins=10)
-    else:
-        axs.plot(response_x_axis, responses)
-    plt.show()
-
-
-# %% [markdown]
 # ## Setup
 #
 # The setup contains a forward model (a second degree polynomial in this case),
 # where the coefficents of the polynomial is the model parameters.
 #
 # There are 5 time steps t=0,1,2,3,4 and 3 observations at t=0,2,4.
-#
-# Before history matching, these observations are predicted by the forward
-# model with the priors.
-#
-# The priors at t=0,2,4 are assumed uniform in [0,1], [0,2] and [0,5]
-# respectively.
-#
-# As input to the history matching we have the observed values in
-# `observation_values`. These would normally be historic measurements.
-#
-# The observed values have the measurement errors in `observation_errors`.
-#
-# A is populated with initial guesses for the parameters of the ensemble.
-
-# %% pycharm={"name": "#%%\n"}
-# Polynomial forward model with observations
+# %%
 import numpy as np
-from scipy.special import erf
+
+number_of_observations = 3
+number_of_time_steps = 5
+observation_times = np.array([0, 2, 4])
+number_of_realizations = 100
+
+
+# %% [markdown]
+# Before history matching, these observations are predicted by the forward
+# model with the priors. In this case a polynomial function:
+# %%
+def forward_model(model_parameters):
+    """Our :term:`forward_model` is s_0 * t**2 + s_1 * t + s_2 where s_0,
+    s_1,s_2 is the model parameters and t is the time.
+    """
+    return np.array(
+        [
+            sum(
+                parameter * time ** (2 - i)
+                for i, parameter in enumerate(model_parameters)
+            )
+            for time in range(number_of_time_steps)
+        ]
+    )
+
+
+# %% [markdown]
+# We create some simple plotting of forward-model with a single response
+# and parameters. The plots show the responses as a linegraph on the left,
+# and the distribution of the parameters towards the right.
+# %%
+from matplotlib import pyplot as plt
+
+
+def plot_result(A, responses, priors):
+    if priors is None:
+        priors = []
+    plt.rcParams["figure.figsize"] = [15, 4]
+    _, axs = plt.subplots(1, 1 + len(A))
+
+    axs[0].plot(range(number_of_time_steps), responses)
+    for i, param in enumerate(A):
+        A_trans = np.array([priors[i](v) for v in param])
+        axs[i + 1].hist(A_trans, bins=10)
+    plt.show()
+
+
+# %% [markdown]
+# We require a transformation of standard guassian random
+# variables (which arise from the algorithm) to uniformly
+# distributed variables inside an interval.
+# %%
 from math import sqrt
 
-
-def uniform(x, min_x, max_x):
-    y = 0.5 * (1 + erf(x / sqrt(2.0)))
-    return y * (max_x - min_x) + min_x
+from scipy.special import erf
 
 
-def forward_model(A, priors, response_x_axis):
-    responses = []
-    for params in A.T:
-        l = [uniform(x, *priors[i]) for i, x in enumerate(params)]
-        response = [l[0] * x**2 + l[1] * x + l[2] for x in response_x_axis]
-        responses.append(response)
-    return np.array(responses).T
+def guassian_to_uniform(min_x, max_x):
+    """Maps a standard guassian random variable
+        to random variable, uniformly distributied between
+        min_x and max_x.
+    :param min_x: The lower bound on the returned value.
+    :param max_x: The upper bound on the returned value.
+    """
+
+    def random_variable(x):
+        """maps standard normal random outcome x to
+        uniform outcome between min_x and max_x.
+        """
+        y = 0.5 * (1 + erf(x / sqrt(2.0)))
+        return y * (max_x - min_x) + min_x
+
+    return random_variable
 
 
+# %% [markdown]
+# The priors at t=0,2,4 are assumed uniform in [0,1], [0,2] and [0,5]
+# respectively.
+# %%
+priors = [
+    guassian_to_uniform(0, 1),
+    guassian_to_uniform(0, 2),
+    guassian_to_uniform(0, 5),
+]
+
+# %% [markdown]
+# As input to the history matching we have the observed values in
+# `observation_values`. These would normally be historic measurements.
+# %%
 observation_values = np.array(
     [2.8532509308, 7.20311703432, 21.3864899107, 31.5145559347, 53.5676660405]
 )
 
+# %% [markdown]
+# The observed values have the measurement errors in `observation_errors`.
+# A is populated with initial guesses for the parameters of the ensemble.
+
+# As input to the history matching we have the following
+# observed values. These would normally be historic measurements.
+# %%
+observation_values = np.array([2.8532509308, 7.20311703432, 21.3864899107])
+# The observed values have the following measurement errors
 observation_errors = np.array([0.5 * (x + 1) for x, _ in enumerate(observation_values)])
-observation_x_axis = [0, 2, 4, 6, 8]
-response_x_axis = range(10)
-realizations = 200
-priors = [(0, 1), (0, 2), (0, 5)]
-A = np.asfortranarray(np.random.normal(0, 1, size=(3, realizations)))
-plot_result(A, response_x_axis, uniform, priors, True)
+# The A matrix of model parameters is initially randomly generated
+A = np.random.normal(0, 1, size=(3, number_of_realizations))
+
+responses = forward_model([prior(x) for prior, x in zip(priors, A)])
+
+plot_result(A, responses, priors)
 
 # %% [markdown]
+# The above plot shows our initial forward models on the left, and the
+# distribution of parameters towards the right.
+
 # ## Update step
-
-# %% pycharm={"name": "#%%\n"}
-import numpy as np
-import iterative_ensemble_smoother as ies
-
-# Plot the initial guesses before the update step
-plot_result(A, response_x_axis, uniform, priors, True)
-
-responses_before = forward_model(A, priors, response_x_axis)
-S = responses_before[observation_x_axis]
-noise = np.random.rand(*S.shape)
-
-# Update step
-new_A = ies.ensemble_smoother_update_step(
-    S, A, observation_errors, observation_values, noise
-)
-
-# Plot after update step
-plot_result(new_A, response_x_axis, uniform, priors, True)
-
-# %% [markdown]
-# ## Iterative smoother
+# Now we perform one update step using the ensemble smoother algorithm
 
 # %%
-import numpy as np
-from matplotlib import pyplot as plt
 import iterative_ensemble_smoother as ies
 
+new_A = ies.ensemble_smoother_update_step(
+    responses[observation_times], A, observation_errors, observation_values
+)
+plot_result(new_A, responses, priors)
 
-def iterative_smoother():
-    A_current = np.copy(A)
-    iterations = 4
-    obs_mask = [True] * len(observation_values)
-    ens_mask = [True] * realizations
-    smoother = ies.IterativeEnsembleSmoother(realizations)
+# %% [markdown]
+# The plot shows that the distribution of the parameters has changed and the
+# forward models are now more consentrated around the measurements.
+#
+# ## Iterative smoother
+# We can also perform an update using the iterative ensemble smoother. The
+# following performs 4 update steps, and plots the resulting ensemble for
+# each step.
+# %%
+smoother = ies.IterativeEnsembleSmoother(number_of_realizations)
 
-    for i in range(iterations):
-        plot_result(A_current, response_x_axis, uniform, priors, True)
-        responses_before = forward_model(A_current, priors, response_x_axis)
-        S = responses_before[observation_x_axis]
-        noise = np.random.rand(*S.shape)
-        A_current = smoother.update_step(
-            S,
-            A,
-            observation_errors,
-            observation_values,
-            noise=noise,
-            ensemble_mask=ens_mask,
-            observation_mask=obs_mask,
-        )
-    plot_result(A_current, response_x_axis, uniform, priors, True)
-
-
-iterative_smoother()
-
-# %% pycharm={"name": "#%%\n"}
+# The iterative smoother requires that A is in fortran order.
+A = np.asfortranarray(A)
+for _ in range(4):
+    responses = forward_model([prior(x) for prior, x in zip(priors, A)])
+    A = smoother.update_step(
+        responses[observation_times],
+        A,
+        observation_errors,
+        observation_values,
+    )
+    plot_result(A, responses, priors)
+# %%

@@ -1,12 +1,12 @@
 import io
 from math import sqrt
-from typing import Tuple
+
+import numpy as np
+import pytest
+from numpy import testing
+from scipy.special import erf
 
 import iterative_ensemble_smoother as ies
-import numpy as np
-from numpy import testing
-import pytest
-from scipy.special import erf
 
 
 # We fix the random seed in the tests for convenience
