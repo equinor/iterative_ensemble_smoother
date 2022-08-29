@@ -41,7 +41,8 @@ doc = [
     "sphinx-rtd-theme",
     "nbsphinx",
     "sphinxcontrib.bibtex",
-    "matplotlib"
+    "matplotlib",
+    "jupytext"
 ]
 dev = [
     "pytest",
