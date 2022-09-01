@@ -31,6 +31,11 @@ class IterativeEnsembleSmoother:
         self.min_steplength = min_steplength
         self.dec_steplength = dec_steplength
 
+    @property
+    def iteration_nr(self):
+        """The number of update steps that have been run"""
+        return self._module_data.iteration_nr
+
     def _get_steplength(self, iteration_nr: int) -> float:
         """
         This is an implementation of Eq. (49), which calculates a suitable step length for
@@ -75,7 +80,7 @@ class IterativeEnsembleSmoother:
             statistics, Computational Geosciences (2021) 25:945 –970
         :param ensemble_mask: An array describing which realizations are active. Defaults
             to all active. Inactive realizations are ignored.
-        :param ensemble_mask: An array describing which observations are active. Defaults
+        :param observation_mask: An array describing which observations are active. Defaults
             to all active. Inactive observations are ignored.
         :param inversion: The type of subspace inversion used in the algorithm, defaults
             to exact.
