@@ -46,7 +46,7 @@ class IterativeEnsembleSmoother:
 
     def update_step(
         self,
-        response_matrix: "npt.NDArray[np.double]",
+        sensitivity_matrix: "npt.NDArray[np.double]",
         centered_anomaly_matrix: "npt.NDArray[np.double]",
         observation_errors: "npt.NDArray[np.double]",
         observation_values: "npt.NDArray[np.double]",
@@ -59,7 +59,7 @@ class IterativeEnsembleSmoother:
     ):
         """Perform one step of the iterative ensemble smoother algorithm
 
-        :param response_matrix: Matrix of responses from the :term:`forward model`.
+        :param sensitivity_matrix: Matrix of responses from the :term:`forward model`.
             Has shape (number of observations, number of realizations). (S in Evensen et al.)
         :param centered_anomaly_matrix: Matrix of sampled model parameters. Has shape
             (number of parameters, number of realizations). (A in Evensen et al.)
@@ -80,7 +80,7 @@ class IterativeEnsembleSmoother:
         :param inversion: The type of subspace inversion used in the algorithm, defaults
             to exact.
         """
-        S = response_matrix
+        S = sensitivity_matrix
         A = centered_anomaly_matrix
         if step_length is None:
             step_length = self._get_steplength(self._module_data.iteration_nr)
