@@ -4,7 +4,7 @@ from ._ies import InversionType, make_D, make_E, make_X
 
 
 def ensemble_smoother_update_step_row_scaling(
-    response_matrix,
+    sensitivity_matrix,
     A_with_row_scaling,
     observation_errors,
     observation_values,
@@ -13,7 +13,7 @@ def ensemble_smoother_update_step_row_scaling(
     inversion=InversionType.EXACT,
 ):
     """This is an experimental feature."""
-    S = response_matrix
+    S = sensitivity_matrix
     if noise is None:
         noise = np.random.rand(*S.shape)
 
