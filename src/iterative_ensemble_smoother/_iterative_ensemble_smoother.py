@@ -47,7 +47,7 @@ class IterativeEnsembleSmoother:
     def update_step(
         self,
         response_matrix: "npt.NDArray[np.double]",
-        parameter_matrix: "npt.NDArray[np.double]",
+        centered_anomaly_matrix: "npt.NDArray[np.double]",
         observation_errors: "npt.NDArray[np.double]",
         observation_values: "npt.NDArray[np.double]",
         noise: Optional["npt.NDArray[np.double]"] = None,
@@ -61,7 +61,7 @@ class IterativeEnsembleSmoother:
 
         :param response_matrix: Matrix of responses from the :term:`forward model`.
             Has shape (number of observations, number of realizations). (S in Evensen et al.)
-        :param parameter_matrix: Matrix of sampled model parameters. Has shape
+        :param centered_anomaly_matrix: Matrix of sampled model parameters. Has shape
             (number of parameters, number of realizations). (A in Evensen et al.)
         :param observation_errors: List of measurement of errors for each observation.
         :param observation_values: List of observations.
@@ -81,7 +81,7 @@ class IterativeEnsembleSmoother:
             to exact.
         """
         S = response_matrix
-        A = parameter_matrix
+        A = centered_anomaly_matrix
         if step_length is None:
             step_length = self._get_steplength(self._module_data.iteration_nr)
         if noise is None:
