@@ -1,3 +1,7 @@
+"""
+Contains (publicly available, but not officially supported) experimental
+features of iterative_ensemble_smoother
+"""
 import numpy as np
 
 from ._ies import InversionType, make_D, make_E, make_X
