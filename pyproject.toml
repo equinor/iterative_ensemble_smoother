@@ -34,6 +34,7 @@ text = "GPL-3.0"
 "Homepage" = "https://github.com/equinor/iterative_ensemble_smoother"
 "Repository" = "https://github.com/equinor/iterative_ensemble_smoother"
 "Bug Tracker" = "https://github.com/equinor/iterative_ensemble_smoother/issues"
+"Documentation" = "https://iterative_ensemble_smoother.readthedocs.io/en/stable/"
 
 [project.optional-dependencies]
 doc = [
