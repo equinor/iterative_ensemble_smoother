@@ -4,8 +4,8 @@ Iterative Ensemble Smoother
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![docs](https://readthedocs.org/projects/iterative_ensemble_smoother/badge/?version=latest&style=plastic)](https://iterative_ensemble_smoother.readthedocs.io/)
 
-A library for the iterative ensemble smoother algorithm
-For more information, see [the docs](http://ecl-data-io.rtfd.io).
+A library for the iterative ensemble smoother algorithm.
+For more information, see [the docs](http://iterative_ensemble_smoother.rtfd.io).
 
 ## building
 
