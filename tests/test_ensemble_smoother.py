@@ -7,6 +7,9 @@ from numpy import testing
 from scipy.special import erf
 
 import iterative_ensemble_smoother as ies
+from iterative_ensemble_smoother.experimental import (
+    ensemble_smoother_update_step_row_scaling,
+)
 
 
 # We fix the random seed in the tests for convenience
@@ -127,7 +130,7 @@ class RowScaling:
 
 
 def test_ensemble_smoother_update_step_with_rowscaling(snapshot, initial_A, initial_S):
-    ((new_A, _),) = ies.ensemble_smoother_update_step_row_scaling(
+    ((new_A, _),) = ensemble_smoother_update_step_row_scaling(
         initial_S,
         [(initial_A, RowScaling())],
         observation_errors,
