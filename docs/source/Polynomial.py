@@ -163,15 +163,38 @@ plot_result(new_A, responses, priors)
 # each step.
 # %%
 smoother = ies.IterativeEnsembleSmoother(number_of_realizations)
+A_current = np.copy(A)
 
 # The iterative smoother requires that A is in fortran order.
 for _ in range(4):
-    responses = forward_model([prior(x) for prior, x in zip(priors, A)])
-    A = smoother.update_step(
+    responses = forward_model([prior(x) for prior, x in zip(priors, A_current)])
+    A_current = smoother.update_step(
         responses[observation_times],
-        A,
+        A_current,
         observation_errors,
         observation_values,
     )
-    plot_result(A, responses, priors)
+    plot_result(A_current, responses, priors)
+
+# %% [markdown]
+#
+# ## ES-MDA
+# We can also perform an update using the ES-MDA (Multiple Data Assimilation -
+# Ensemble Smoother). The following performs 4 update steps, and plots
+# the resulting ensemble for each step.
 # %%
+smoother = ies.IterativeEnsembleSmoother(number_of_realizations)
+A_current = np.copy(A)
+
+weights = [8, 4, 2, 1]
+length = sum(1.0 / x for x in weights)
+for weight in weights:
+    responses = forward_model([prior(x) for prior, x in zip(priors, A_current)])
+    observation_errors_scaled = observation_errors * sqrt(weight * length)
+    A_current = ies.ensemble_smoother_update_step(
+        responses[observation_times],
+        A_current,
+        observation_errors_scaled,
+        observation_values,
+    )
+    plot_result(A_current, responses, priors)
