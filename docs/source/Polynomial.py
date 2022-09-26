@@ -163,7 +163,7 @@ plot_result(new_A, responses, priors)
 # each step.
 # %%
 smoother = ies.IterativeEnsembleSmoother(number_of_realizations)
-A_current = A
+A_current = np.copy(A)
 
 # The iterative smoother requires that A is in fortran order.
 for _ in range(4):
@@ -184,7 +184,7 @@ for _ in range(4):
 # the resulting ensemble for each step.
 # %%
 smoother = ies.IterativeEnsembleSmoother(number_of_realizations)
-A_current = A
+A_current = np.copy(A)
 
 weights = [8, 4, 2, 1]
 length = sum(1.0 / x for x in weights)
