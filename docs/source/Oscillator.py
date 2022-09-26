@@ -171,3 +171,33 @@ def iterative_smoother():
 
 
 iterative_smoother()
+
+# %% [markdown]
+# ## ES-MDA (Multiple Data Assimilation - Ensemble Smoother)
+
+# %%
+import numpy as np
+from matplotlib import pyplot as plt
+import iterative_ensemble_smoother as ies
+
+
+def es_mda():
+    A_current = np.copy(A)
+    weights = [8, 4, 2, 1]
+    length = sum(1.0 / x for x in weights)
+    smoother = ies.IterativeEnsembleSmoother(realizations)
+
+    for weight in weights:
+        plot_result(A_current, response_x_axis, uniform, priors)
+
+        responses_before = forward_model(A_current, priors, response_x_axis)
+        S = responses_before[observation_x_axis]
+
+        observation_errors_scaled = observation_errors*sqrt(weight*length)
+        A_current = smoother.update_step(
+            S, A_current, observation_errors_scaled, observation_values
+        )
+    plot_result(A_current, response_x_axis, uniform, priors)
+
+
+es_mda()
