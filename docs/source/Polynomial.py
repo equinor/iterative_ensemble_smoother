@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.14.1
+#       jupytext_version: 1.13.8
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -19,7 +19,7 @@
 #
 # The following is an example of history matching with the
 # iterative_ensemble_smoother library.
-
+#
 # ## Setup
 #
 # The setup contains a forward model (a second degree polynomial in this case),
@@ -124,7 +124,7 @@ observation_values = np.array(
 # %% [markdown]
 # The observed values have the measurement errors in `observation_errors`.
 # A is populated with initial guesses for the parameters of the ensemble.
-
+#
 # As input to the history matching we have the following
 # observed values. These would normally be historic measurements.
 # %%
@@ -141,7 +141,7 @@ plot_result(A, responses, priors)
 # %% [markdown]
 # The above plot shows our initial forward models on the left, and the
 # distribution of parameters towards the right.
-
+#
 # ## Update step
 # Now we perform one update step using the ensemble smoother algorithm
 
@@ -180,7 +180,7 @@ for _ in range(4):
 #
 # ## ES-MDA
 # We can also perform an update using the ES-MDA (Multiple Data Assimilation -
-# Ensemble Smoother). The following performs 4 update steps, and plots 
+# Ensemble Smoother). The following performs 4 update steps, and plots
 # the resulting ensemble for each step.
 # %%
 smoother = ies.IterativeEnsembleSmoother(number_of_realizations)
@@ -190,8 +190,13 @@ weights = [8, 4, 2, 1]
 length = sum(1.0 / x for x in weights)
 for weight in weights:
     responses = forward_model([prior(x) for prior, x in zip(priors, A_current)])
-    observation_errors_scaled = observation_errors*sqrt(weight*length)
+    observation_errors_scaled = observation_errors * sqrt(weight * length)
     A_current = ies.ensemble_smoother_update_step(
-        responses[observation_times], A_current, observation_errors_scaled, observation_values
-        )
+        responses[observation_times],
+        A_current,
+        observation_errors_scaled,
+        observation_values,
+    )
     plot_result(A_current, responses, priors)
+
+# %%

@@ -6,23 +6,6 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.14.1
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
-# %%
-# flake8: noqa
-# ---
-# jupyter:
-#   jupytext:
-#     formats: ipynb,py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
 #       jupytext_version: 1.13.8
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
@@ -32,7 +15,7 @@
 
 # %% [markdown]
 # # Example: Estimating parameters of an anharmonic oscillator
-
+#
 # The anharnomic oscillator can be modelled by a non-linear partial differential
 # equation as described in section 6.4.3 of the book Fundamentals of Algorithms
 # and Data Assimilation by Mark Asch, Marc Bocquet and Maëlle Nodet.
@@ -193,7 +176,7 @@ def es_mda():
         responses_before = forward_model(A_current, priors, response_x_axis)
         S = responses_before[observation_x_axis]
 
-        observation_errors_scaled = observation_errors*sqrt(weight*length)
+        observation_errors_scaled = observation_errors * sqrt(weight * length)
         A_current = smoother.update_step(
             S, A_current, observation_errors_scaled, observation_values
         )
@@ -201,3 +184,5 @@ def es_mda():
 
 
 es_mda()
+
+# %%
