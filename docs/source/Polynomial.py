@@ -183,7 +183,6 @@ for _ in range(4):
 # Ensemble Smoother). The following performs 4 update steps, and plots
 # the resulting ensemble for each step.
 # %%
-smoother = ies.IterativeEnsembleSmoother(number_of_realizations)
 A_current = np.copy(A)
 
 weights = [8, 4, 2, 1]

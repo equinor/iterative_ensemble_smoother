@@ -185,7 +185,6 @@ def es_mda():
     A_current = np.copy(A)
     weights = [8, 4, 2, 1]
     length = sum(1.0 / x for x in weights)
-    smoother = ies.IterativeEnsembleSmoother(realizations)
 
     for weight in weights:
         plot_result(A_current, response_x_axis, uniform, priors)
@@ -194,7 +193,7 @@ def es_mda():
         S = responses_before[observation_x_axis]
 
         observation_errors_scaled = observation_errors * sqrt(weight * length)
-        A_current = smoother.update_step(
+        A_current = ies.ensemble_smoother_update_step(
             S, A_current, observation_errors_scaled, observation_values
         )
     plot_result(A_current, response_x_axis, uniform, priors)
