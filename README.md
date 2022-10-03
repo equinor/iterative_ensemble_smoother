@@ -23,13 +23,13 @@ pip install conan
 # that the installed c compiler was gcc version 11.2
 # and writes it to the default profile.
 conan profile update "settings.compiler=gcc" default
-conan profile update "settings.compiler=11.2" default
+conan profile update "settings.compiler.version=11.2" default
 ```
 
-To build iterative_ensemble_moother from source:
+To build iterative_ensemble_smoother from source:
 
 ```bash
-git clone https://github.com/equinor/iterative_ensemble_moother.git
+git clone https://github.com/equinor/iterative_ensemble_smoother.git
 cd iterative_ensemble_smoother
 pip install .
 ```
