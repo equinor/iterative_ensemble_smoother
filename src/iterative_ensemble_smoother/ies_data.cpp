@@ -1,33 +1,33 @@
 #include <algorithm>
 #include <memory>
 
-#include <ies_data.hpp>
+#include "./ies_data.hpp"
 #include <pybind11/pybind11.h>
 
-ies::Data::Data(int ens_size) : W(Eigen::MatrixXd::Zero(ens_size, ens_size)) {}
+Data::Data(int ens_size) : W(Eigen::MatrixXd::Zero(ens_size, ens_size)) {}
 
-void ies::Data::update_ens_mask(const std::vector<bool> &mask) {
+void Data::update_ens_mask(const std::vector<bool> &mask) {
     this->m_ens_mask = mask;
 }
 
-void ies::Data::store_initial_obs_mask(const std::vector<bool> &mask) {
+void Data::store_initial_obs_mask(const std::vector<bool> &mask) {
     if (this->m_obs_mask0.empty())
         this->m_obs_mask0 = mask;
 }
 
-void ies::Data::update_obs_mask(const std::vector<bool> &mask) {
+void Data::update_obs_mask(const std::vector<bool> &mask) {
     this->m_obs_mask = mask;
 }
 
-int ies::Data::obs_mask_size() const { return this->m_obs_mask.size(); }
+int Data::obs_mask_size() const { return this->m_obs_mask.size(); }
 
-int ies::Data::ens_mask_size() const { return (this->m_ens_mask.size()); }
+int Data::ens_mask_size() const { return (this->m_ens_mask.size()); }
 
 /** We store the initial observation perturbations in E, corresponding to
  * active data->obs_mask0 in data->E. The unused rows in data->E corresponds to
  * false data->obs_mask0
  */
-void ies::Data::store_initialE(const Eigen::MatrixXd &E0) {
+void Data::store_initialE(const Eigen::MatrixXd &E0) {
     if (E.rows() != 0 || E.cols() != 0)
         return;
     int obs_size_msk = this->obs_mask_size();
@@ -53,7 +53,7 @@ void ies::Data::store_initialE(const Eigen::MatrixXd &E0) {
 /** We augment the additional observation perturbations arriving in later
  * iterations, that was not stored before, in data->E.
  */
-void ies::Data::augment_initialE(const Eigen::MatrixXd &E0) {
+void Data::augment_initialE(const Eigen::MatrixXd &E0) {
 
     int obs_size_msk = this->obs_mask_size();
     int ens_size_msk = this->ens_mask_size();
@@ -75,7 +75,7 @@ void ies::Data::augment_initialE(const Eigen::MatrixXd &E0) {
     }
 }
 
-void ies::Data::store_initialA(const Eigen::MatrixXd &A0) {
+void Data::store_initialA(const Eigen::MatrixXd &A0) {
     if (this->A0.rows() != 0 || this->A0.cols() != 0)
         return;
     this->A0 = Eigen::MatrixXd::Zero(A0.rows(), this->m_ens_mask.size());
@@ -90,25 +90,25 @@ void ies::Data::store_initialA(const Eigen::MatrixXd &A0) {
     }
 }
 
-const std::vector<bool> &ies::Data::obs_mask0() const {
+const std::vector<bool> &Data::obs_mask0() const {
     return this->m_obs_mask0;
 }
 
-const std::vector<bool> &ies::Data::obs_mask() const {
+const std::vector<bool> &Data::obs_mask() const {
     return this->m_obs_mask;
 }
 
-const std::vector<bool> &ies::Data::ens_mask() const {
+const std::vector<bool> &Data::ens_mask() const {
     return this->m_ens_mask;
 }
 
-const Eigen::MatrixXd &ies::Data::getE() const { return this->E; }
+const Eigen::MatrixXd &Data::getE() const { return this->E; }
 
-Eigen::MatrixXd &ies::Data::getW() { return this->W; }
+Eigen::MatrixXd &Data::getW() { return this->W; }
 
-const Eigen::MatrixXd &ies::Data::getW() const { return this->W; }
+const Eigen::MatrixXd &Data::getW() const { return this->W; }
 
-const Eigen::MatrixXd &ies::Data::getA0() const { return this->A0; }
+const Eigen::MatrixXd &Data::getA0() const { return this->A0; }
 
 namespace {
 
@@ -147,15 +147,15 @@ Eigen::MatrixXd make_active(const Eigen::MatrixXd &full_matrix,
   with the correct active elements both in observation and realisation space.
 */
 
-Eigen::MatrixXd ies::Data::make_activeE() const {
+Eigen::MatrixXd Data::make_activeE() const {
     return make_active(this->E, this->m_obs_mask, this->m_ens_mask);
 }
 
-Eigen::MatrixXd ies::Data::make_activeW() const {
+Eigen::MatrixXd Data::make_activeW() const {
     return make_active(this->W, this->m_ens_mask, this->m_ens_mask);
 }
 
-Eigen::MatrixXd ies::Data::make_activeA() const {
+Eigen::MatrixXd Data::make_activeA() const {
     std::vector<bool> row_mask(this->A0.rows(), true);
     return make_active(this->A0, row_mask, this->m_ens_mask);
 }

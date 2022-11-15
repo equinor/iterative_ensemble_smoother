@@ -7,13 +7,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <ies.hpp>
-#include <ies_data.hpp>
-#include <linalg.hpp>
 #include <pybind11/eigen.h>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+
+#include "./ies.hpp"
+#include "./ies_data.hpp"
+#include "./linalg.hpp"
 
 namespace py = pybind11;
 using Eigen::MatrixXd;
@@ -22,11 +23,9 @@ using Eigen::MatrixXd;
  * "Efficient Implementation of an Iterative Ensemble Smoother for Data Assimilation and Reservoir History Matching"
  * https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full
  */
-namespace ies {
-namespace linalg {
 void compute_AA_projection(const Eigen::MatrixXd &A, Eigen::MatrixXd &Y);
 
-void subspace_inversion(Eigen::MatrixXd &W0, const int ies_inversion,
+void subspace_inversion(Eigen::MatrixXd &W0, const Inversion ies_inversion,
                         const Eigen::MatrixXd &E, const Eigen::MatrixXd &R,
                         const Eigen::MatrixXd &S, const Eigen::MatrixXd &H,
                         const std::variant<double, int> &truncation,
@@ -34,22 +33,20 @@ void subspace_inversion(Eigen::MatrixXd &W0, const int ies_inversion,
 
 void exact_inversion(Eigen::MatrixXd &W0, const Eigen::MatrixXd &S,
                      const Eigen::MatrixXd &H, double ies_steplength);
-} // namespace linalg
-} // namespace ies
 
-void ies::init_update(ies::Data &module_data, const std::vector<bool> &ens_mask,
-                      const std::vector<bool> &obs_mask) {
+void init_update(Data &module_data, const std::vector<bool> &ens_mask,
+                 const std::vector<bool> &obs_mask) {
     module_data.update_ens_mask(ens_mask);
     module_data.store_initial_obs_mask(obs_mask);
     module_data.update_obs_mask(obs_mask);
 }
 
-Eigen::MatrixXd
-ies::makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
-           const Eigen::MatrixXd &R, const Eigen::MatrixXd &E,
-           const Eigen::MatrixXd &D, const ies::inversion_type ies_inversion,
-           const std::variant<double, int> &truncation, Eigen::MatrixXd &W0,
-           double ies_steplength, int iteration_nr)
+Eigen::MatrixXd makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
+                      const Eigen::MatrixXd &R, const Eigen::MatrixXd &E,
+                      const Eigen::MatrixXd &D, const Inversion ies_inversion,
+                      const std::variant<double, int> &truncation,
+                      Eigen::MatrixXd &W0, double ies_steplength,
+                      int iteration_nr)
 
 {
     const int ens_size = Y0.cols();
@@ -68,7 +65,7 @@ ies::makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
     if (A.rows() > 0 && A.cols() > 0) {
         const int state_size = A.rows();
         if (state_size <= ens_size - 1) {
-            ies::linalg::compute_AA_projection(A, Y);
+            compute_AA_projection(A, Y);
         }
     }
 
@@ -123,11 +120,11 @@ ies::makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
      * ies_inversion=IES_INVERSION_SUBSPACE_RE(3)      -> subspace inversion from (a) with R represented by E * E^T
      */
 
-    if (ies_inversion != ies::IES_INVERSION_EXACT) {
-        ies::linalg::subspace_inversion(W0, ies_inversion, E, R, S, H,
-                                        truncation, ies_steplength);
-    } else if (ies_inversion == ies::IES_INVERSION_EXACT) {
-        ies::linalg::exact_inversion(W0, S, H, ies_steplength);
+    if (ies_inversion == Inversion::exact) {
+        exact_inversion(W0, S, H, ies_steplength);
+    } else {
+        subspace_inversion(W0, ies_inversion, E, R, S, H, truncation,
+                           ies_steplength);
     }
 
     /* Line 9 of Algorithm 1 */
@@ -153,7 +150,7 @@ ies::makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
 * is then used in the algorithm.  (note the definition of the pointer dataW to
 * data->W)
 */
-static void store_active_W(ies::Data &data, const Eigen::MatrixXd &W0) {
+static void store_active_W(Data &data, const Eigen::MatrixXd &W0) {
     int ens_size_msk = data.ens_mask_size();
     int i = 0;
     int j;
@@ -174,20 +171,19 @@ static void store_active_W(ies::Data &data, const Eigen::MatrixXd &W0) {
     }
 }
 
-void ies::updateA(Data &data,
-                  // Updated ensemble A retured to ERT.
-                  Eigen::Ref<Eigen::MatrixXd> A,
-                  // Ensemble of predicted measurements
-                  const Eigen::MatrixXd &Yin,
-                  // Measurement error covariance matrix (not used)
-                  const Eigen::MatrixXd &Rin,
-                  // Ensemble of observation perturbations
-                  const Eigen::MatrixXd &Ein,
-                  // (d+E-Y) Ensemble of perturbed observations - Y
-                  const Eigen::MatrixXd &Din,
-                  const ies::inversion_type ies_inversion,
-                  const std::variant<double, int> &truncation,
-                  double ies_steplength) {
+void updateA(Data &data,
+             // Updated ensemble A retured to ERT.
+             Eigen::Ref<Eigen::MatrixXd> A,
+             // Ensemble of predicted measurements
+             const Eigen::MatrixXd &Yin,
+             // Measurement error covariance matrix (not used)
+             const Eigen::MatrixXd &Rin,
+             // Ensemble of observation perturbations
+             const Eigen::MatrixXd &Ein,
+             // (d+E-Y) Ensemble of perturbed observations - Y
+             const Eigen::MatrixXd &Din, const Inversion ies_inversion,
+             const std::variant<double, int> &truncation,
+             double ies_steplength) {
 
     int iteration_nr = data.iteration_nr;
     /*
@@ -227,8 +223,7 @@ void ies::updateA(Data &data,
 }
 
 /* Section 2.4.3 */
-void ies::linalg::compute_AA_projection(const Eigen::MatrixXd &A,
-                                        Eigen::MatrixXd &Y) {
+void compute_AA_projection(const Eigen::MatrixXd &A, Eigen::MatrixXd &Y) {
 
     Eigen::MatrixXd Ai = A;
     Ai = Ai.colwise() - Ai.rowwise().mean();
@@ -242,11 +237,11 @@ void ies::linalg::compute_AA_projection(const Eigen::MatrixXd &A,
 *  The standard inversion works on the equation
 *          S'*(S*S'+R)^{-1} H           (a)
 */
-void ies::linalg::subspace_inversion(
-    Eigen::MatrixXd &W0, const int ies_inversion, const Eigen::MatrixXd &E,
-    const Eigen::MatrixXd &R, const Eigen::MatrixXd &S,
-    const Eigen::MatrixXd &H, const std::variant<double, int> &truncation,
-    double ies_steplength) {
+void subspace_inversion(Eigen::MatrixXd &W0, const Inversion ies_inversion,
+                        const Eigen::MatrixXd &E, const Eigen::MatrixXd &R,
+                        const Eigen::MatrixXd &S, const Eigen::MatrixXd &H,
+                        const std::variant<double, int> &truncation,
+                        double ies_steplength) {
 
     int ens_size = S.cols();
     int nrobs = S.rows();
@@ -255,27 +250,31 @@ void ies::linalg::subspace_inversion(
         nrobs, std::min(ens_size, nrobs)); // Used in subspace inversion
     Eigen::VectorXd eig(ens_size);
 
-    if (ies_inversion == IES_INVERSION_SUBSPACE_RE) {
-        Eigen::MatrixXd scaledE = E;
-        scaledE *= nsc;
-        ies::linalg::lowrankE(S, scaledE, X1, eig, truncation);
+    switch (ies_inversion) {
+    case Inversion::subspace_re:
+        lowrankE(S, E * nsc, X1, eig, truncation);
+        break;
 
-    } else if (ies_inversion == IES_INVERSION_SUBSPACE_EE_R) {
+        case Inversion::subspace_ee_r: {
         Eigen::MatrixXd Et = E.transpose();
         MatrixXd Cee = E * Et;
         Cee *= 1.0 / ((ens_size - 1) * (ens_size - 1));
 
-        ies::linalg::lowrankCinv(S, Cee, X1, eig, truncation);
+        lowrankCinv(S, Cee, X1, eig, truncation);
+        break;
+        }
 
-    } else if (ies_inversion == IES_INVERSION_SUBSPACE_EXACT_R) {
-        Eigen::MatrixXd scaledR = R;
-        scaledR *= nsc * nsc;
-        ies::linalg::lowrankCinv(S, scaledR, X1, eig, truncation);
+        case Inversion::subspace_exact_r:
+        lowrankCinv(S, R * nsc * nsc, X1, eig, truncation);
+        break;
+
+        default:
+            break;
     }
 
     // X3 = X1 * diag(eig) * X1' * H (Similar to Eq. 14.31, Evensen (2007))
     Eigen::Map<Eigen::VectorXd> eig_vector(eig.data(), eig.size());
-    Eigen::MatrixXd X3 = ies::linalg::genX3(X1, H, eig_vector);
+    Eigen::MatrixXd X3 = genX3(X1, H, eig_vector);
 
     // Update data->W = (1-ies_steplength) * data->W +  ies_steplength * S' * X3 (Line 9)
     W0 = ies_steplength * S.transpose() * X3 + (1.0 - ies_steplength) * W0;
@@ -286,9 +285,8 @@ void ies::linalg::subspace_inversion(
 * and since (S^T*S + I_N) is symmetric positive semi-definite we have that U=V and hence
 * (S^T*S + I_N)^{-1} = U * \Sigma^{-1} * U^T.
 */
-void ies::linalg::exact_inversion(Eigen::MatrixXd &W0, const Eigen::MatrixXd &S,
-                                  const Eigen::MatrixXd &H,
-                                  double ies_steplength) {
+void exact_inversion(Eigen::MatrixXd &W0, const Eigen::MatrixXd &S,
+                     const Eigen::MatrixXd &H, double ies_steplength) {
     int ens_size = S.cols();
 
     MatrixXd StS = S.transpose() * S + MatrixXd::Identity(ens_size, ens_size);
@@ -306,8 +304,8 @@ void ies::linalg::exact_inversion(Eigen::MatrixXd &W0, const Eigen::MatrixXd &S,
     W0 = ies_steplength * Z * ZtStH + (1.0 - ies_steplength) * W0;
 }
 
-Eigen::MatrixXd ies::makeE(const Eigen::VectorXd &obs_errors,
-                           const Eigen::MatrixXd &noise) {
+Eigen::MatrixXd makeE(const Eigen::VectorXd &obs_errors,
+                      const Eigen::MatrixXd &noise) {
     int active_obs_size = obs_errors.rows();
     int active_ens_size = noise.cols();
 
@@ -324,8 +322,8 @@ Eigen::MatrixXd ies::makeE(const Eigen::VectorXd &obs_errors,
     return E;
 }
 
-Eigen::MatrixXd ies::makeD(const Eigen::VectorXd &obs_values,
-                           const Eigen::MatrixXd &E, const Eigen::MatrixXd &S) {
+Eigen::MatrixXd makeD(const Eigen::VectorXd &obs_values,
+                      const Eigen::MatrixXd &E, const Eigen::MatrixXd &S) {
 
     Eigen::MatrixXd D = E - S;
 
@@ -337,23 +335,23 @@ Eigen::MatrixXd ies::makeD(const Eigen::VectorXd &obs_values,
 PYBIND11_MODULE(_ies, m) {
     using namespace py::literals;
 
-    py::class_<ies::Data, std::shared_ptr<ies::Data>>(m, "ModuleData")
+    py::class_<Data, std::shared_ptr<Data>>(m, "ModuleData")
         .def(py::init<int>())
-        .def_readwrite("iteration_nr", &ies::Data::iteration_nr);
-    m.def("make_X", &ies::makeX, "A"_a, "Y0"_a, "R"_a, "E"_a, "D"_a,
+        .def_readwrite("iteration_nr", &Data::iteration_nr);
+    m.def("make_X", &makeX, "A"_a, "Y0"_a, "R"_a, "E"_a, "D"_a,
           "ies_inversion"_a, "truncation"_a, "W0"_a, "ies_steplength"_a,
           "iteration_nr"_a);
-    m.def("make_E", &ies::makeE, "obs_errors"_a, "noise"_a);
-    m.def("make_D", &ies::makeD, "obs_values"_a, "E"_a, "S"_a);
-    m.def("update_A", &ies::updateA, "data"_a, "A"_a, "Yin"_a, "R"_a, "E"_a,
-          "D"_a, "inversion"_a, "truncation"_a, "step_length"_a);
-    m.def("init_update", ies::init_update, "module_data"_a, "ens_mask"_a,
+    m.def("make_E", &makeE, "obs_errors"_a, "noise"_a);
+    m.def("make_D", &makeD, "obs_values"_a, "E"_a, "S"_a);
+    m.def("update_A", &updateA, "data"_a, "A"_a, "Yin"_a, "R"_a, "E"_a, "D"_a,
+          "inversion"_a, "truncation"_a, "step_length"_a);
+    m.def("init_update", init_update, "module_data"_a, "ens_mask"_a,
           "obs_mask"_a);
 
-    py::enum_<ies::inversion_type>(m, "InversionType")
-        .value("EXACT", ies::inversion_type::IES_INVERSION_EXACT)
-        .value("EE_R", ies::inversion_type::IES_INVERSION_SUBSPACE_EE_R)
-        .value("EXACT_R", ies::inversion_type::IES_INVERSION_SUBSPACE_EXACT_R)
-        .value("SUBSPACE_RE", ies::inversion_type::IES_INVERSION_SUBSPACE_RE)
+    py::enum_<Inversion>(m, "InversionType")
+        .value("EXACT", Inversion::exact)
+        .value("EE_R", Inversion::subspace_ee_r)
+        .value("EXACT_R", Inversion::subspace_exact_r)
+        .value("SUBSPACE_RE", Inversion::subspace_re)
         .export_values();
 }
