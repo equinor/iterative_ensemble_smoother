@@ -2,8 +2,6 @@
 #include <Eigen/Dense>
 #include <vector>
 
-namespace ies {
-
 class Data {
 public:
     Data(int ens_size);
@@ -47,5 +45,3 @@ private:
     /** Prior ensemble of measurement perturations (should be the same for all iterations) */
     Eigen::MatrixXd E;
 };
-
-} // namespace ies
