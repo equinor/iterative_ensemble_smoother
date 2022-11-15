@@ -2,8 +2,6 @@
 #include <Eigen/Dense>
 #include <variant>
 
-namespace ies {
-namespace linalg {
 void lowrankCinv(
     const Eigen::MatrixXd &S, const Eigen::MatrixXd &R,
     Eigen::MatrixXd &W,   /* Corresponding to X1 from Eq. 14.29 */
@@ -21,5 +19,3 @@ void lowrankE(
 
 Eigen::MatrixXd genX3(const Eigen::MatrixXd &W, const Eigen::MatrixXd &D,
                       const Eigen::VectorXd &eig);
-} // namespace linalg
-} // namespace ies

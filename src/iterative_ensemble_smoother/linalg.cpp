@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <linalg.hpp>
+#include "./linalg.hpp"
 
 static int calc_num_significant(const Eigen::VectorXd &singular_values,
                                 double truncation) {
@@ -29,9 +29,6 @@ static int calc_num_significant(const Eigen::VectorXd &singular_values,
 
     return num_significant;
 }
-
-namespace ies {
-namespace linalg {
 
 /**
  * Implements parts of Eq. 14.31 in the book Data Assimilation,
@@ -149,5 +146,3 @@ void lowrankCinv(
 
     W = U0 * Z; /* X1 = W = U0 * Z2 = U0 * Sigma0^(+') * Z    */
 }
-} // namespace linalg
-} // namespace ies
