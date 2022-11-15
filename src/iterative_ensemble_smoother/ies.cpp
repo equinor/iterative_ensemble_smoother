@@ -15,6 +15,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+namespace py = pybind11;
 using Eigen::MatrixXd;
 
 /** Implementation of algorithm as described in
@@ -333,24 +334,22 @@ Eigen::MatrixXd ies::makeD(const Eigen::VectorXd &obs_values,
     return D;
 }
 
-namespace py = pybind11;
 PYBIND11_MODULE(_ies, m) {
     using namespace py::literals;
+
     py::class_<ies::Data, std::shared_ptr<ies::Data>>(m, "ModuleData")
         .def(py::init<int>())
         .def_readwrite("iteration_nr", &ies::Data::iteration_nr);
-    m.def("make_X", ies::makeX, py::arg("A"), py::arg("Y0"), py::arg("R"),
-          py::arg("E"), py::arg("D"), py::arg("ies_inversion"),
-          py::arg("truncation"), py::arg("W0"), py::arg("ies_steplength"),
-          py::arg("iteration_nr"));
-    m.def("make_E", ies::makeE, py::arg("obs_errors"), py::arg("noise"));
-    m.def("make_D", ies::makeD, py::arg("obs_values"), py::arg("E"),
-          py::arg("S"));
-    m.def("update_A", ies::updateA, py::arg("data"), py::arg("A"),
-          py::arg("Yin"), py::arg("R"), py::arg("E"), py::arg("D"),
-          py::arg("inversion"), py::arg("truncation"), py::arg("step_length"));
-    m.def("init_update", ies::init_update, py::arg("module_data"),
-          py::arg("ens_mask"), py::arg("obs_mask"));
+    m.def("make_X", &ies::makeX, "A"_a, "Y0"_a, "R"_a, "E"_a, "D"_a,
+          "ies_inversion"_a, "truncation"_a, "W0"_a, "ies_steplength"_a,
+          "iteration_nr"_a);
+    m.def("make_E", &ies::makeE, "obs_errors"_a, "noise"_a);
+    m.def("make_D", &ies::makeD, "obs_values"_a, "E"_a, "S"_a);
+    m.def("update_A", &ies::updateA, "data"_a, "A"_a, "Yin"_a, "R"_a, "E"_a,
+          "D"_a, "inversion"_a, "truncation"_a, "step_length"_a);
+    m.def("init_update", ies::init_update, "module_data"_a, "ens_mask"_a,
+          "obs_mask"_a);
+
     py::enum_<ies::inversion_type>(m, "InversionType")
         .value("EXACT", ies::inversion_type::IES_INVERSION_EXACT)
         .value("EE_R", ies::inversion_type::IES_INVERSION_SUBSPACE_EE_R)
