@@ -6,22 +6,10 @@
 
 Data::Data(int ens_size) : W(Eigen::MatrixXd::Zero(ens_size, ens_size)) {}
 
-void Data::update_ens_mask(const std::vector<bool> &mask) {
-    this->m_ens_mask = mask;
-}
-
 void Data::store_initial_obs_mask(const std::vector<bool> &mask) {
     if (this->m_obs_mask0.empty())
         this->m_obs_mask0 = mask;
 }
-
-void Data::update_obs_mask(const std::vector<bool> &mask) {
-    this->m_obs_mask = mask;
-}
-
-int Data::obs_mask_size() const { return this->m_obs_mask.size(); }
-
-int Data::ens_mask_size() const { return (this->m_ens_mask.size()); }
 
 /** We store the initial observation perturbations in E, corresponding to
  * active data->obs_mask0 in data->E. The unused rows in data->E corresponds to
@@ -30,17 +18,15 @@ int Data::ens_mask_size() const { return (this->m_ens_mask.size()); }
 void Data::store_initialE(const Eigen::MatrixXd &E0) {
     if (E.rows() != 0 || E.cols() != 0)
         return;
-    int obs_size_msk = this->obs_mask_size();
-    int ens_size_msk = this->ens_mask_size();
-    this->E = Eigen::MatrixXd::Zero(obs_size_msk, ens_size_msk);
+    this->E = Eigen::MatrixXd::Zero(obs_mask.size(), ens_mask.size());
     this->E.setConstant(-999.9);
 
     int m = 0;
-    for (int iobs = 0; iobs < obs_size_msk; iobs++) {
+    for (size_t iobs{}; iobs < obs_mask.size(); iobs++) {
         if (this->m_obs_mask0[iobs]) {
             int active_idx = 0;
-            for (int iens = 0; iens < ens_size_msk; iens++) {
-                if (this->m_ens_mask[iens]) {
+            for (size_t iens{}; iens < ens_mask.size(); iens++) {
+                if (this->ens_mask[iens]) {
                     this->E(iobs, iens) = E0(m, active_idx);
                     active_idx++;
                 }
@@ -55,21 +41,19 @@ void Data::store_initialE(const Eigen::MatrixXd &E0) {
  */
 void Data::augment_initialE(const Eigen::MatrixXd &E0) {
 
-    int obs_size_msk = this->obs_mask_size();
-    int ens_size_msk = this->ens_mask_size();
     int m = 0;
-    for (int iobs = 0; iobs < obs_size_msk; iobs++) {
-        if (!this->m_obs_mask0[iobs] && this->m_obs_mask[iobs]) {
+    for (size_t iobs{}; iobs < obs_mask.size(); iobs++) {
+        if (!this->m_obs_mask0[iobs] && this->obs_mask[iobs]) {
             int i = -1;
-            for (int iens = 0; iens < ens_size_msk; iens++) {
-                if (this->m_ens_mask[iens]) {
+            for (size_t iens{}; iens < ens_mask.size(); iens++) {
+                if (this->ens_mask[iens]) {
                     i++;
                     this->E(iobs, iens) = E0(m, i);
                 }
             }
             this->m_obs_mask0[iobs] = true;
         }
-        if (this->m_obs_mask[iobs]) {
+        if (this->obs_mask[iobs]) {
             m++;
         }
     }
@@ -78,37 +62,17 @@ void Data::augment_initialE(const Eigen::MatrixXd &E0) {
 void Data::store_initialA(const Eigen::MatrixXd &A0) {
     if (this->A0.rows() != 0 || this->A0.cols() != 0)
         return;
-    this->A0 = Eigen::MatrixXd::Zero(A0.rows(), this->m_ens_mask.size());
+    this->A0 = Eigen::MatrixXd::Zero(A0.rows(), ens_mask.size());
     for (int irow = 0; irow < this->A0.rows(); irow++) {
         int active_idx = 0;
-        for (int iens = 0; iens < this->m_ens_mask.size(); iens++) {
-            if (this->m_ens_mask[iens]) {
+        for (size_t iens = 0; iens < ens_mask.size(); iens++) {
+            if (ens_mask[iens]) {
                 this->A0(irow, iens) = A0(irow, active_idx);
                 active_idx++;
             }
         }
     }
 }
-
-const std::vector<bool> &Data::obs_mask0() const {
-    return this->m_obs_mask0;
-}
-
-const std::vector<bool> &Data::obs_mask() const {
-    return this->m_obs_mask;
-}
-
-const std::vector<bool> &Data::ens_mask() const {
-    return this->m_ens_mask;
-}
-
-const Eigen::MatrixXd &Data::getE() const { return this->E; }
-
-Eigen::MatrixXd &Data::getW() { return this->W; }
-
-const Eigen::MatrixXd &Data::getW() const { return this->W; }
-
-const Eigen::MatrixXd &Data::getA0() const { return this->A0; }
 
 namespace {
 
@@ -148,14 +112,14 @@ Eigen::MatrixXd make_active(const Eigen::MatrixXd &full_matrix,
 */
 
 Eigen::MatrixXd Data::make_activeE() const {
-    return make_active(this->E, this->m_obs_mask, this->m_ens_mask);
+    return make_active(this->E, this->obs_mask, this->ens_mask);
 }
 
 Eigen::MatrixXd Data::make_activeW() const {
-    return make_active(this->W, this->m_ens_mask, this->m_ens_mask);
+    return make_active(this->W, this->ens_mask, this->ens_mask);
 }
 
 Eigen::MatrixXd Data::make_activeA() const {
     std::vector<bool> row_mask(this->A0.rows(), true);
-    return make_active(this->A0, row_mask, this->m_ens_mask);
+    return make_active(this->A0, row_mask, this->ens_mask);
 }
