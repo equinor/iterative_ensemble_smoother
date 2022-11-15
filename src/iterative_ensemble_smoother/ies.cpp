@@ -5,9 +5,9 @@
 #include <Eigen/Dense>
 #include <pybind11/pybind11.h>
 
+using Eigen::ComputeFullU;
 using Eigen::ComputeThinU;
 using Eigen::ComputeThinV;
-using Eigen::ComputeFullU;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 namespace py = pybind11;
@@ -21,16 +21,24 @@ enum struct Inversion {
 
 class Data {
 public:
-    std::vector<bool> ens_mask{};
-    std::vector<bool> obs_mask{};
-
+    const size_t ens_size{};
+    const size_t obs_size{};
     /** Coefficient matrix used to compute Omega = I + W (I -11'/N)/sqrt(N-1) */
     MatrixXd W;
 
-    Data(int ens_size);
+    std::vector<size_t> ens_indices{};
+    std::vector<size_t> obs_indices{};
 
-    void store_initial_obs_mask(const std::vector<bool> &mask);
-    void update_obs_mask(const std::vector<bool> &mask);
+    Data(size_t ens_size)
+        : ens_size(ens_size), W(MatrixXd::Zero(ens_size, ens_size)) {}
+
+    void init_update(const std::vector<size_t> &ens_indices,
+                     const std::vector<size_t> &obs_indices) {
+        this->ens_indices = ens_indices;
+        this->obs_indices = obs_indices;
+        if (!this->m_obs_indices0.has_value())
+            this->m_obs_indices0 = this->obs_indices;
+    }
 
     void store_initialE(const MatrixXd &E0);
     void augment_initialE(const MatrixXd &E0);
@@ -43,9 +51,7 @@ public:
     int iteration_nr = 1;
 
 private:
-    bool m_converged = false;
-
-    std::vector<bool> m_obs_mask0{};
+    std::optional<std::vector<size_t>> m_obs_indices0{};
     /** Prior ensemble used in Ei=A0 Omega_i */
     MatrixXd A0{};
     /** Prior ensemble of measurement perturations (should be the same for all iterations) */
@@ -276,13 +282,6 @@ void exact_inversion(MatrixXd &W0, const MatrixXd &S, const MatrixXd &H,
     W0 = ies_steplength * Z * ZtStH + (1.0 - ies_steplength) * W0;
 }
 
-Data::Data(int ens_size) : W(MatrixXd::Zero(ens_size, ens_size)) {}
-
-void Data::store_initial_obs_mask(const std::vector<bool> &mask) {
-    if (this->m_obs_mask0.empty())
-        this->m_obs_mask0 = mask;
-}
-
 /** We store the initial observation perturbations in E, corresponding to
  * active data->obs_mask0 in data->E. The unused rows in data->E corresponds to
  * false data->obs_mask0
@@ -290,20 +289,11 @@ void Data::store_initial_obs_mask(const std::vector<bool> &mask) {
 void Data::store_initialE(const MatrixXd &E0) {
     if (E.rows() != 0 || E.cols() != 0)
         return;
-    this->E = MatrixXd::Zero(obs_mask.size(), ens_mask.size());
-    this->E.setConstant(-999.9);
+    this->E = MatrixXd::Constant(obs_size, ens_size, -999.9);
 
-    int m = 0;
-    for (size_t iobs{}; iobs < obs_mask.size(); iobs++) {
-        if (this->m_obs_mask0[iobs]) {
-            int active_idx = 0;
-            for (size_t iens{}; iens < ens_mask.size(); iens++) {
-                if (this->ens_mask[iens]) {
-                    this->E(iobs, iens) = E0(m, active_idx);
-                    active_idx++;
-                }
-            }
-            m++;
+    for (auto [m, iobs] : iter::enumerate(*m_obs_indices0)) {
+        for (auto [active_idx, iens] : iter::enumerate(ens_indices)) {
+            E(iobs, iens) = E0(m, active_idx);
         }
     }
 }
@@ -312,21 +302,13 @@ void Data::store_initialE(const MatrixXd &E0) {
  * iterations, that was not stored before, in data->E.
  */
 void Data::augment_initialE(const MatrixXd &E0) {
+    for (auto [m, iobs] : iter::enumerate(obs_indices)) {
+        if (m_obs_indices0.find(iobs))
+            continue;
 
-    int m = 0;
-    for (size_t iobs{}; iobs < obs_mask.size(); iobs++) {
-        if (!this->m_obs_mask0[iobs] && this->obs_mask[iobs]) {
-            int i = -1;
-            for (size_t iens{}; iens < ens_mask.size(); iens++) {
-                if (this->ens_mask[iens]) {
-                    i++;
-                    this->E(iobs, iens) = E0(m, i);
-                }
-            }
-            this->m_obs_mask0[iobs] = true;
-        }
-        if (this->obs_mask[iobs]) {
-            m++;
+        for (auto [i, iens] : iter::enumerate(ens_indices)) {
+            E(iobs, iens) = E0(m, i);
+            m_obs_indices0.insert(iobs);
         }
     }
 }
@@ -334,45 +316,25 @@ void Data::augment_initialE(const MatrixXd &E0) {
 void Data::store_initialA(const MatrixXd &A0) {
     if (this->A0.rows() != 0 || this->A0.cols() != 0)
         return;
-    this->A0 = MatrixXd::Zero(A0.rows(), ens_mask.size());
+    this->A0 = MatrixXd::Zero(A0.rows(), ens_size);
     for (int irow = 0; irow < this->A0.rows(); irow++) {
-        int active_idx = 0;
-        for (size_t iens = 0; iens < ens_mask.size(); iens++) {
-            if (ens_mask[iens]) {
-                this->A0(irow, iens) = A0(irow, active_idx);
-                active_idx++;
-            }
+        for (auto [active_idx, iens] : iter::enumerate(ens_indices)) {
+            this->A0(irow, iens) = A0(irow, active_idx);
         }
     }
 }
-
-namespace {
 
 MatrixXd make_active(const MatrixXd &full_matrix,
-                     const std::vector<bool> &row_mask,
-                     const std::vector<bool> &column_mask) {
-    int rows = row_mask.size();
-    int columns = column_mask.size();
-    MatrixXd active = MatrixXd::Zero(
-        std::count(row_mask.begin(), row_mask.end(), true),
-        std::count(column_mask.begin(), column_mask.end(), true));
-    int row = 0;
-    for (int iobs = 0; iobs < rows; iobs++) {
-        if (row_mask[iobs]) {
-            int column = 0;
-            for (int iens = 0; iens < columns; iens++) {
-                if (column_mask[iens]) {
-                    active(row, column) = full_matrix(iobs, iens);
-                    column++;
-                }
-            }
-            row++;
+                     const std::vector<size_t> &row_indices,
+                     const std::vector<size_t> &col_indices) {
+    MatrixXd active = MatrixXd::Zero(row_indices.size(), col_indices.size());
+    for (auto [row, iobs] : iter::enumerate(row_indices)) {
+        for (auto [col, iens] : iter::enumerate(col_indices)) {
+            active(row, col) = full_matrix(iobs, iens);
         }
     }
-
     return active;
 }
-} // namespace
 
 /*
   During the iteration process both the number of realizations and the number of
@@ -384,23 +346,21 @@ MatrixXd make_active(const MatrixXd &full_matrix,
 */
 
 MatrixXd Data::make_activeE() const {
-    return make_active(this->E, this->obs_mask, this->ens_mask);
+    return make_active(this->E, this->obs_indices, this->ens_indices);
 }
 
 MatrixXd Data::make_activeW() const {
-    return make_active(this->W, this->ens_mask, this->ens_mask);
+    return make_active(this->W, this->ens_indices, this->ens_indices);
 }
 
 MatrixXd Data::make_activeA() const {
-    std::vector<bool> row_mask(this->A0.rows(), true);
-    return make_active(this->A0, row_mask, this->ens_mask);
-}
-
-void init_update(Data &module_data, const std::vector<bool> &ens_mask,
-                 const std::vector<bool> &obs_mask) {
-    module_data.ens_mask = ens_mask;
-    module_data.store_initial_obs_mask(obs_mask);
-    module_data.obs_mask = obs_mask;
+    MatrixXd active = MatrixXd::Zero(A0.rows(), col_indices.size());
+    for (size_t row{}; row < this->A0.rows(); ++row) {
+        for (auto [col, iens] : iter::enumerate(ens_indices)) {
+            active(row, col) = full_matrix(row, iens);
+        }
+    }
+    return active;
 }
 
 MatrixXd makeX(const MatrixXd &A, const MatrixXd &Y0, const MatrixXd &R,
@@ -511,20 +471,10 @@ MatrixXd makeX(const MatrixXd &A, const MatrixXd &Y0, const MatrixXd &R,
 * data->W)
 */
 static void store_active_W(Data &data, const MatrixXd &W0) {
-    size_t i = 0;
-    size_t j;
-
     data.W.setConstant(0.0);
-    for (size_t iens{}; iens < data.ens_mask.size(); iens++) {
-        if (data.ens_mask[iens]) {
-            j = 0;
-            for (size_t jens{}; jens < data.ens_mask.size(); jens++) {
-                if (data.ens_mask[jens]) {
-                    data.W(iens, jens) = W0(i, j);
-                    j++;
-                }
-            }
-            i++;
+    for (auto [i, iens] : iter::enumerate(ens_indices)) {
+        for (auto [j, jens] : iter::enumerate(ens_indices)) {
+            data.W(iens, jens) = W0(i, j);
         }
     }
 }
@@ -599,7 +549,6 @@ MatrixXd makeE(const VectorXd &obs_errors, const MatrixXd &noise) {
 
 MatrixXd makeD(const VectorXd &obs_values, const MatrixXd &E,
                const MatrixXd &S) {
-
     MatrixXd D = E - S;
 
     D.colwise() += obs_values;
@@ -620,8 +569,8 @@ PYBIND11_MODULE(_ies, m) {
     m.def("make_D", &makeD, "obs_values"_a, "E"_a, "S"_a);
     m.def("update_A", &updateA, "data"_a, "A"_a, "Yin"_a, "R"_a, "E"_a, "D"_a,
           "inversion"_a, "truncation"_a, "step_length"_a);
-    m.def("init_update", init_update, "module_data"_a, "ens_mask"_a,
-          "obs_mask"_a);
+    m.def("init_update", init_update, "module_data"_a, "ens_indices"_a,
+          "obs_indices"_a);
 
     py::enum_<Inversion>(m, "InversionType")
         .value("EXACT", Inversion::exact)
