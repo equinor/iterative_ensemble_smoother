@@ -36,9 +36,9 @@ void exact_inversion(Eigen::MatrixXd &W0, const Eigen::MatrixXd &S,
 
 void init_update(Data &module_data, const std::vector<bool> &ens_mask,
                  const std::vector<bool> &obs_mask) {
-    module_data.update_ens_mask(ens_mask);
+    module_data.ens_mask = ens_mask;
     module_data.store_initial_obs_mask(obs_mask);
-    module_data.update_obs_mask(obs_mask);
+    module_data.obs_mask = obs_mask;
 }
 
 Eigen::MatrixXd makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
@@ -151,22 +151,20 @@ Eigen::MatrixXd makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
 * data->W)
 */
 static void store_active_W(Data &data, const Eigen::MatrixXd &W0) {
-    int ens_size_msk = data.ens_mask_size();
-    int i = 0;
-    int j;
-    Eigen::MatrixXd &dataW = data.getW();
-    const std::vector<bool> &ens_mask = data.ens_mask();
-    dataW.setConstant(0.0);
-    for (int iens = 0; iens < ens_size_msk; iens++) {
-        if (ens_mask[iens]) {
+    size_t i = 0;
+    size_t j;
+
+    data.W.setConstant(0.0);
+    for (size_t iens{}; iens < data.ens_mask.size(); iens++) {
+        if (data.ens_mask[iens]) {
             j = 0;
-            for (int jens = 0; jens < ens_size_msk; jens++) {
-                if (ens_mask[jens]) {
-                    dataW(iens, jens) = W0(i, j);
-                    j += 1;
+            for (size_t jens{}; jens < data.ens_mask.size(); jens++) {
+                if (data.ens_mask[jens]) {
+                    data.W(iens, jens) = W0(i, j);
+                    j++;
                 }
             }
-            i += 1;
+            i++;
         }
     }
 }
