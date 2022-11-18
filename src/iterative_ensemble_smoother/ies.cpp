@@ -3,6 +3,7 @@
 #include <variant>
 
 #include <Eigen/Dense>
+#include <cppitertools/enumerate.hpp>
 #include <pybind11/pybind11.h>
 
 using Eigen::ComputeFullU;
@@ -43,6 +44,8 @@ public:
     void store_initialE(const MatrixXd &E0);
     void augment_initialE(const MatrixXd &E0);
     void store_initialA(const MatrixXd &A);
+
+    void store_active_W(const MatrixXd &W0);
 
     MatrixXd make_activeE() const;
     MatrixXd make_activeW() const;
@@ -303,7 +306,8 @@ void Data::store_initialE(const MatrixXd &E0) {
  */
 void Data::augment_initialE(const MatrixXd &E0) {
     for (auto [m, iobs] : iter::enumerate(obs_indices)) {
-        if (m_obs_indices0.find(iobs))
+        const auto &idx = m_obs_indices0;
+        if (std::find(idx.begin(), idx.end(), iobs) != idx.end())
             continue;
 
         for (auto [i, iens] : iter::enumerate(ens_indices)) {
@@ -470,7 +474,7 @@ MatrixXd makeX(const MatrixXd &A, const MatrixXd &Y0, const MatrixXd &R,
 * is then used in the algorithm.  (note the definition of the pointer dataW to
 * data->W)
 */
-static void store_active_W(Data &data, const MatrixXd &W0) {
+void Data::store_active_W(const MatrixXd &W0) {
     data.W.setConstant(0.0);
     for (auto [i, iens] : iter::enumerate(ens_indices)) {
         for (auto [j, jens] : iter::enumerate(ens_indices)) {
@@ -523,7 +527,7 @@ void updateA(Data &data,
     X = makeX(A, Yin, Rin, E, D, ies_inversion, truncation, W0, ies_steplength,
               iteration_nr);
 
-    store_active_W(data, W0);
+    data.store_active_W(W0);
 
     /* COMPUTE NEW ENSEMBLE SOLUTION FOR CURRENT ITERATION  Ei=A0*X (Line 11)*/
     MatrixXd A0 = data.make_activeA();
