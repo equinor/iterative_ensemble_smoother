@@ -1,59 +1,382 @@
 #include <algorithm>
+#include <memory>
 #include <variant>
-#include <vector>
 
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include <ies.hpp>
-#include <ies_data.hpp>
-#include <linalg.hpp>
-#include <pybind11/eigen.h>
-#include <pybind11/numpy.h>
+#include <Eigen/Dense>
+#include <cppitertools/enumerate.hpp>
 #include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
 
+using Eigen::ComputeFullU;
+using Eigen::ComputeThinU;
+using Eigen::ComputeThinV;
 using Eigen::MatrixXd;
+using Eigen::VectorXd;
+namespace py = pybind11;
 
-/** Implementation of algorithm as described in
- * "Efficient Implementation of an Iterative Ensemble Smoother for Data Assimilation and Reservoir History Matching"
- * https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full
- */
-namespace ies {
-namespace linalg {
-void compute_AA_projection(const Eigen::MatrixXd &A, Eigen::MatrixXd &Y);
+enum struct Inversion {
+    exact = 0,
+    subspace_exact_r = 1,
+    subspace_ee_r = 2,
+    subspace_re = 3
+};
 
-void subspace_inversion(Eigen::MatrixXd &W0, const int ies_inversion,
-                        const Eigen::MatrixXd &E, const Eigen::MatrixXd &R,
-                        const Eigen::MatrixXd &S, const Eigen::MatrixXd &H,
-                        const std::variant<double, int> &truncation,
-                        double ies_steplength);
+class Data {
+public:
+    const size_t ens_size{};
+    const size_t obs_size{};
+    /** Coefficient matrix used to compute Omega = I + W (I -11'/N)/sqrt(N-1) */
+    MatrixXd W;
 
-void exact_inversion(Eigen::MatrixXd &W0, const Eigen::MatrixXd &S,
-                     const Eigen::MatrixXd &H, double ies_steplength);
-} // namespace linalg
-} // namespace ies
+    std::vector<size_t> ens_indices{};
+    std::vector<size_t> obs_indices{};
 
-void ies::init_update(ies::Data &module_data, const std::vector<bool> &ens_mask,
-                      const std::vector<bool> &obs_mask) {
-    module_data.update_ens_mask(ens_mask);
-    module_data.store_initial_obs_mask(obs_mask);
-    module_data.update_obs_mask(obs_mask);
+    Data(size_t ens_size)
+        : ens_size(ens_size), W(MatrixXd::Zero(ens_size, ens_size)) {}
+
+    void init_update(const std::vector<size_t> &ens_indices,
+                     const std::vector<size_t> &obs_indices) {
+        this->ens_indices = ens_indices;
+        this->obs_indices = obs_indices;
+        if (!this->m_obs_indices0.has_value())
+            this->m_obs_indices0 = this->obs_indices;
+    }
+
+    void store_initialE(const MatrixXd &E0);
+    void augment_initialE(const MatrixXd &E0);
+    void store_initialA(const MatrixXd &A);
+
+    void store_active_W(const MatrixXd &W0);
+
+    MatrixXd make_activeE() const;
+    MatrixXd make_activeW() const;
+    MatrixXd make_activeA() const;
+
+    int iteration_nr = 1;
+
+private:
+    std::optional<std::vector<size_t>> m_obs_indices0{};
+    /** Prior ensemble used in Ei=A0 Omega_i */
+    MatrixXd A0{};
+    /** Prior ensemble of measurement perturations (should be the same for all iterations) */
+    MatrixXd E;
+};
+
+int calc_num_significant(const VectorXd &singular_values, double truncation) {
+    int num_significant = 0;
+    double total_sigma2 = singular_values.squaredNorm();
+
+    /*
+     * Determine the number of singular values by enforcing that
+     * less than a fraction @truncation of the total variance be
+     * accounted for.
+     */
+    double running_sigma2 = 0;
+    for (auto sig : singular_values) {
+        if (running_sigma2 / total_sigma2 <
+            truncation) { /* Include one more singular value ? */
+            num_significant++;
+            running_sigma2 += sig * sig;
+        } else
+            break;
+    }
+
+    return num_significant;
 }
 
-Eigen::MatrixXd
-ies::makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
-           const Eigen::MatrixXd &R, const Eigen::MatrixXd &E,
-           const Eigen::MatrixXd &D, const ies::inversion_type ies_inversion,
-           const std::variant<double, int> &truncation, Eigen::MatrixXd &W0,
-           double ies_steplength, int iteration_nr)
+/**
+ * Implements parts of Eq. 14.31 in the book Data Assimilation,
+ * The Ensemble Kalman Filter, 2nd Edition by Geir Evensen.
+ * Specifically, this implements
+ * X_1 (I + \Lambda_1)^{-1} X_1^T (D - M[A^f])
+*/
+MatrixXd genX3(const MatrixXd &W, const MatrixXd &D, const VectorXd &eig) {
+    const int nrmin = std::min(D.rows(), D.cols());
+    // Corresponds to (I + \Lambda_1)^{-1} since `eig` has already been transformed.
+    MatrixXd Lambda_inv = eig(Eigen::seq(0, nrmin - 1)).asDiagonal();
+    MatrixXd X1 = Lambda_inv * W.transpose();
+
+    MatrixXd X2 = X1 * D;
+    MatrixXd X3 = W * X2;
+
+    return X3;
+}
+
+int svdS(const MatrixXd &S, const std::variant<double, int> &truncation,
+         VectorXd &inv_sig0, MatrixXd &U0) {
+
+    int num_significant = 0;
+
+    auto svd = S.bdcSvd(ComputeThinU);
+    U0 = svd.matrixU();
+    VectorXd singular_values = svd.singularValues();
+
+    if (std::holds_alternative<int>(truncation)) {
+        num_significant = std::get<int>(truncation);
+    } else {
+        num_significant =
+            calc_num_significant(singular_values, std::get<double>(truncation));
+    }
+
+    inv_sig0 = singular_values.cwiseInverse();
+
+    inv_sig0(Eigen::seq(num_significant, Eigen::last)).setZero();
+
+    return num_significant;
+}
+
+/**
+ Routine computes X1 and eig corresponding to Eqs 14.54-14.55
+ Geir Evensen
+*/
+void lowrankE(
+    const MatrixXd &S, /* (nrobs x nrens) */
+    const MatrixXd &E, /* (nrobs x nrens) */
+    MatrixXd &W, /* (nrobs x nrmin) Corresponding to X1 from Eqs. 14.54-14.55 */
+    VectorXd &eig, /* (nrmin) Corresponding to 1 / (1 + Lambda1^2) (14.54) */
+    const std::variant<double, int> &truncation) {
+
+    const int nrobs = S.rows();
+    const int nrens = S.cols();
+    const int nrmin = std::min(nrobs, nrens);
+
+    VectorXd inv_sig0(nrmin);
+    MatrixXd U0(nrobs, nrmin);
+
+    /* Compute SVD of S=HA`  ->  U0, invsig0=sig0^(-1) */
+    svdS(S, truncation, inv_sig0, U0);
+
+    MatrixXd Sigma_inv = inv_sig0.asDiagonal();
+
+    /* X0(nrmin x nrens) =  Sigma0^(+) * U0'* E  (14.51)  */
+    MatrixXd X0 = Sigma_inv * U0.transpose() * E;
+
+    /* Compute SVD of X0->  U1*eig*V1   14.52 */
+    auto svd = X0.bdcSvd(ComputeThinU);
+    const auto &sig1 = svd.singularValues();
+
+    /* Lambda1 = 1/(I + Lambda^2)  in 14.56 */
+    for (int i = 0; i < nrmin; i++)
+        eig[i] = 1.0 / (1.0 + sig1[i] * sig1[i]);
+
+    /* Compute X1 = W = U0 * (U1=sig0^+ U1) = U0 * Sigma0^(+') * U1  (14.55) */
+    W = U0 * Sigma_inv.transpose() * svd.matrixU();
+}
+
+void lowrankCinv(
+    const MatrixXd &S, const MatrixXd &R,
+    MatrixXd &W,   /* Corresponding to X1 from Eq. 14.29 */
+    VectorXd &eig, /* Corresponding to 1 / (1 + Lambda_1) (14.29) */
+    const std::variant<double, int> &truncation) {
+
+    const int nrobs = S.rows();
+    const int nrens = S.cols();
+    const int nrmin = std::min(nrobs, nrens);
+
+    MatrixXd U0(nrobs, nrmin);
+    MatrixXd Z(nrmin, nrmin);
+
+    VectorXd inv_sig0(nrmin);
+    svdS(S, truncation, inv_sig0, U0);
+
+    MatrixXd Sigma_inv = inv_sig0.asDiagonal();
+
+    /* B = Xo = (N-1) * Sigma0^(+) * U0'* Cee * U0 * Sigma0^(+')  (14.26)*/
+    MatrixXd B = (nrens - 1.0) * Sigma_inv * U0.transpose() * R * U0 *
+                 Sigma_inv.transpose();
+
+    auto svd = B.bdcSvd(ComputeThinU);
+    Z = svd.matrixU();
+    eig = svd.singularValues();
+
+    /* Lambda1 = (I + Lambda)^(-1) */
+    for (int i = 0; i < nrmin; i++)
+        eig[i] = 1.0 / (1 + eig[i]);
+
+    Z = Sigma_inv * Z;
+
+    W = U0 * Z; /* X1 = W = U0 * Z2 = U0 * Sigma0^(+') * Z    */
+}
+
+/**
+ * Implementation of algorithm as described in
+ * "Efficient Implementation of an Iterative Ensemble Smoother for Data Assimilation and Reservoir History Matching"
+ * https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full
+ *
+ * Section 2.4.3
+ */
+void compute_AA_projection(const MatrixXd &A, MatrixXd &Y) {
+
+    MatrixXd Ai = A;
+    Ai = Ai.colwise() - Ai.rowwise().mean();
+    auto svd = Ai.bdcSvd(ComputeThinV);
+    MatrixXd VT = svd.matrixV().transpose();
+    MatrixXd AAi = VT.transpose() * VT;
+    Y *= AAi;
+}
+
+/**
+ *  The standard inversion works on the equation
+ *          S'*(S*S'+R)^{-1} H           (a)
+ */
+void subspace_inversion(MatrixXd &W0, const Inversion ies_inversion,
+                        const MatrixXd &E, const MatrixXd &R, const MatrixXd &S,
+                        const MatrixXd &H,
+                        const std::variant<double, int> &truncation,
+                        double ies_steplength) {
+    int ens_size = S.cols();
+    int nrobs = S.rows();
+    double nsc = 1.0 / sqrt(ens_size - 1.0);
+    MatrixXd X1 = MatrixXd::Zero(
+        nrobs, std::min(ens_size, nrobs)); // Used in subspace inversion
+    VectorXd eig(ens_size);
+
+    switch (ies_inversion) {
+    case Inversion::subspace_re:
+        lowrankE(S, E * nsc, X1, eig, truncation);
+        break;
+
+    case Inversion::subspace_ee_r: {
+        MatrixXd Et = E.transpose();
+        MatrixXd Cee = E * Et;
+        Cee *= 1.0 / ((ens_size - 1) * (ens_size - 1));
+
+        lowrankCinv(S, Cee, X1, eig, truncation);
+        break;
+    }
+
+    case Inversion::subspace_exact_r:
+        lowrankCinv(S, R * nsc * nsc, X1, eig, truncation);
+        break;
+
+    default:
+        break;
+    }
+
+    // X3 = X1 * diag(eig) * X1' * H (Similar to Eq. 14.31, Evensen (2007))
+    Eigen::Map<VectorXd> eig_vector(eig.data(), eig.size());
+    MatrixXd X3 = genX3(X1, H, eig_vector);
+
+    // Update data->W = (1-ies_steplength) * data->W +  ies_steplength * S' * X3 (Line 9)
+    W0 = ies_steplength * S.transpose() * X3 + (1.0 - ies_steplength) * W0;
+}
+
+/**
+ * Section 3.2 - Exact inversion
+ * This calculates (S^T*S + I_N)^{-1} by taking the SVD of (S^T*S + I_N),
+ * and since (S^T*S + I_N) is symmetric positive semi-definite we have that U=V and hence
+ * (S^T*S + I_N)^{-1} = U * \Sigma^{-1} * U^T.
+ */
+void exact_inversion(MatrixXd &W0, const MatrixXd &S, const MatrixXd &H,
+                     double ies_steplength) {
+    int ens_size = S.cols();
+
+    MatrixXd StS = S.transpose() * S + MatrixXd::Identity(ens_size, ens_size);
+
+    auto svd = StS.bdcSvd(ComputeFullU);
+    MatrixXd Z = svd.matrixU();
+    VectorXd eig = svd.singularValues();
+
+    MatrixXd ZtStH = Z.transpose() * S.transpose() * H;
+
+    for (int i = 0; i < ens_size; i++)
+        ZtStH.row(i) /= eig[i];
+
+    // Update data->W = (1-ies_steplength) * data->W +  ies_steplength * Z * (Lamda^{-1}) Z' S' H (Line 9)
+    W0 = ies_steplength * Z * ZtStH + (1.0 - ies_steplength) * W0;
+}
+
+/** We store the initial observation perturbations in E, corresponding to
+ * active data->obs_mask0 in data->E. The unused rows in data->E corresponds to
+ * false data->obs_mask0
+ */
+void Data::store_initialE(const MatrixXd &E0) {
+    if (E.rows() != 0 || E.cols() != 0)
+        return;
+    this->E = MatrixXd::Constant(obs_size, ens_size, -999.9);
+
+    for (auto [m, iobs] : iter::enumerate(*m_obs_indices0)) {
+        for (auto [active_idx, iens] : iter::enumerate(ens_indices)) {
+            E(iobs, iens) = E0(m, active_idx);
+        }
+    }
+}
+
+/** We augment the additional observation perturbations arriving in later
+ * iterations, that was not stored before, in data->E.
+ */
+void Data::augment_initialE(const MatrixXd &E0) {
+    for (auto [m, iobs] : iter::enumerate(obs_indices)) {
+        const auto &idx = m_obs_indices0;
+        if (std::find(idx.begin(), idx.end(), iobs) != idx.end())
+            continue;
+
+        for (auto [i, iens] : iter::enumerate(ens_indices)) {
+            E(iobs, iens) = E0(m, i);
+            m_obs_indices0.insert(iobs);
+        }
+    }
+}
+
+void Data::store_initialA(const MatrixXd &A0) {
+    if (this->A0.rows() != 0 || this->A0.cols() != 0)
+        return;
+    this->A0 = MatrixXd::Zero(A0.rows(), ens_size);
+    for (int irow = 0; irow < this->A0.rows(); irow++) {
+        for (auto [active_idx, iens] : iter::enumerate(ens_indices)) {
+            this->A0(irow, iens) = A0(irow, active_idx);
+        }
+    }
+}
+
+MatrixXd make_active(const MatrixXd &full_matrix,
+                     const std::vector<size_t> &row_indices,
+                     const std::vector<size_t> &col_indices) {
+    MatrixXd active = MatrixXd::Zero(row_indices.size(), col_indices.size());
+    for (auto [row, iobs] : iter::enumerate(row_indices)) {
+        for (auto [col, iens] : iter::enumerate(col_indices)) {
+            active(row, col) = full_matrix(iobs, iens);
+        }
+    }
+    return active;
+}
+
+/*
+  During the iteration process both the number of realizations and the number of
+  observations can change, the number of realizations can only be reduced but
+  the number of (active) observations can both be reduced and increased. The
+  iteration algorithm is based maintaining a state for the entire update
+  process, in order to do this correctly we must create matrix representations
+  with the correct active elements both in observation and realisation space.
+*/
+
+MatrixXd Data::make_activeE() const {
+    return make_active(this->E, this->obs_indices, this->ens_indices);
+}
+
+MatrixXd Data::make_activeW() const {
+    return make_active(this->W, this->ens_indices, this->ens_indices);
+}
+
+MatrixXd Data::make_activeA() const {
+    MatrixXd active = MatrixXd::Zero(A0.rows(), col_indices.size());
+    for (size_t row{}; row < this->A0.rows(); ++row) {
+        for (auto [col, iens] : iter::enumerate(ens_indices)) {
+            active(row, col) = full_matrix(row, iens);
+        }
+    }
+    return active;
+}
+
+MatrixXd makeX(const MatrixXd &A, const MatrixXd &Y0, const MatrixXd &R,
+               const MatrixXd &E, const MatrixXd &D,
+               const Inversion ies_inversion,
+               const std::variant<double, int> &truncation, MatrixXd &W0,
+               double ies_steplength, int iteration_nr)
 
 {
     const int ens_size = Y0.cols();
 
-    Eigen::MatrixXd Y = Y0;
+    MatrixXd Y = Y0;
 
     /* Normalized predicted ensemble anomalies.
        Line 4 of Algorithm 1, also (Eq. 30)
@@ -67,12 +390,12 @@ ies::makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
     if (A.rows() > 0 && A.cols() > 0) {
         const int state_size = A.rows();
         if (state_size <= ens_size - 1) {
-            ies::linalg::compute_AA_projection(A, Y);
+            compute_AA_projection(A, Y);
         }
     }
 
     /* Line 5 of Algorithm 1 */
-    Eigen::MatrixXd Omega =
+    MatrixXd Omega =
         (1.0 / sqrt(ens_size - 1.0)) * (W0.colwise() - W0.rowwise().mean());
     Omega.diagonal().array() += 1.0;
 
@@ -80,16 +403,16 @@ ies::makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
        Line 6 of Algorithm 1, also Section 5
     */
     Omega.transposeInPlace();
-    Eigen::MatrixXd S = Omega.fullPivLu().solve(Y.transpose()).transpose();
+    MatrixXd S = Omega.fullPivLu().solve(Y.transpose()).transpose();
 
     /* Similar to the innovation term.
        Differs in that `D` here is defined as dobs + E - Y instead of just dobs + E as in the paper.
        Line 7 of Algorithm 1, also Section 2.6
     */
-    Eigen::MatrixXd H = D + S * W0;
+    MatrixXd H = D + S * W0;
 
     /* Store previous W for convergence test */
-    Eigen::MatrixXd W = W0;
+    MatrixXd W = W0;
 
     /*
      * COMPUTE NEW UPDATED W                                                                        (Line 9)
@@ -122,15 +445,15 @@ ies::makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
      * ies_inversion=IES_INVERSION_SUBSPACE_RE(3)      -> subspace inversion from (a) with R represented by E * E^T
      */
 
-    if (ies_inversion != ies::IES_INVERSION_EXACT) {
-        ies::linalg::subspace_inversion(W0, ies_inversion, E, R, S, H,
-                                        truncation, ies_steplength);
-    } else if (ies_inversion == ies::IES_INVERSION_EXACT) {
-        ies::linalg::exact_inversion(W0, S, H, ies_steplength);
+    if (ies_inversion == Inversion::exact) {
+        exact_inversion(W0, S, H, ies_steplength);
+    } else {
+        subspace_inversion(W0, ies_inversion, E, R, S, H, truncation,
+                           ies_steplength);
     }
 
     /* Line 9 of Algorithm 1 */
-    Eigen::MatrixXd X = W0;
+    MatrixXd X = W0;
     X /= sqrt(ens_size - 1.0);
     X.diagonal().array() += 1;
 
@@ -145,48 +468,34 @@ ies::makeX(const Eigen::MatrixXd &A, const Eigen::MatrixXd &Y0,
     return X;
 }
 
-
 /**
 * the updated W is stored for each iteration in data->W. If we have lost
 * realizations we copy only the active rows and cols from W0 to data->W which
 * is then used in the algorithm.  (note the definition of the pointer dataW to
 * data->W)
 */
-static void store_active_W(ies::Data &data, const Eigen::MatrixXd &W0) {
-    int ens_size_msk = data.ens_mask_size();
-    int i = 0;
-    int j;
-    Eigen::MatrixXd &dataW = data.getW();
-    const std::vector<bool> &ens_mask = data.ens_mask();
-    dataW.setConstant(0.0);
-    for (int iens = 0; iens < ens_size_msk; iens++) {
-        if (ens_mask[iens]) {
-            j = 0;
-            for (int jens = 0; jens < ens_size_msk; jens++) {
-                if (ens_mask[jens]) {
-                    dataW(iens, jens) = W0(i, j);
-                    j += 1;
-                }
-            }
-            i += 1;
+void Data::store_active_W(const MatrixXd &W0) {
+    data.W.setConstant(0.0);
+    for (auto [i, iens] : iter::enumerate(ens_indices)) {
+        for (auto [j, jens] : iter::enumerate(ens_indices)) {
+            data.W(iens, jens) = W0(i, j);
         }
     }
 }
 
-void ies::updateA(Data &data,
-                  // Updated ensemble A retured to ERT.
-                  Eigen::Ref<Eigen::MatrixXd> A,
-                  // Ensemble of predicted measurements
-                  const Eigen::MatrixXd &Yin,
-                  // Measurement error covariance matrix (not used)
-                  const Eigen::MatrixXd &Rin,
-                  // Ensemble of observation perturbations
-                  const Eigen::MatrixXd &Ein,
-                  // (d+E-Y) Ensemble of perturbed observations - Y
-                  const Eigen::MatrixXd &Din,
-                  const ies::inversion_type ies_inversion,
-                  const std::variant<double, int> &truncation,
-                  double ies_steplength) {
+void updateA(Data &data,
+             // Updated ensemble A retured to ERT.
+             Eigen::Ref<MatrixXd> A,
+             // Ensemble of predicted measurements
+             const MatrixXd &Yin,
+             // Measurement error covariance matrix (not used)
+             const MatrixXd &Rin,
+             // Ensemble of observation perturbations
+             const MatrixXd &Ein,
+             // (d+E-Y) Ensemble of perturbed observations - Y
+             const MatrixXd &Din, const Inversion ies_inversion,
+             const std::variant<double, int> &truncation,
+             double ies_steplength) {
 
     int iteration_nr = data.iteration_nr;
     /*
@@ -204,8 +513,8 @@ void ies::updateA(Data &data,
      * Copies the initial measurement perturbations for the active observations into the current E matrix.
      * Copies the inputs in D, Y and R into their local representations
      */
-    Eigen::MatrixXd E = data.make_activeE();
-    Eigen::MatrixXd D = Din;
+    MatrixXd E = data.make_activeE();
+    MatrixXd D = Din;
 
     /* Subtract new measurement perturbations              D=D-E    */
     D -= Ein;
@@ -213,107 +522,26 @@ void ies::updateA(Data &data,
     D += E;
 
     auto W0 = data.make_activeW();
-    Eigen::MatrixXd X;
+    MatrixXd X;
 
     X = makeX(A, Yin, Rin, E, D, ies_inversion, truncation, W0, ies_steplength,
               iteration_nr);
 
-    store_active_W(data, W0);
+    data.store_active_W(W0);
 
     /* COMPUTE NEW ENSEMBLE SOLUTION FOR CURRENT ITERATION  Ei=A0*X (Line 11)*/
-    Eigen::MatrixXd A0 = data.make_activeA();
+    MatrixXd A0 = data.make_activeA();
     A = A0 * X;
 }
 
-/* Section 2.4.3 */
-void ies::linalg::compute_AA_projection(const Eigen::MatrixXd &A,
-                                        Eigen::MatrixXd &Y) {
-
-    Eigen::MatrixXd Ai = A;
-    Ai = Ai.colwise() - Ai.rowwise().mean();
-    auto svd = Ai.bdcSvd(Eigen::ComputeThinV);
-    Eigen::MatrixXd VT = svd.matrixV().transpose();
-    Eigen::MatrixXd AAi = VT.transpose() * VT;
-    Y *= AAi;
-}
-
-/*
-*  The standard inversion works on the equation
-*          S'*(S*S'+R)^{-1} H           (a)
-*/
-void ies::linalg::subspace_inversion(
-    Eigen::MatrixXd &W0, const int ies_inversion, const Eigen::MatrixXd &E,
-    const Eigen::MatrixXd &R, const Eigen::MatrixXd &S,
-    const Eigen::MatrixXd &H, const std::variant<double, int> &truncation,
-    double ies_steplength) {
-
-    int ens_size = S.cols();
-    int nrobs = S.rows();
-    double nsc = 1.0 / sqrt(ens_size - 1.0);
-    Eigen::MatrixXd X1 = Eigen::MatrixXd::Zero(
-        nrobs, std::min(ens_size, nrobs)); // Used in subspace inversion
-    Eigen::VectorXd eig(ens_size);
-
-    if (ies_inversion == IES_INVERSION_SUBSPACE_RE) {
-        Eigen::MatrixXd scaledE = E;
-        scaledE *= nsc;
-        ies::linalg::lowrankE(S, scaledE, X1, eig, truncation);
-
-    } else if (ies_inversion == IES_INVERSION_SUBSPACE_EE_R) {
-        Eigen::MatrixXd Et = E.transpose();
-        MatrixXd Cee = E * Et;
-        Cee *= 1.0 / ((ens_size - 1) * (ens_size - 1));
-
-        ies::linalg::lowrankCinv(S, Cee, X1, eig, truncation);
-
-    } else if (ies_inversion == IES_INVERSION_SUBSPACE_EXACT_R) {
-        Eigen::MatrixXd scaledR = R;
-        scaledR *= nsc * nsc;
-        ies::linalg::lowrankCinv(S, scaledR, X1, eig, truncation);
-    }
-
-    // X3 = X1 * diag(eig) * X1' * H (Similar to Eq. 14.31, Evensen (2007))
-    Eigen::Map<Eigen::VectorXd> eig_vector(eig.data(), eig.size());
-    Eigen::MatrixXd X3 = ies::linalg::genX3(X1, H, eig_vector);
-
-    // Update data->W = (1-ies_steplength) * data->W +  ies_steplength * S' * X3 (Line 9)
-    W0 = ies_steplength * S.transpose() * X3 + (1.0 - ies_steplength) * W0;
-}
-
-/** Section 3.2 - Exact inversion
-* This calculates (S^T*S + I_N)^{-1} by taking the SVD of (S^T*S + I_N),
-* and since (S^T*S + I_N) is symmetric positive semi-definite we have that U=V and hence
-* (S^T*S + I_N)^{-1} = U * \Sigma^{-1} * U^T.
-*/
-void ies::linalg::exact_inversion(Eigen::MatrixXd &W0, const Eigen::MatrixXd &S,
-                                  const Eigen::MatrixXd &H,
-                                  double ies_steplength) {
-    int ens_size = S.cols();
-
-    MatrixXd StS = S.transpose() * S + MatrixXd::Identity(ens_size, ens_size);
-
-    auto svd = StS.bdcSvd(Eigen::ComputeFullU);
-    MatrixXd Z = svd.matrixU();
-    Eigen::VectorXd eig = svd.singularValues();
-
-    MatrixXd ZtStH = Z.transpose() * S.transpose() * H;
-
-    for (int i = 0; i < ens_size; i++)
-        ZtStH.row(i) /= eig[i];
-
-    // Update data->W = (1-ies_steplength) * data->W +  ies_steplength * Z * (Lamda^{-1}) Z' S' H (Line 9)
-    W0 = ies_steplength * Z * ZtStH + (1.0 - ies_steplength) * W0;
-}
-
-Eigen::MatrixXd ies::makeE(const Eigen::VectorXd &obs_errors,
-                           const Eigen::MatrixXd &noise) {
+MatrixXd makeE(const VectorXd &obs_errors, const MatrixXd &noise) {
     int active_obs_size = obs_errors.rows();
     int active_ens_size = noise.cols();
 
-    Eigen::MatrixXd E = noise;
-    Eigen::VectorXd pert_mean = E.rowwise().mean();
+    MatrixXd E = noise;
+    VectorXd pert_mean = E.rowwise().mean();
     E = E.colwise() - pert_mean;
-    Eigen::VectorXd pert_var = E.cwiseProduct(E).rowwise().sum();
+    VectorXd pert_var = E.cwiseProduct(E).rowwise().sum();
 
     for (int i = 0; i < active_obs_size; i++) {
         double factor = obs_errors(i) * sqrt(active_ens_size / pert_var(i));
@@ -323,38 +551,35 @@ Eigen::MatrixXd ies::makeE(const Eigen::VectorXd &obs_errors,
     return E;
 }
 
-Eigen::MatrixXd ies::makeD(const Eigen::VectorXd &obs_values,
-                           const Eigen::MatrixXd &E, const Eigen::MatrixXd &S) {
-
-    Eigen::MatrixXd D = E - S;
+MatrixXd makeD(const VectorXd &obs_values, const MatrixXd &E,
+               const MatrixXd &S) {
+    MatrixXd D = E - S;
 
     D.colwise() += obs_values;
 
     return D;
 }
 
-namespace py = pybind11;
 PYBIND11_MODULE(_ies, m) {
     using namespace py::literals;
-    py::class_<ies::Data, std::shared_ptr<ies::Data>>(m, "ModuleData")
+
+    py::class_<Data, std::shared_ptr<Data>>(m, "ModuleData")
         .def(py::init<int>())
-        .def_readwrite("iteration_nr", &ies::Data::iteration_nr);
-    m.def("make_X", ies::makeX, py::arg("A"), py::arg("Y0"), py::arg("R"),
-          py::arg("E"), py::arg("D"), py::arg("ies_inversion"),
-          py::arg("truncation"), py::arg("W0"), py::arg("ies_steplength"),
-          py::arg("iteration_nr"));
-    m.def("make_E", ies::makeE, py::arg("obs_errors"), py::arg("noise"));
-    m.def("make_D", ies::makeD, py::arg("obs_values"), py::arg("E"),
-          py::arg("S"));
-    m.def("update_A", ies::updateA, py::arg("data"), py::arg("A"),
-          py::arg("Yin"), py::arg("R"), py::arg("E"), py::arg("D"),
-          py::arg("inversion"), py::arg("truncation"), py::arg("step_length"));
-    m.def("init_update", ies::init_update, py::arg("module_data"),
-          py::arg("ens_mask"), py::arg("obs_mask"));
-    py::enum_<ies::inversion_type>(m, "InversionType")
-        .value("EXACT", ies::inversion_type::IES_INVERSION_EXACT)
-        .value("EE_R", ies::inversion_type::IES_INVERSION_SUBSPACE_EE_R)
-        .value("EXACT_R", ies::inversion_type::IES_INVERSION_SUBSPACE_EXACT_R)
-        .value("SUBSPACE_RE", ies::inversion_type::IES_INVERSION_SUBSPACE_RE)
+        .def_readwrite("iteration_nr", &Data::iteration_nr);
+    m.def("make_X", &makeX, "A"_a, "Y0"_a, "R"_a, "E"_a, "D"_a,
+          "ies_inversion"_a, "truncation"_a, "W0"_a, "ies_steplength"_a,
+          "iteration_nr"_a);
+    m.def("make_E", &makeE, "obs_errors"_a, "noise"_a);
+    m.def("make_D", &makeD, "obs_values"_a, "E"_a, "S"_a);
+    m.def("update_A", &updateA, "data"_a, "A"_a, "Yin"_a, "R"_a, "E"_a, "D"_a,
+          "inversion"_a, "truncation"_a, "step_length"_a);
+    m.def("init_update", init_update, "module_data"_a, "ens_indices"_a,
+          "obs_indices"_a);
+
+    py::enum_<Inversion>(m, "InversionType")
+        .value("EXACT", Inversion::exact)
+        .value("EE_R", Inversion::subspace_ee_r)
+        .value("EXACT_R", Inversion::subspace_exact_r)
+        .value("SUBSPACE_RE", Inversion::subspace_re)
         .export_values();
 }
