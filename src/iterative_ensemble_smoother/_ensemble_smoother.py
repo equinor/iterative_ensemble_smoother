@@ -16,6 +16,7 @@ def ensemble_smoother_update_step(
     noise: Optional["npt.NDArray[np.double]"] = None,
     truncation: float = 0.98,
     inversion: InversionType = InversionType.EXACT,
+    projection: bool = True,
 ):
     """Perform one step of the ensemble smoother algorithm
 
@@ -31,6 +32,7 @@ def ensemble_smoother_update_step(
         values. Defaults to 0.98 (ie. 98% significant values).
     :param inversion: The type of subspace inversion used in the algorithm, defaults
         to exact.
+    :param projection: Whether to project response matrix.
     """
     S = sensitivity_matrix
     A = centered_anomaly_matrix
@@ -44,6 +46,16 @@ def ensemble_smoother_update_step(
     S = (S.T / observation_errors).T
 
     X = make_X(
-        A, S, R, E, D, inversion, truncation, np.zeros((S.shape[1], S.shape[1])), 1.0, 1
+        A,
+        S,
+        R,
+        E,
+        D,
+        inversion,
+        truncation,
+        projection,
+        np.zeros((S.shape[1], S.shape[1])),
+        1.0,
+        1,
     )
     return A @ X

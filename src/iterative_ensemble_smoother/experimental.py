@@ -36,6 +36,7 @@ def ensemble_smoother_update_step_row_scaling(
             D,
             inversion,
             truncation,
+            True,
             np.zeros((S.shape[1], S.shape[1])),
             1.0,
             1,
