@@ -57,6 +57,7 @@ class IterativeEnsembleSmoother:
         observation_values: "npt.NDArray[np.double]",
         noise: Optional["npt.NDArray[np.double]"] = None,
         truncation: float = 0.98,
+        projection: bool = True,
         step_length: Optional[float] = None,
         ensemble_mask: Optional["npt.ArrayLike"] = None,
         observation_mask: Optional["npt.ArrayLike"] = None,
@@ -74,6 +75,7 @@ class IterativeEnsembleSmoother:
             response matrix.
         :param truncation: float used to determine the number of significant singular
             values. Defaults to 0.98 (ie. 98% significant values).
+        :param projection: Whether to project response matrix.
         :param step_length: The step length to be used in the algorithm,
             defaults to using the method described in Eq. 49 Geir Evensen,
             Formulating the history matching problem with consistent error
@@ -116,6 +118,7 @@ class IterativeEnsembleSmoother:
             D,
             inversion,
             truncation,
+            projection,
             step_length,
         )
         self._module_data.iteration_nr += 1
