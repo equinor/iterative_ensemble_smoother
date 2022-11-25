@@ -200,16 +200,6 @@ void lowrankCinv(
  *
  * Section 2.4.3
  */
-void compute_AA_projection(const MatrixXd &A, MatrixXd &Y) {
-
-  MatrixXd Ai = A;
-  Ai = Ai.colwise() - Ai.rowwise().mean();
-  auto svd = Ai.bdcSvd(ComputeThinV);
-  MatrixXd VT = svd.matrixV().transpose();
-  MatrixXd AAi = VT.transpose() * VT;
-  Y *= AAi;
-}
-
 /**
  *  The standard inversion works on the equation
  *          S'*(S*S'+R)^{-1} H           (a)
@@ -410,11 +400,10 @@ void init_update(Data &module_data, const std::vector<bool> &ens_mask,
   module_data.obs_mask = obs_mask;
 }
 
-MatrixXd makeX(const MatrixXd &A, const MatrixXd &Y0, const MatrixXd &R,
-               const MatrixXd &E, const MatrixXd &D,
-               const Inversion ies_inversion,
-               const std::variant<double, int> &truncation, bool projection,
-               MatrixXd &W0, double ies_steplength, int iteration_nr)
+MatrixXd makeX(const MatrixXd &Y0, const MatrixXd &R, const MatrixXd &E,
+               const MatrixXd &D, const Inversion ies_inversion,
+               const std::variant<double, int> &truncation, MatrixXd &W0,
+               double ies_steplength, int iteration_nr)
 
 {
   const int ens_size = Y0.cols();
@@ -425,16 +414,6 @@ MatrixXd makeX(const MatrixXd &A, const MatrixXd &Y0, const MatrixXd &R,
      Line 4 of Algorithm 1, also (Eq. 30)
   */
   Y = (1.0 / sqrt(ens_size - 1.0)) * (Y.colwise() - Y.rowwise().mean());
-
-  /* A^+A projection is necessary when the parameter matrix has less rows than
-     columns, and when the forward model is non-linear. Section 2.4.3
-  */
-  if (projection && (A.rows() > 0 && A.cols() > 0)) {
-    const int state_size = A.rows();
-    if (state_size <= ens_size - 1) {
-      compute_AA_projection(A, Y);
-    }
-  }
 
   /* Line 5 of Algorithm 1 */
   MatrixXd Omega =
@@ -548,7 +527,7 @@ void updateA(Data &data,
              const Eigen::MatrixXd &Ein,
              // (d+E-Y) Ensemble of perturbed observations - Y
              const Eigen::MatrixXd &Din, const Inversion ies_inversion,
-             const std::variant<double, int> &truncation, bool projection,
+             const std::variant<double, int> &truncation,
              double ies_steplength) {
 
   int iteration_nr = data.iteration_nr;
@@ -579,8 +558,8 @@ void updateA(Data &data,
   auto W0 = data.make_activeW();
   MatrixXd X;
 
-  X = makeX(A, Yin, Rin, E, D, ies_inversion, truncation, projection, W0,
-            ies_steplength, iteration_nr);
+  X = makeX(Yin, Rin, E, D, ies_inversion, truncation, W0, ies_steplength,
+            iteration_nr);
 
   store_active_W(data, W0);
 
@@ -622,13 +601,12 @@ PYBIND11_MODULE(_ies, m) {
   py::class_<Data, std::shared_ptr<Data>>(m, "ModuleData")
       .def(py::init<int>())
       .def_readwrite("iteration_nr", &Data::iteration_nr);
-  m.def("make_X", &makeX, "A"_a, "Y0"_a, "R"_a, "E"_a, "D"_a, "ies_inversion"_a,
-        "truncation"_a, "projection"_a, "W0"_a, "ies_steplength"_a,
-        "iteration_nr"_a);
+  m.def("make_X", &makeX, "Y0"_a, "R"_a, "E"_a, "D"_a, "ies_inversion"_a,
+        "truncation"_a, "W0"_a, "ies_steplength"_a, "iteration_nr"_a);
   m.def("make_E", &makeE, "obs_errors"_a, "noise"_a);
   m.def("make_D", &makeD, "obs_values"_a, "E"_a, "S"_a);
   m.def("update_A", &updateA, "data"_a, "A"_a, "Yin"_a, "R"_a, "E"_a, "D"_a,
-        "inversion"_a, "truncation"_a, "projection"_a, "step_length"_a);
+        "inversion"_a, "truncation"_a, "step_length"_a);
   m.def("init_update", init_update, "module_data"_a, "ens_mask"_a,
         "obs_mask"_a);
 

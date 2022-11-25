@@ -1,8 +1,10 @@
 from typing import TYPE_CHECKING, Optional
 
 import numpy as np
+import numpy.typing as npt
 
 from ._ies import InversionType, make_D, make_E, make_X
+from iterative_ensemble_smoother.utils import _compute_AA_projection
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -45,15 +47,17 @@ def ensemble_smoother_update_step(
     E = (E.T / observation_errors).T
     S = (S.T / observation_errors).T
 
+    if projection and (A.shape[0] < A.shape[1] - 1):
+        AA_projection = _compute_AA_projection(A)
+        S = S @ AA_projection
+
     X = make_X(
-        A,
         S,
         R,
         E,
         D,
         inversion,
         truncation,
-        projection,
         np.zeros((S.shape[1], S.shape[1])),
         1.0,
         1,
