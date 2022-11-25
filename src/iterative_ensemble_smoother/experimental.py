@@ -5,6 +5,7 @@ features of iterative_ensemble_smoother
 import numpy as np
 
 from ._ies import InversionType, make_D, make_E, make_X
+from iterative_ensemble_smoother.utils import _compute_AA_projection
 
 
 def ensemble_smoother_update_step_row_scaling(
@@ -29,14 +30,12 @@ def ensemble_smoother_update_step_row_scaling(
     S = (S.T / observation_errors).T
     for (A, row_scale) in A_with_row_scaling:
         X = make_X(
-            A,
             S,
             R,
             E,
             D,
             inversion,
             truncation,
-            False,
             np.zeros((S.shape[1], S.shape[1])),
             1.0,
             1,
