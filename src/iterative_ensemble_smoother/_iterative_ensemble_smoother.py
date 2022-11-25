@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Optional
 import numpy as np
 
 from ._ies import InversionType, ModuleData, init_update, make_D, make_E, update_A
+from iterative_ensemble_smoother.utils import _compute_AA_projection
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -109,6 +110,10 @@ class IterativeEnsembleSmoother:
 
         init_update(self._module_data, ensemble_mask, observation_mask)
 
+        if projection and (A.shape[0] <= A.shape[1] - 1):
+            AA_projection = _compute_AA_projection(A)
+            S = S @ AA_projection
+
         update_A(
             self._module_data,
             A,
@@ -118,7 +123,6 @@ class IterativeEnsembleSmoother:
             D,
             inversion,
             truncation,
-            projection,
             step_length,
         )
         self._module_data.iteration_nr += 1
