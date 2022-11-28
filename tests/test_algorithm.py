@@ -1,8 +1,10 @@
 """ Tests for the underlying algorithm internals."""
+import tracemalloc
 
 import numpy as np
 
 rng = np.random.default_rng()
+import pytest
 
 from iterative_ensemble_smoother._ies import make_D
 import iterative_ensemble_smoother as ies
@@ -16,6 +18,32 @@ def test_make_D():
         [1.0 - 2 + 1.0, 2.0 - 4.0 + 1.0],
         [3.0 - 6.0 + 1.0, 4.0 - 8 + 1.0],
     ]
+
+
+def test_that_es_does_not_pass_by_value():
+    tracemalloc.start()
+    N = 100
+    p = 1000
+    m = 100
+    A = np.asfortranarray(rng.normal(size=(p, N)))
+    Y = rng.normal(size=(m, N))
+    observation_errors = rng.uniform(size=m)
+    observation_values = rng.normal(size=m)
+    noise = rng.normal(size=(m, N))
+
+    current_before, peak_before = tracemalloc.get_traced_memory()
+
+    A = ies.ensemble_smoother_update_step(
+        Y, A, observation_errors, observation_values, noise=noise
+    )
+    current_after, peak_after = tracemalloc.get_traced_memory()
+    print(f"Memory usage before update = {peak_before / 10**6} Mb")
+    print(f"Memory usage after update = {peak_after / 10**6} Mb")
+    print(f"Ratio peak_after / peak_before = {peak_after / peak_before}")
+    print(f"Ratio current_after / current_before = {current_after / current_before}")
+
+    tracemalloc.stop()
+    assert peak_after / peak_before < 2
 
 
 def test_that_global_es_update_is_identical_to_local():
