@@ -88,12 +88,14 @@ class IterativeEnsembleSmoother:
         :param inversion: The type of subspace inversion used in the algorithm, defaults
             to exact.
         """
-        Y = response_ensemble
-        A = parameter_ensemble
+        parameters = parameter_ensemble.shape[0]
+        realizations = parameter_ensemble.shape[1]
+        responses = response_ensemble.shape[0]
+        parameter_ensemble = parameter_ensemble
         if step_length is None:
             step_length = self._get_steplength(self._module_data.iteration_nr)
         if noise is None:
-            noise = np.random.rand(*Y.shape)
+            noise = np.random.rand(responses, realizations)
         if ensemble_mask is None:
             ensemble_mask = np.array([True] * self._ensemble_size)
         if observation_mask is None:
@@ -101,21 +103,21 @@ class IterativeEnsembleSmoother:
 
         E = make_E(observation_errors, noise)
         R = np.identity(len(observation_errors), dtype=np.double)
-        D = make_D(observation_values, E, Y)
+        D = make_D(observation_values, E, response_ensemble)
         D = (D.T / observation_errors).T
         E = (E.T / observation_errors).T
-        Y = (Y.T / observation_errors).T
+        response_ensemble = (response_ensemble.T / observation_errors).T
 
         init_update(self._module_data, ensemble_mask, observation_mask)
 
-        if projection and (A.shape[0] < A.shape[1] - 1):
-            AA_projection = _compute_AA_projection(A)
-            Y = Y @ AA_projection
+        if projection and (parameters < realizations - 1):
+            AA_projection = _compute_AA_projection(parameter_ensemble)
+            response_ensemble = response_ensemble @ AA_projection
 
         update_A(
             self._module_data,
-            A,
-            Y,
+            parameter_ensemble,
+            response_ensemble,
             R,
             E,
             D,
@@ -124,4 +126,4 @@ class IterativeEnsembleSmoother:
             step_length,
         )
         self._module_data.iteration_nr += 1
-        return A
+        return parameter_ensemble

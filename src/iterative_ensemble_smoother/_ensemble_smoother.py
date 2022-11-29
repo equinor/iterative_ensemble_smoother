@@ -36,30 +36,31 @@ def ensemble_smoother_update_step(
         to exact.
     :param projection: Whether to project response matrix.
     """
-    Y = response_ensemble
-    A = parameter_ensemble
+    parameters = parameter_ensemble.shape[0]
+    realizations = parameter_ensemble.shape[1]
+    responses = response_ensemble.shape[0]
     if noise is None:
-        noise = np.random.rand(*Y.shape)
+        noise = np.random.rand(responses, realizations)
     E = make_E(observation_errors, noise)
     R = np.identity(len(observation_errors), dtype=np.double)
-    D = make_D(observation_values, E, Y)
+    D = make_D(observation_values, E, response_ensemble)
     D = (D.T / observation_errors).T
     E = (E.T / observation_errors).T
-    Y = (Y.T / observation_errors).T
+    response_ensemble = (response_ensemble.T / observation_errors).T
 
-    if projection and (A.shape[0] < A.shape[1] - 1):
-        AA_projection = _compute_AA_projection(A)
-        Y = Y @ AA_projection
+    if projection and (parameters < realizations - 1):
+        AA_projection = _compute_AA_projection(parameter_ensemble)
+        response_ensemble = response_ensemble @ AA_projection
 
     X = make_X(
-        Y,
+        response_ensemble,
         R,
         E,
         D,
         inversion,
         truncation,
-        np.zeros((Y.shape[1], Y.shape[1])),
+        np.zeros((realizations, realizations)),
         1.0,
         1,
     )
-    return A @ X
+    return parameter_ensemble @ X
