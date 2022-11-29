@@ -400,21 +400,19 @@ void init_update(Data &module_data, const std::vector<bool> &ens_mask,
   module_data.obs_mask = obs_mask;
 }
 
-MatrixXd makeX(py::EigenDRef<MatrixXd> Y0, py::EigenDRef<MatrixXd> R,
+/**
+ * @param Y Predicted ensemble anomalies normalized by sqrt(N-1),
+ *          where N is the number of realizations.
+ *          See line 4 of Algorithm 1 and Eq. 30.
+ */
+MatrixXd makeX(py::EigenDRef<MatrixXd> Y, py::EigenDRef<MatrixXd> R,
                py::EigenDRef<MatrixXd> E, py::EigenDRef<MatrixXd> D,
                const Inversion ies_inversion,
                const std::variant<double, int> &truncation, MatrixXd &W0,
                double ies_steplength, int iteration_nr)
 
 {
-  const int ens_size = Y0.cols();
-
-  MatrixXd Y = Y0;
-
-  /* Normalized predicted ensemble anomalies.
-     Line 4 of Algorithm 1, also (Eq. 30)
-  */
-  Y = (1.0 / sqrt(ens_size - 1.0)) * (Y.colwise() - Y.rowwise().mean());
+  const int ens_size = Y.cols();
 
   /* Line 5 of Algorithm 1 */
   MatrixXd Omega =
@@ -517,11 +515,14 @@ static void store_active_W(Data &data, const MatrixXd &W0) {
   }
 }
 
+/**
+ * @param Y Predicted ensemble anomalies normalized by sqrt(N-1),
+ *          where N is the number of realizations.
+ *          See line 4 of Algorithm 1 and Eq. 30.
+ */
 void updateA(Data &data,
              // Updated ensemble A retured to ERT.
-             py::EigenDRef<MatrixXd> A,
-             // Ensemble of predicted measurements
-             py::EigenDRef<MatrixXd> Yin,
+             py::EigenDRef<MatrixXd> A, py::EigenDRef<MatrixXd> Y,
              // Measurement error covariance matrix (not used)
              py::EigenDRef<MatrixXd> Rin,
              // Ensemble of observation perturbations
@@ -559,7 +560,7 @@ void updateA(Data &data,
   auto W0 = data.make_activeW();
   MatrixXd X;
 
-  X = makeX(Yin, Rin, E, D, ies_inversion, truncation, W0, ies_steplength,
+  X = makeX(Y, Rin, E, D, ies_inversion, truncation, W0, ies_steplength,
             iteration_nr);
 
   store_active_W(data, W0);
@@ -606,7 +607,7 @@ PYBIND11_MODULE(_ies, m) {
         "truncation"_a, "W0"_a, "ies_steplength"_a, "iteration_nr"_a);
   m.def("make_E", &makeE, "obs_errors"_a, "noise"_a);
   m.def("make_D", &makeD, "obs_values"_a, "E"_a, "S"_a);
-  m.def("update_A", &updateA, "data"_a, "A"_a, "Yin"_a, "R"_a, "E"_a, "D"_a,
+  m.def("update_A", &updateA, "data"_a, "A"_a, "Y"_a, "R"_a, "E"_a, "D"_a,
         "inversion"_a, "truncation"_a, "step_length"_a);
   m.def("init_update", init_update, "module_data"_a, "ens_mask"_a,
         "obs_mask"_a);

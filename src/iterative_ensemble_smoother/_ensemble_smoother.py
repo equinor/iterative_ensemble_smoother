@@ -53,7 +53,8 @@ def ensemble_smoother_update_step(
         response_ensemble = response_ensemble @ AA_projection
 
     X = make_X(
-        response_ensemble,
+        (response_ensemble - response_ensemble.mean(axis=1, keepdims=True))
+        / np.sqrt(realizations - 1),
         R,
         E,
         D,
