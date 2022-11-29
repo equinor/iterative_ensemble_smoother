@@ -11,8 +11,8 @@ if TYPE_CHECKING:
 
 
 def ensemble_smoother_update_step(
-    sensitivity_matrix: "npt.NDArray[np.double]",
-    centered_anomaly_matrix: "npt.NDArray[np.double]",
+    response_ensemble: "npt.NDArray[np.double]",
+    parameter_ensemble: "npt.NDArray[np.double]",
     observation_errors: "npt.NDArray[np.double]",
     observation_values: "npt.NDArray[np.double]",
     noise: Optional["npt.NDArray[np.double]"] = None,
@@ -22,9 +22,9 @@ def ensemble_smoother_update_step(
 ):
     """Perform one step of the ensemble smoother algorithm
 
-    :param sensitivity_matrix: Matrix of responses from the :term:`forward model`.
-        Has shape (number of observations, number of realizations). (S in Evensen et. al)
-    :param centered_anomaly_matrix: Matrix of sampled model parameters. Has shape
+    :param response_ensemble: Matrix of responses from the :term:`forward model`.
+        Has shape (number of observations, number of realizations). (Y in Evensen et. al)
+    :param parameter_ensemble: Matrix of sampled model parameters. Has shape
         (number of parameters, number of realizations) (A in Evensen et. al).
     :param observation_errors: List of measurement of errors for each observation.
     :param observation_values: List of observations.
@@ -36,29 +36,29 @@ def ensemble_smoother_update_step(
         to exact.
     :param projection: Whether to project response matrix.
     """
-    S = sensitivity_matrix
-    A = centered_anomaly_matrix
+    Y = response_ensemble
+    A = parameter_ensemble
     if noise is None:
-        noise = np.random.rand(*S.shape)
+        noise = np.random.rand(*Y.shape)
     E = make_E(observation_errors, noise)
     R = np.identity(len(observation_errors), dtype=np.double)
-    D = make_D(observation_values, E, S)
+    D = make_D(observation_values, E, Y)
     D = (D.T / observation_errors).T
     E = (E.T / observation_errors).T
-    S = (S.T / observation_errors).T
+    Y = (Y.T / observation_errors).T
 
     if projection and (A.shape[0] < A.shape[1] - 1):
         AA_projection = _compute_AA_projection(A)
-        S = S @ AA_projection
+        Y = Y @ AA_projection
 
     X = make_X(
-        S,
+        Y,
         R,
         E,
         D,
         inversion,
         truncation,
-        np.zeros((S.shape[1], S.shape[1])),
+        np.zeros((Y.shape[1], Y.shape[1])),
         1.0,
         1,
     )

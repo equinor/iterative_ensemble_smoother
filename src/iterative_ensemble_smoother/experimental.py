@@ -5,11 +5,10 @@ features of iterative_ensemble_smoother
 import numpy as np
 
 from ._ies import InversionType, make_D, make_E, make_X
-from iterative_ensemble_smoother.utils import _compute_AA_projection
 
 
 def ensemble_smoother_update_step_row_scaling(
-    sensitivity_matrix,
+    response_ensemble,
     A_with_row_scaling,
     observation_errors,
     observation_values,
@@ -18,25 +17,25 @@ def ensemble_smoother_update_step_row_scaling(
     inversion=InversionType.EXACT,
 ):
     """This is an experimental feature."""
-    S = sensitivity_matrix
+    Y = response_ensemble
     if noise is None:
-        noise = np.random.rand(*S.shape)
+        noise = np.random.rand(*Y.shape)
 
     E = make_E(observation_errors, noise)
     R = np.identity(len(observation_errors), dtype=np.double)
-    D = make_D(observation_values, E, S)
+    D = make_D(observation_values, E, Y)
     D = (D.T / observation_errors).T
     E = (E.T / observation_errors).T
-    S = (S.T / observation_errors).T
+    Y = (Y.T / observation_errors).T
     for (A, row_scale) in A_with_row_scaling:
         X = make_X(
-            S,
+            Y,
             R,
             E,
             D,
             inversion,
             truncation,
-            np.zeros((S.shape[1], S.shape[1])),
+            np.zeros((Y.shape[1], Y.shape[1])),
             1.0,
             1,
         )
