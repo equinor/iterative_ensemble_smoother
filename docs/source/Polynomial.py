@@ -165,7 +165,6 @@ plot_result(new_A, responses, priors)
 smoother = ies.IterativeEnsembleSmoother(number_of_realizations)
 A_current = np.copy(A)
 
-# The iterative smoother requires that A is in fortran order.
 for _ in range(4):
     responses = forward_model([prior(x) for prior, x in zip(priors, A_current)])
     A_current = smoother.update_step(

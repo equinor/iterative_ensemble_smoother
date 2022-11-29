@@ -52,8 +52,7 @@ def test_that_global_ies_update_is_identical_to_local():
     N = 10
     p = 50
     m = p
-    # Must be an array in Fortran order in order for pass-by-reference to work.
-    A = np.asfortranarray(rng.normal(size=(p, N)))
+    A = rng.normal(size=(p, N))
     # Assume identity operator as forward model, i.e., Y = g(A) = A
     Y = A
     observation_errors = np.diag(rng.uniform(size=m))

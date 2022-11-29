@@ -400,8 +400,9 @@ void init_update(Data &module_data, const std::vector<bool> &ens_mask,
   module_data.obs_mask = obs_mask;
 }
 
-MatrixXd makeX(const MatrixXd &Y0, const MatrixXd &R, const MatrixXd &E,
-               const MatrixXd &D, const Inversion ies_inversion,
+MatrixXd makeX(py::EigenDRef<MatrixXd> Y0, py::EigenDRef<MatrixXd> R,
+               py::EigenDRef<MatrixXd> E, py::EigenDRef<MatrixXd> D,
+               const Inversion ies_inversion,
                const std::variant<double, int> &truncation, MatrixXd &W0,
                double ies_steplength, int iteration_nr)
 
@@ -518,15 +519,15 @@ static void store_active_W(Data &data, const MatrixXd &W0) {
 
 void updateA(Data &data,
              // Updated ensemble A retured to ERT.
-             Eigen::Ref<Eigen::MatrixXd> A,
+             py::EigenDRef<MatrixXd> A,
              // Ensemble of predicted measurements
-             const Eigen::MatrixXd &Yin,
+             py::EigenDRef<MatrixXd> Yin,
              // Measurement error covariance matrix (not used)
-             const Eigen::MatrixXd &Rin,
+             py::EigenDRef<MatrixXd> Rin,
              // Ensemble of observation perturbations
-             const Eigen::MatrixXd &Ein,
+             py::EigenDRef<MatrixXd> Ein,
              // (d+E-Y) Ensemble of perturbed observations - Y
-             const Eigen::MatrixXd &Din, const Inversion ies_inversion,
+             py::EigenDRef<MatrixXd> Din, const Inversion ies_inversion,
              const std::variant<double, int> &truncation,
              double ies_steplength) {
 
