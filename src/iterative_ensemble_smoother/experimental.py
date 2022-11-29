@@ -30,7 +30,8 @@ def ensemble_smoother_update_step_row_scaling(
     response_ensemble = (response_ensemble.T / observation_errors).T
     for (A, row_scale) in A_with_row_scaling:
         X = make_X(
-            response_ensemble,
+            (response_ensemble - response_ensemble.mean(axis=1, keepdims=True))
+            / np.sqrt(realizations - 1),
             R,
             E,
             D,
