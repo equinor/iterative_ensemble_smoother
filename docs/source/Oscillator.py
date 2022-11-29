@@ -138,9 +138,9 @@ import iterative_ensemble_smoother as ies
 plot_result(A, response_x_axis, uniform, priors)
 
 responses_before = forward_model(A, priors, response_x_axis)
-S = responses_before[observation_x_axis]
+Y = responses_before[observation_x_axis]
 
-new_A = ies.ensemble_smoother_update_step(S, A, observation_errors, observation_values)
+new_A = ies.ensemble_smoother_update_step(Y, A, observation_errors, observation_values)
 
 plot_result(new_A, response_x_axis, uniform, priors)
 
@@ -162,10 +162,10 @@ def iterative_smoother():
         plot_result(A_current, response_x_axis, uniform, priors)
 
         responses_before = forward_model(A_current, priors, response_x_axis)
-        S = responses_before[observation_x_axis]
+        Y = responses_before[observation_x_axis]
 
         A_current = smoother.update_step(
-            S, A_current, observation_errors, observation_values
+            Y, A_current, observation_errors, observation_values
         )
     plot_result(A_current, response_x_axis, uniform, priors)
 
@@ -190,11 +190,11 @@ def es_mda():
         plot_result(A_current, response_x_axis, uniform, priors)
 
         responses_before = forward_model(A_current, priors, response_x_axis)
-        S = responses_before[observation_x_axis]
+        Y = responses_before[observation_x_axis]
 
         observation_errors_scaled = observation_errors * sqrt(weight * length)
         A_current = ies.ensemble_smoother_update_step(
-            S, A_current, observation_errors_scaled, observation_values
+            Y, A_current, observation_errors_scaled, observation_values
         )
     plot_result(A_current, response_x_axis, uniform, priors)
 

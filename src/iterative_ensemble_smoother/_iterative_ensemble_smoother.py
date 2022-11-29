@@ -52,8 +52,8 @@ class IterativeEnsembleSmoother:
 
     def update_step(
         self,
-        sensitivity_matrix: "npt.NDArray[np.double]",
-        centered_anomaly_matrix: "npt.NDArray[np.double]",
+        response_ensemble: "npt.NDArray[np.double]",
+        parameter_ensemble: "npt.NDArray[np.double]",
         observation_errors: "npt.NDArray[np.double]",
         observation_values: "npt.NDArray[np.double]",
         noise: Optional["npt.NDArray[np.double]"] = None,
@@ -66,10 +66,10 @@ class IterativeEnsembleSmoother:
     ):
         """Perform one step of the iterative ensemble smoother algorithm
 
-        :param sensitivity_matrix: Matrix of responses from the :term:`forward model`.
-            Has shape (number of observations, number of realizations). (S in Evensen et al.)
-        :param centered_anomaly_matrix: Matrix of sampled model parameters. Has shape
-            (number of parameters, number of realizations). (A in Evensen et al.)
+        :param response_ensemble: Matrix of responses from the :term:`forward model`.
+            Has shape (number of observations, number of realizations). (Y in Evensen et. al)
+        :param parameter_ensemble: Matrix of sampled model parameters. Has shape
+            (number of parameters, number of realizations) (A in Evensen et. al).
         :param observation_errors: List of measurement of errors for each observation.
         :param observation_values: List of observations.
         :param noise: Optional list of noise used in the algorithm, Has same shape as
@@ -88,12 +88,12 @@ class IterativeEnsembleSmoother:
         :param inversion: The type of subspace inversion used in the algorithm, defaults
             to exact.
         """
-        S = sensitivity_matrix
-        A = centered_anomaly_matrix
+        Y = response_ensemble
+        A = parameter_ensemble
         if step_length is None:
             step_length = self._get_steplength(self._module_data.iteration_nr)
         if noise is None:
-            noise = np.random.rand(*S.shape)
+            noise = np.random.rand(*Y.shape)
         if ensemble_mask is None:
             ensemble_mask = np.array([True] * self._ensemble_size)
         if observation_mask is None:
@@ -101,21 +101,21 @@ class IterativeEnsembleSmoother:
 
         E = make_E(observation_errors, noise)
         R = np.identity(len(observation_errors), dtype=np.double)
-        D = make_D(observation_values, E, S)
+        D = make_D(observation_values, E, Y)
         D = (D.T / observation_errors).T
         E = (E.T / observation_errors).T
-        S = (S.T / observation_errors).T
+        Y = (Y.T / observation_errors).T
 
         init_update(self._module_data, ensemble_mask, observation_mask)
 
         if projection and (A.shape[0] < A.shape[1] - 1):
             AA_projection = _compute_AA_projection(A)
-            S = S @ AA_projection
+            Y = Y @ AA_projection
 
         update_A(
             self._module_data,
             A,
-            S,
+            Y,
             R,
             E,
             D,
