@@ -98,8 +98,6 @@ class IterativeEnsembleSmoother:
             ensemble_mask = np.array([True] * self._ensemble_size)
         if observation_mask is None:
             observation_mask = np.array([True] * len(observation_values))
-        if not A.flags.fortran:
-            A = np.asfortranarray(A)
 
         E = make_E(observation_errors, noise)
         R = np.identity(len(observation_errors), dtype=np.double)
