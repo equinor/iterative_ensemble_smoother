@@ -4,6 +4,8 @@ features of iterative_ensemble_smoother
 """
 import numpy as np
 
+rng = np.random.default_rng()
+
 from ._ies import InversionType, make_D, make_E, make_X
 
 
@@ -17,10 +19,10 @@ def ensemble_smoother_update_step_row_scaling(
     inversion=InversionType.EXACT,
 ):
     """This is an experimental feature."""
-    realizations = response_ensemble.shape[1]
-    responses = response_ensemble.shape[0]
+    ensemble_size = response_ensemble.shape[1]
     if noise is None:
-        noise = np.random.rand(responses, realizations)
+        num_obs = len(observation_values)
+        noise = rng.standard_normal(size=(num_obs, ensemble_size))
 
     E = make_E(observation_errors, noise)
     R = np.identity(len(observation_errors), dtype=np.double)
@@ -36,7 +38,7 @@ def ensemble_smoother_update_step_row_scaling(
             D,
             inversion,
             truncation,
-            np.zeros((realizations, realizations)),
+            np.zeros((ensemble_size, ensemble_size)),
             1.0,
             1,
         )
