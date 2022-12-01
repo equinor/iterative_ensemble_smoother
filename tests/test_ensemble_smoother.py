@@ -114,8 +114,10 @@ def to_csv(nparray):
 def test_iterative_ensemble_smoother_update_step(snapshot, initial_A, initial_S):
     # performing an update step gives us a new A matrix with updated parameters
     # for the ensemble
+    rng = np.random.default_rng(12345)
+    noise = rng.standard_normal(size=(len(observation_values), initial_A.shape[1]))
     new_A = ies.ensemble_smoother_update_step(
-        initial_S, initial_A, observation_errors, observation_values
+        initial_S, initial_A, observation_errors, observation_values, noise=noise
     )
     assert new_A.shape == initial_A.shape
     assert new_A.dtype == initial_A.dtype
@@ -144,8 +146,10 @@ def test_ensemble_smoother_update_step_with_rowscaling(snapshot, initial_A, init
 def test_ensemble_smoother_update_step(snapshot, initial_A, initial_S):
     # performing an update step gives us a new A matrix with updated parameters
     # for the ensemble
+    rng = np.random.default_rng(12345)
+    noise = rng.standard_normal(size=(len(observation_values), initial_A.shape[1]))
     new_A = ies.ensemble_smoother_update_step(
-        initial_S, initial_A, observation_errors, observation_values
+        initial_S, initial_A, observation_errors, observation_values, noise=noise
     )
     assert new_A.shape == initial_A.shape
     assert new_A.dtype == initial_A.dtype

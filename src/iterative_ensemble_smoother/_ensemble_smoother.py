@@ -1,7 +1,8 @@
 from typing import TYPE_CHECKING, Optional
 
 import numpy as np
-import numpy.typing as npt
+
+rng = np.random.default_rng()
 
 from ._ies import InversionType, make_D, make_E, make_X
 from iterative_ensemble_smoother.utils import _compute_AA_projection
@@ -36,11 +37,12 @@ def ensemble_smoother_update_step(
         to exact.
     :param projection: Whether to project response matrix.
     """
-    parameters = parameter_ensemble.shape[0]
-    realizations = parameter_ensemble.shape[1]
-    responses = response_ensemble.shape[0]
+    num_params = parameter_ensemble.shape[0]
+    ensemble_size = parameter_ensemble.shape[1]
     if noise is None:
-        noise = np.random.rand(responses, realizations)
+        num_obs = len(observation_values)
+        noise = rng.standard_normal(size=(num_obs, ensemble_size))
+
     E = make_E(observation_errors, noise)
     R = np.identity(len(observation_errors), dtype=np.double)
     D = make_D(observation_values, E, response_ensemble)
@@ -48,7 +50,7 @@ def ensemble_smoother_update_step(
     E = (E.T / observation_errors).T
     response_ensemble = (response_ensemble.T / observation_errors).T
 
-    if projection and (parameters < realizations - 1):
+    if projection and (num_params < ensemble_size - 1):
         AA_projection = _compute_AA_projection(parameter_ensemble)
         response_ensemble = response_ensemble @ AA_projection
 
@@ -60,7 +62,7 @@ def ensemble_smoother_update_step(
         D,
         inversion,
         truncation,
-        np.zeros((realizations, realizations)),
+        np.zeros((ensemble_size, ensemble_size)),
         1.0,
         1,
     )

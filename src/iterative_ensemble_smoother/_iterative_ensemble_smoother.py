@@ -2,6 +2,8 @@ from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 
+rng = np.random.default_rng()
+
 from ._ies import InversionType, ModuleData, init_update, make_D, make_E, update_A
 from iterative_ensemble_smoother.utils import _compute_AA_projection
 
@@ -88,14 +90,14 @@ class IterativeEnsembleSmoother:
         :param inversion: The type of subspace inversion used in the algorithm, defaults
             to exact.
         """
-        parameters = parameter_ensemble.shape[0]
-        realizations = parameter_ensemble.shape[1]
-        responses = response_ensemble.shape[0]
+        num_params = parameter_ensemble.shape[0]
+        ensemble_size = parameter_ensemble.shape[1]
+        num_obs = len(observation_values)
         parameter_ensemble = parameter_ensemble
         if step_length is None:
             step_length = self._get_steplength(self._module_data.iteration_nr)
         if noise is None:
-            noise = np.random.rand(responses, realizations)
+            noise = rng.standard_normal(size=(num_obs, ensemble_size))
         if ensemble_mask is None:
             ensemble_mask = np.array([True] * self._ensemble_size)
         if observation_mask is None:
@@ -110,7 +112,7 @@ class IterativeEnsembleSmoother:
 
         init_update(self._module_data, ensemble_mask, observation_mask)
 
-        if projection and (parameters < realizations - 1):
+        if projection and (num_params < ensemble_size - 1):
             AA_projection = _compute_AA_projection(parameter_ensemble)
             response_ensemble = response_ensemble @ AA_projection
 
