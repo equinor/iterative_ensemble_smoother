@@ -120,7 +120,7 @@ class IterativeEnsembleSmoother:
             self._module_data,
             parameter_ensemble,
             (response_ensemble - response_ensemble.mean(axis=1, keepdims=True))
-            / np.sqrt(realizations - 1),
+            / np.sqrt(ensemble_size - 1),
             R,
             E,
             D,
