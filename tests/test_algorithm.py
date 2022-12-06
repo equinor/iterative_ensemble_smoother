@@ -4,6 +4,7 @@ import numpy as np
 
 rng = np.random.default_rng()
 
+
 from iterative_ensemble_smoother._ies import make_D
 import iterative_ensemble_smoother as ies
 

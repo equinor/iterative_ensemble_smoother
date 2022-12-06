@@ -5,7 +5,7 @@ import numpy as np
 rng = np.random.default_rng()
 
 from ._ies import InversionType, make_D, make_E, make_X
-from iterative_ensemble_smoother.utils import _compute_AA_projection
+from iterative_ensemble_smoother.utils import _compute_AA_projection, _validate_inputs
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -37,6 +37,14 @@ def ensemble_smoother_update_step(
         to exact.
     :param projection: Whether to project response matrix.
     """
+    _validate_inputs(
+        response_ensemble,
+        parameter_ensemble,
+        noise,
+        observation_errors,
+        observation_values,
+    )
+
     num_params = parameter_ensemble.shape[0]
     ensemble_size = parameter_ensemble.shape[1]
     if noise is None:
