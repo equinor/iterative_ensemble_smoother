@@ -16,7 +16,7 @@ ext_modules = [
         include_dirs=[
             path.join(path.dirname(__file__), "src/iterative_ensemble_smoother/"),
         ],
-        extra_compile_args=Path("conanbuildinfo.args").read_text().split(),
+        extra_compile_args=Path("conanbuildinfo.args").read_text().split() + ["-g"],
     ),
 ]
 
