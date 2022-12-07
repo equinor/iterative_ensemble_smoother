@@ -91,13 +91,12 @@ class IterativeEnsembleSmoother:
             to exact.
         """
         num_params = parameter_ensemble.shape[0]
-        ensemble_size = parameter_ensemble.shape[1]
         num_obs = len(observation_values)
         parameter_ensemble = parameter_ensemble
         if step_length is None:
             step_length = self._get_steplength(self._module_data.iteration_nr)
         if noise is None:
-            noise = rng.standard_normal(size=(num_obs, ensemble_size))
+            noise = rng.standard_normal(size=(num_obs, self._ensemble_size))
         if ensemble_mask is None:
             ensemble_mask = np.array([True] * self._ensemble_size)
         if observation_mask is None:
@@ -112,7 +111,7 @@ class IterativeEnsembleSmoother:
 
         init_update(self._module_data, ensemble_mask, observation_mask)
 
-        if projection and (num_params < ensemble_size - 1):
+        if projection and (num_params < self._ensemble_size - 1):
             AA_projection = _compute_AA_projection(parameter_ensemble)
             response_ensemble = response_ensemble @ AA_projection
 
@@ -120,7 +119,7 @@ class IterativeEnsembleSmoother:
             self._module_data,
             parameter_ensemble,
             (response_ensemble - response_ensemble.mean(axis=1, keepdims=True))
-            / np.sqrt(ensemble_size - 1),
+            / np.sqrt(self._ensemble_size - 1),
             R,
             E,
             D,
