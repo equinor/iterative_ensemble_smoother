@@ -4,15 +4,9 @@ import pytest
 import iterative_ensemble_smoother as ies
 
 
-# We fix the random seed in the tests to ensure no flakiness
-@pytest.fixture(autouse=True)
-def fix_seed(seed=321):
-    np.random.seed(seed)
-
-
 # The following tests follow the
 # posterior properties described in
-# https://ert.readthedocs.io/en/latest/theory/ensemble_based_methods.html
+# https://ert.readthedocs.io/en/latest/theory/ensemble_based_methods.html#kalman-posterior-properties
 a_true = 1.0
 b_true = 5.0
 number_of_parameters = 2
