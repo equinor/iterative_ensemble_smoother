@@ -88,3 +88,48 @@ def test_that_global_ies_update_is_identical_to_local():
         )
 
     assert np.isclose(A_IES_global, A_IES_local).all()
+
+
+def test_that_ies_runs_with_failed_realizations():
+    """This used to cause Eigen to throw an `Assertion failed`
+    that led to `Fatal Python error` which is not possible to catch in pytest.
+    """
+    rng = np.random.default_rng()
+    ensemble_size = 50
+    num_params = 100
+    num_responses = 5
+    param_ensemble = rng.normal(size=(num_params, ensemble_size))
+    response_ensemble = np.power(param_ensemble[:num_responses, :], 2) + rng.normal(
+        size=(num_responses, ensemble_size)
+    )
+    noise = rng.normal(size=(num_responses, ensemble_size))
+    obs_values = rng.normal(size=num_responses)
+    obs_errors = rng.normal(size=num_responses)
+    ens_mask = np.array([True] * ensemble_size)
+    ens_mask[10:] = False
+    smoother = ies.IterativeEnsembleSmoother(ensemble_size)
+    param_ensemble = smoother.update_step(
+        response_ensemble[:, ens_mask],
+        param_ensemble[:, ens_mask],
+        obs_errors,
+        obs_values,
+        noise[:, ens_mask],
+        ensemble_mask=ens_mask,
+    )
+    param_ensemble = smoother.update_step(
+        response_ensemble[:, ens_mask],
+        param_ensemble,
+        obs_errors,
+        obs_values,
+        noise[:, ens_mask],
+        ensemble_mask=ens_mask,
+    )
+    param_ensemble = smoother.update_step(
+        response_ensemble[:, ens_mask],
+        param_ensemble,
+        obs_errors,
+        obs_values,
+        noise[:, ens_mask],
+        ensemble_mask=ens_mask,
+    )
+    assert param_ensemble.shape == (num_params, ens_mask.sum())

@@ -4,7 +4,7 @@ import numpy as np
 
 rng = np.random.default_rng()
 
-from ._ies import InversionType, ModuleData, init_update, make_D, make_E, update_A
+from ._ies import InversionType, ModuleData, make_D, make_E, update_A
 from iterative_ensemble_smoother.utils import _compute_AA_projection, _validate_inputs
 
 if TYPE_CHECKING:
@@ -33,6 +33,7 @@ class IterativeEnsembleSmoother:
         self.max_steplength = max_steplength
         self.min_steplength = min_steplength
         self.dec_steplength = dec_steplength
+        self.coefficient_matrix = np.zeros(shape=(ensemble_size, ensemble_size))
 
     @property
     def iteration_nr(self):
@@ -69,11 +70,20 @@ class IterativeEnsembleSmoother:
         """Perform one step of the iterative ensemble smoother algorithm
 
         :param response_ensemble: Matrix of responses from the :term:`forward model`.
-            Has shape (number of observations, number of realizations). (Y in Evensen et. al)
+            Has shape (number of active observations, number of realizations).
+            (Y in Evensen et. al)
+            Assumes that `observation_mask` and `ensemble_mask` have been applied, for example
+            `response_ensemble = response_ensemble[observation_mask, :]`
         :param parameter_ensemble: Matrix of sampled model parameters. Has shape
-            (number of parameters, number of realizations) (A in Evensen et. al).
-        :param observation_errors: List of measurement of errors for each observation.
-        :param observation_values: List of observations.
+            (number of active parameters, number of realizations) (A in Evensen et. al).
+            Assumes that `ensemble_mask` has been applied, for example
+            `parameter_ensemble = parameter_ensemble[:, ensemble_mask]`
+        :param observation_errors: List of active measurement of errors for each observation.
+            Assumes that `observation_mask` has been applied, for example
+            `observation_errors = observation_errors[observation_mask]`
+        :param observation_values: List of active observations.
+            Assumes that `observation_mask` has been applied, for example
+            `observation_value = observation_values[observation_mask]`
         :param noise: Optional list of noise used in the algorithm, Has same shape as
             response matrix.
         :param truncation: float used to determine the number of significant singular
@@ -87,6 +97,7 @@ class IterativeEnsembleSmoother:
             to all active. Inactive realizations are ignored.
         :param observation_mask: An array describing which observations are active. Defaults
             to all active. Inactive observations are ignored.
+            To be deprecated.
         :param inversion: The type of subspace inversion used in the algorithm, defaults
             to exact.
         """
@@ -100,30 +111,30 @@ class IterativeEnsembleSmoother:
 
         num_params = parameter_ensemble.shape[0]
         num_obs = len(observation_values)
-        parameter_ensemble = parameter_ensemble
+        # Note that this may differ from self._ensemble_size,
+        # as realizations may get deactivated between iterations.
+        ensemble_size = parameter_ensemble.shape[1]
         if step_length is None:
             step_length = self._get_steplength(self._module_data.iteration_nr)
         if noise is None:
-            noise = rng.standard_normal(size=(num_obs, self._ensemble_size))
-        if ensemble_mask is None:
-            ensemble_mask = np.array([True] * self._ensemble_size)
-        if observation_mask is None:
-            observation_mask = np.array([True] * len(observation_values))
+            noise = rng.standard_normal(size=(num_obs, ensemble_size))
 
         E = make_E(observation_errors, noise)
         R = np.identity(len(observation_errors), dtype=np.double)
         D = make_D(observation_values, E, response_ensemble)
         D = (D.T / observation_errors).T
+
         E = (E.T / observation_errors).T
         response_ensemble = (response_ensemble.T / observation_errors).T
-
-        init_update(self._module_data, ensemble_mask, observation_mask)
 
         if projection and (num_params < self._ensemble_size - 1):
             AA_projection = _compute_AA_projection(parameter_ensemble)
             response_ensemble = response_ensemble @ AA_projection
 
-        update_A(
+        if ensemble_mask is None:
+            ensemble_mask = [True] * ensemble_size
+
+        coefficient_matrix = update_A(
             self._module_data,
             parameter_ensemble,
             (response_ensemble - response_ensemble.mean(axis=1, keepdims=True))
@@ -131,9 +142,14 @@ class IterativeEnsembleSmoother:
             R,
             E,
             D,
+            self.coefficient_matrix[ensemble_mask, :][:, ensemble_mask],
             inversion,
             truncation,
             step_length,
         )
+
+        self.coefficient_matrix[
+            np.outer(ensemble_mask, ensemble_mask)
+        ] = coefficient_matrix.ravel()
         self._module_data.iteration_nr += 1
         return parameter_ensemble
