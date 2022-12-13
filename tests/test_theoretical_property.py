@@ -18,7 +18,7 @@ def test_that_update_is_according_to_theory():
     Here we use this property, and assume that the forward model is the identity
     to test analysis steps.
     """
-    N = 1000
+    N = 1500
     nparam = 3
     var = 2
 
@@ -41,8 +41,15 @@ def test_that_update_is_according_to_theory():
         inversion=ies.InversionType.EXACT,
     )
 
+    ens_mask = np.array([True] * N)
+    ens_mask[:5] = False
     A_IES = ies.IterativeEnsembleSmoother(ensemble_size=N).update_step(
-        Y, A, observation_errors, observation_values, step_length=1.0
+        Y[:, ens_mask],
+        A[:, ens_mask],
+        observation_errors,
+        observation_values,
+        step_length=1.0,
+        ensemble_mask=ens_mask,
     )
 
     for i in range(nparam):
