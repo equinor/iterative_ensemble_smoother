@@ -6,7 +6,7 @@ import numpy as np
 
 rng = np.random.default_rng()
 
-from ._ies import InversionType, make_D, make_E, make_X
+from ._ies import InversionType, make_D, make_E, create_transition_matrix
 
 
 def ensemble_smoother_update_step_row_scaling(
@@ -31,7 +31,7 @@ def ensemble_smoother_update_step_row_scaling(
     E = (E.T / observation_errors).T
     response_ensemble = (response_ensemble.T / observation_errors).T
     for (A, row_scale) in A_with_row_scaling:
-        X = make_X(
+        X = create_transition_matrix(
             (response_ensemble - response_ensemble.mean(axis=1, keepdims=True))
             / np.sqrt(ensemble_size - 1),
             R,

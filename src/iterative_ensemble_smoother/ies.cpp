@@ -170,7 +170,7 @@ void lowrankCinv(
  *  The standard inversion works on the equation
  *          S'*(S*S'+R)^{-1} H           (a)
  */
-void subspace_inversion(MatrixXd &W0, const Inversion ies_inversion,
+void subspace_inversion(MatrixXd &W, const Inversion ies_inversion,
                         const MatrixXd &E, const MatrixXd &R, const MatrixXd &S,
                         const MatrixXd &H,
                         const std::variant<double, int> &truncation,
@@ -210,7 +210,7 @@ void subspace_inversion(MatrixXd &W0, const Inversion ies_inversion,
 
   // Update data->W = (1-ies_steplength) * data->W +  ies_steplength * S' * X3
   // (Line 9)
-  W0 = ies_steplength * S.transpose() * X3 + (1.0 - ies_steplength) * W0;
+  W = ies_steplength * S.transpose() * X3 + (1.0 - ies_steplength) * W;
 }
 
 /**
@@ -219,7 +219,7 @@ void subspace_inversion(MatrixXd &W0, const Inversion ies_inversion,
  * and since (S^T*S + I_N) is symmetric positive semi-definite we have that U=V
  * and hence (S^T*S + I_N)^{-1} = U * \Sigma^{-1} * U^T.
  */
-void exact_inversion(MatrixXd &W0, const MatrixXd &S, const MatrixXd &H,
+void exact_inversion(MatrixXd &W, const MatrixXd &S, const MatrixXd &H,
                      double ies_steplength) {
   int ens_size = S.cols();
 
@@ -236,7 +236,7 @@ void exact_inversion(MatrixXd &W0, const MatrixXd &S, const MatrixXd &H,
 
   // Update data->W = (1-ies_steplength) * data->W +  ies_steplength * Z *
   // (Lamda^{-1}) Z' S' H (Line 9)
-  W0 = ies_steplength * Z * ZtStH + (1.0 - ies_steplength) * W0;
+  W = ies_steplength * Z * ZtStH + (1.0 - ies_steplength) * W;
 }
 
 /**
@@ -244,18 +244,19 @@ void exact_inversion(MatrixXd &W0, const MatrixXd &S, const MatrixXd &H,
  *          where N is the number of realizations.
  *          See line 4 of Algorithm 1 and Eq. 30.
  */
-MatrixXd makeX(py::EigenDRef<MatrixXd> Y, py::EigenDRef<MatrixXd> R,
-               py::EigenDRef<MatrixXd> E, py::EigenDRef<MatrixXd> D,
-               const Inversion ies_inversion,
-               const std::variant<double, int> &truncation, MatrixXd &W0,
-               double ies_steplength)
+MatrixXd
+create_transition_matrix(py::EigenDRef<MatrixXd> Y, py::EigenDRef<MatrixXd> R,
+                         py::EigenDRef<MatrixXd> E, py::EigenDRef<MatrixXd> D,
+                         const Inversion ies_inversion,
+                         const std::variant<double, int> &truncation,
+                         MatrixXd &W, double ies_steplength)
 
 {
   const int ens_size = Y.cols();
 
   /* Line 5 of Algorithm 1 */
   MatrixXd Omega =
-      (1.0 / sqrt(ens_size - 1.0)) * (W0.colwise() - W0.rowwise().mean());
+      (1.0 / sqrt(ens_size - 1.0)) * (W.colwise() - W.rowwise().mean());
   Omega.diagonal().array() += 1.0;
 
   /* Solving for the average sensitivity matrix.
@@ -268,14 +269,19 @@ MatrixXd makeX(py::EigenDRef<MatrixXd> Y, py::EigenDRef<MatrixXd> R,
      Differs in that `D` here is defined as dobs + E - Y instead of just dobs +
      E as in the paper. Line 7 of Algorithm 1, also Section 2.6
   */
-  MatrixXd H = D + S * W0;
+  MatrixXd H = D + S * W;
 
   /*
-   * COMPUTE NEW UPDATED W (Line 9) W = W - ies_steplength * ( W -
-   * S'*(S*S'+R)^{-1} H )          (a) which in the case when R=I can be
-   * rewritten as W = W - ies_steplength * ( W - (S'*S + I)^{-1} * S' * H ) (b)
+   * COMPUTE NEW UPDATED W (Line 9 of Algorithm 1)
+   * W = W - ies_steplength * (W - S' * (S * S' + R)^{-1} * H)
+   * When R=I Line 9 can be rewritten as
+   * W = W - ies_steplength * ( W - (S'*S + I)^{-1} * S' * H )
+   * Notice the expression being inverted.
+   * Instead of S * S' which is a (num_obs, num_obs) sized matrix,
+   * we get S' * S which is of size (ensemble_size, ensemble_size).
+   * This is great since num_obs is usually much larger than ensemble_size.
    *
-   * With R=I the subspace inversion (ies_inversion=1) solving Eq. (a) with
+   * With R=I the subspace inversion (ies_inversion=1) with
    * singular value trucation=1.000 gives exactly the same solution as the exact
    * inversion (ies_inversion=0).
    *
@@ -287,31 +293,17 @@ MatrixXd makeX(py::EigenDRef<MatrixXd> Y, py::EigenDRef<MatrixXd> R,
    * conditioned and a trucation=1.000 is not a good choice. In this case the
    * ies_inversion > 0 and truncation set to 0.99 or so, should stabelize
    * the algorithm.
-   *
-   * Using ies_inversion=IES_INVERSION_SUBSPACE_EE_R(3) and
-   * ies_inversion=IES_INVERSION_SUBSPACE_RE(2) gives identical results but
-   * ies_inversion=IES_INVERSION_SUBSPACE_RE is much faster (N^2m) than
-   * ies_inversion=IES_INVERSION_SUBSPACE_EE_R (Nm^2).
-   *
-   * See the enum: ies_inverson in ies_config.hpp:
-   *
-   * ies_inversion=IES_INVERSION_EXACT(0)            -> exact inversion from (b)
-   * with exact R=I ies_inversion=IES_INVERSION_SUBSPACE_EXACT_R(1) -> subspace
-   * inversion from (a) with exact R
-   * ies_inversion=IES_INVERSION_SUBSPACE_EE_R(2)    -> subspace inversion from
-   * (a) with R=EE ies_inversion=IES_INVERSION_SUBSPACE_RE(3)      -> subspace
-   * inversion from (a) with R represented by E * E^T
    */
 
   if (ies_inversion == Inversion::exact) {
-    exact_inversion(W0, S, H, ies_steplength);
+    exact_inversion(W, S, H, ies_steplength);
   } else {
-    subspace_inversion(W0, ies_inversion, E, R, S, H, truncation,
+    subspace_inversion(W, ies_inversion, E, R, S, H, truncation,
                        ies_steplength);
   }
 
   /* Line 9 of Algorithm 1 */
-  MatrixXd X = W0;
+  MatrixXd X = W;
   X /= sqrt(ens_size - 1.0);
   X.diagonal().array() += 1;
 
@@ -334,10 +326,8 @@ MatrixXd updateA(
     const Inversion ies_inversion, const std::variant<double, int> &truncation,
     double ies_steplength) {
 
-  auto const ensemble_size = A.cols();
-
-  auto X = makeX(Y, Rin, Ein, D, ies_inversion, truncation, coefficient_matrix,
-                 ies_steplength);
+  auto X = create_transition_matrix(Y, Rin, Ein, D, ies_inversion, truncation,
+                                    coefficient_matrix, ies_steplength);
 
   A *= X;
 
@@ -374,8 +364,9 @@ MatrixXd makeD(const VectorXd &obs_values, const MatrixXd &E,
 PYBIND11_MODULE(_ies, m) {
   using namespace py::literals;
 
-  m.def("make_X", &makeX, "Y0"_a, "R"_a, "E"_a, "D"_a, "ies_inversion"_a,
-        "truncation"_a, "W0"_a, "ies_steplength"_a);
+  m.def("create_transition_matrix", &create_transition_matrix, "Y0"_a, "R"_a,
+        "E"_a, "D"_a, "ies_inversion"_a, "truncation"_a, "W"_a,
+        "ies_steplength"_a);
   m.def("make_E", &makeE, "obs_errors"_a, "noise"_a);
   m.def("make_D", &makeD, "obs_values"_a, "E"_a, "S"_a);
   m.def("update_A", &updateA, "A"_a, "Y"_a, "R"_a, "E"_a, "D"_a,
