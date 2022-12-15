@@ -4,7 +4,7 @@ import numpy as np
 
 rng = np.random.default_rng()
 
-from ._ies import InversionType, ModuleData, make_D, make_E, update_A
+from ._ies import InversionType, make_D, make_E, update_A
 from iterative_ensemble_smoother.utils import _compute_AA_projection, _validate_inputs
 
 if TYPE_CHECKING:
@@ -28,17 +28,12 @@ class IterativeEnsembleSmoother:
         min_steplength: float = 0.3,
         dec_steplength: float = 2.5,
     ):
-        self._module_data = ModuleData(ensemble_size)
+        self.iteration_nr = 1
         self._ensemble_size = ensemble_size
         self.max_steplength = max_steplength
         self.min_steplength = min_steplength
         self.dec_steplength = dec_steplength
         self.coefficient_matrix = np.zeros(shape=(ensemble_size, ensemble_size))
-
-    @property
-    def iteration_nr(self):
-        """The number of update steps that have been run"""
-        return self._module_data.iteration_nr
 
     def _get_steplength(self, iteration_nr: int) -> float:
         """
@@ -115,7 +110,7 @@ class IterativeEnsembleSmoother:
         # as realizations may get deactivated between iterations.
         ensemble_size = parameter_ensemble.shape[1]
         if step_length is None:
-            step_length = self._get_steplength(self._module_data.iteration_nr)
+            step_length = self._get_steplength(self.iteration_nr)
         if noise is None:
             noise = rng.standard_normal(size=(num_obs, ensemble_size))
 
@@ -135,7 +130,6 @@ class IterativeEnsembleSmoother:
             ensemble_mask = [True] * ensemble_size
 
         coefficient_matrix = update_A(
-            self._module_data,
             parameter_ensemble,
             (response_ensemble - response_ensemble.mean(axis=1, keepdims=True))
             / np.sqrt(self._ensemble_size - 1),
@@ -151,5 +145,5 @@ class IterativeEnsembleSmoother:
         self.coefficient_matrix[
             np.outer(ensemble_mask, ensemble_mask)
         ] = coefficient_matrix.ravel()
-        self._module_data.iteration_nr += 1
+        self.iteration_nr += 1
         return parameter_ensemble
