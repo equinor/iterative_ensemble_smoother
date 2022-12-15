@@ -4,7 +4,7 @@ import numpy as np
 
 rng = np.random.default_rng()
 
-from ._ies import InversionType, make_D, make_E, make_X
+from ._ies import InversionType, make_D, make_E, create_transition_matrix
 from iterative_ensemble_smoother.utils import _compute_AA_projection, _validate_inputs
 
 if TYPE_CHECKING:
@@ -62,7 +62,7 @@ def ensemble_smoother_update_step(
         AA_projection = _compute_AA_projection(parameter_ensemble)
         response_ensemble = response_ensemble @ AA_projection
 
-    X = make_X(
+    X = create_transition_matrix(
         (response_ensemble - response_ensemble.mean(axis=1, keepdims=True))
         / np.sqrt(ensemble_size - 1),
         R,

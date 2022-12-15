@@ -29,7 +29,7 @@ class IterativeEnsembleSmoother:
         dec_steplength: float = 2.5,
     ):
         self.iteration_nr = 1
-        self._ensemble_size = ensemble_size
+        self._initial_ensemble_size = ensemble_size
         self.max_steplength = max_steplength
         self.min_steplength = min_steplength
         self.dec_steplength = dec_steplength
@@ -106,7 +106,7 @@ class IterativeEnsembleSmoother:
 
         num_params = parameter_ensemble.shape[0]
         num_obs = len(observation_values)
-        # Note that this may differ from self._ensemble_size,
+        # Note that this may differ from self._initial_ensemble_size,
         # as realizations may get deactivated between iterations.
         ensemble_size = parameter_ensemble.shape[1]
         if step_length is None:
@@ -122,7 +122,7 @@ class IterativeEnsembleSmoother:
         E = (E.T / observation_errors).T
         response_ensemble = (response_ensemble.T / observation_errors).T
 
-        if projection and (num_params < self._ensemble_size - 1):
+        if projection and (num_params < self._initial_ensemble_size - 1):
             AA_projection = _compute_AA_projection(parameter_ensemble)
             response_ensemble = response_ensemble @ AA_projection
 
@@ -132,7 +132,7 @@ class IterativeEnsembleSmoother:
         coefficient_matrix = update_A(
             parameter_ensemble,
             (response_ensemble - response_ensemble.mean(axis=1, keepdims=True))
-            / np.sqrt(self._ensemble_size - 1),
+            / np.sqrt(self._initial_ensemble_size - 1),
             R,
             E,
             D,
