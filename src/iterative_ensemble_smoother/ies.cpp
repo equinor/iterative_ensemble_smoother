@@ -21,25 +21,6 @@ enum struct Inversion {
   subspace_re = 3
 };
 
-class Data {
-public:
-  std::vector<bool> obs_mask{};
-
-  Data(int ensemble_size);
-
-  int iteration_nr = 1;
-
-private:
-  bool m_converged = false;
-
-  std::vector<bool> m_obs_mask0{};
-  /** Prior ensemble used in Ei=A0 Omega_i */
-  MatrixXd A0{};
-  /** Prior ensemble of measurement perturations (should be the same for all
-   * iterations) */
-  MatrixXd E;
-};
-
 int calc_num_significant(const VectorXd &singular_values, double truncation) {
   int num_significant = 0;
   double total_sigma2 = singular_values.squaredNorm();
@@ -258,8 +239,6 @@ void exact_inversion(MatrixXd &W0, const MatrixXd &S, const MatrixXd &H,
   W0 = ies_steplength * Z * ZtStH + (1.0 - ies_steplength) * W0;
 }
 
-Data::Data(int ens_size) {}
-
 /**
  * @param Y Predicted ensemble anomalies normalized by sqrt(N-1),
  *          where N is the number of realizations.
@@ -343,18 +322,17 @@ MatrixXd makeX(py::EigenDRef<MatrixXd> Y, py::EigenDRef<MatrixXd> R,
  * @param Y Predicted ensemble anomalies normalized by sqrt(ensemble_size-1).
  *          See line 4 of Algorithm 1 and Eq. 30.
  */
-MatrixXd updateA(Data &data,
-                 // Updated ensemble A retured to ERT.
-                 py::EigenDRef<MatrixXd> A, py::EigenDRef<MatrixXd> Y,
-                 // Measurement error covariance matrix (not used)
-                 py::EigenDRef<MatrixXd> Rin,
-                 // Ensemble of observation perturbations
-                 py::EigenDRef<MatrixXd> Ein,
-                 // (d+E-Y) Ensemble of perturbed observations - Y
-                 py::EigenDRef<MatrixXd> D, MatrixXd coefficient_matrix,
-                 const Inversion ies_inversion,
-                 const std::variant<double, int> &truncation,
-                 double ies_steplength) {
+MatrixXd updateA(
+    // Updated ensemble A retured to ERT.
+    py::EigenDRef<MatrixXd> A, py::EigenDRef<MatrixXd> Y,
+    // Measurement error covariance matrix (not used)
+    py::EigenDRef<MatrixXd> Rin,
+    // Ensemble of observation perturbations
+    py::EigenDRef<MatrixXd> Ein,
+    // (d+E-Y) Ensemble of perturbed observations - Y
+    py::EigenDRef<MatrixXd> D, MatrixXd coefficient_matrix,
+    const Inversion ies_inversion, const std::variant<double, int> &truncation,
+    double ies_steplength) {
 
   auto const ensemble_size = A.cols();
 
@@ -396,14 +374,11 @@ MatrixXd makeD(const VectorXd &obs_values, const MatrixXd &E,
 PYBIND11_MODULE(_ies, m) {
   using namespace py::literals;
 
-  py::class_<Data, std::shared_ptr<Data>>(m, "ModuleData")
-      .def(py::init<int>())
-      .def_readwrite("iteration_nr", &Data::iteration_nr);
   m.def("make_X", &makeX, "Y0"_a, "R"_a, "E"_a, "D"_a, "ies_inversion"_a,
         "truncation"_a, "W0"_a, "ies_steplength"_a);
   m.def("make_E", &makeE, "obs_errors"_a, "noise"_a);
   m.def("make_D", &makeD, "obs_values"_a, "E"_a, "S"_a);
-  m.def("update_A", &updateA, "data"_a, "A"_a, "Y"_a, "R"_a, "E"_a, "D"_a,
+  m.def("update_A", &updateA, "A"_a, "Y"_a, "R"_a, "E"_a, "D"_a,
         "coefficient_matrix"_a, "inversion"_a, "truncation"_a, "step_length"_a);
 
   py::enum_<Inversion>(m, "InversionType")
