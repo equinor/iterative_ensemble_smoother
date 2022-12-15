@@ -269,7 +269,7 @@ MatrixXd makeX(py::EigenDRef<MatrixXd> Y, py::EigenDRef<MatrixXd> R,
                py::EigenDRef<MatrixXd> E, py::EigenDRef<MatrixXd> D,
                const Inversion ies_inversion,
                const std::variant<double, int> &truncation, MatrixXd &W0,
-               double ies_steplength, int iteration_nr)
+               double ies_steplength)
 
 {
   const int ens_size = Y.cols();
@@ -356,12 +356,10 @@ MatrixXd updateA(Data &data,
                  const std::variant<double, int> &truncation,
                  double ies_steplength) {
 
-  int iteration_nr = data.iteration_nr;
-
   auto const ensemble_size = A.cols();
 
   auto X = makeX(Y, Rin, Ein, D, ies_inversion, truncation, coefficient_matrix,
-                 ies_steplength, iteration_nr);
+                 ies_steplength);
 
   A *= X;
 
@@ -402,7 +400,7 @@ PYBIND11_MODULE(_ies, m) {
       .def(py::init<int>())
       .def_readwrite("iteration_nr", &Data::iteration_nr);
   m.def("make_X", &makeX, "Y0"_a, "R"_a, "E"_a, "D"_a, "ies_inversion"_a,
-        "truncation"_a, "W0"_a, "ies_steplength"_a, "iteration_nr"_a);
+        "truncation"_a, "W0"_a, "ies_steplength"_a);
   m.def("make_E", &makeE, "obs_errors"_a, "noise"_a);
   m.def("make_D", &makeD, "obs_values"_a, "E"_a, "S"_a);
   m.def("update_A", &updateA, "data"_a, "A"_a, "Y"_a, "R"_a, "E"_a, "D"_a,

@@ -72,6 +72,5 @@ def ensemble_smoother_update_step(
         truncation,
         np.zeros((ensemble_size, ensemble_size)),
         1.0,
-        1,
     )
     return parameter_ensemble @ X

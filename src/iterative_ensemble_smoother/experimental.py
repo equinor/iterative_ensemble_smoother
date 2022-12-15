@@ -41,7 +41,6 @@ def ensemble_smoother_update_step_row_scaling(
             truncation,
             np.zeros((ensemble_size, ensemble_size)),
             1.0,
-            1,
         )
         row_scale.multiply(A, X)
     return A_with_row_scaling
