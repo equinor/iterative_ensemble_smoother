@@ -13,7 +13,6 @@ var = 2.0
     [
         (ies.InversionType.EXACT, np.diag(np.array([var, var, var]))),
         (ies.InversionType.EXACT, np.array([np.sqrt(var), np.sqrt(var), np.sqrt(var)])),
-        (ies.InversionType.EE_R, np.diag(np.array([var, var, var]))),
         (ies.InversionType.EXACT_R, np.diag(np.array([var, var, var]))),
         (
             ies.InversionType.EXACT_R,
@@ -41,7 +40,6 @@ def test_that_update_is_according_to_theory(inversion, errors):
     """
     N = 1500
     nparam = 3
-    var = 2.0
 
     # A is p(x)
     Sigma = var * np.identity(nparam)

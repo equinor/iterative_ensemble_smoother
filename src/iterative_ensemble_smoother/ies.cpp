@@ -13,12 +13,7 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 namespace py = pybind11;
 
-enum struct Inversion {
-  exact = 0,
-  subspace_exact_r = 1,
-  subspace_ee_r = 2,
-  subspace_re = 3
-};
+enum struct Inversion { exact = 0, subspace_exact_r = 1, subspace_re = 3 };
 
 int calc_num_significant(const VectorXd &singular_values, double truncation) {
   int num_significant = 0;
@@ -186,15 +181,6 @@ void subspace_inversion(MatrixXd &W, const Inversion ies_inversion,
   case Inversion::subspace_re:
     lowrankE(S, E * nsc, X1, eig, truncation);
     break;
-
-  case Inversion::subspace_ee_r: {
-    MatrixXd Et = E.transpose();
-    MatrixXd Cee = E * Et;
-    Cee *= 1.0 / ((ens_size - 1) * (ens_size - 1));
-
-    lowrankCinv(S, Cee, X1, eig, truncation);
-    break;
-  }
 
   case Inversion::subspace_exact_r:
     lowrankCinv(S, R.value() * nsc * nsc, X1, eig, truncation);
@@ -365,7 +351,6 @@ PYBIND11_MODULE(_ies, m) {
 
   py::enum_<Inversion>(m, "InversionType")
       .value("EXACT", Inversion::exact)
-      .value("EE_R", Inversion::subspace_ee_r)
       .value("EXACT_R", Inversion::subspace_exact_r)
       .value("SUBSPACE_RE", Inversion::subspace_re)
       .export_values();
