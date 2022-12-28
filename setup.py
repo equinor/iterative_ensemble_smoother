@@ -20,4 +20,4 @@ ext_modules = [
     ),
 ]
 
-setup(cmdclass={"build_ext": build_ext}, ext_modules=ext_modules)
+setup(ext_modules=ext_modules)
