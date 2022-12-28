@@ -170,8 +170,9 @@ void lowrankCinv(
  *          S'*(S*S'+R)^{-1} H           (a)
  */
 void subspace_inversion(MatrixXd &W, const Inversion ies_inversion,
-                        const MatrixXd &E, const MatrixXd &R, const MatrixXd &S,
-                        const MatrixXd &H,
+                        const MatrixXd &E,
+                        std::optional<py::EigenDRef<MatrixXd>> R,
+                        const MatrixXd &S, const MatrixXd &H,
                         const std::variant<double, int> &truncation,
                         double ies_steplength) {
   int ens_size = S.cols();
@@ -196,7 +197,7 @@ void subspace_inversion(MatrixXd &W, const Inversion ies_inversion,
   }
 
   case Inversion::subspace_exact_r:
-    lowrankCinv(S, R * nsc * nsc, X1, eig, truncation);
+    lowrankCinv(S, R.value() * nsc * nsc, X1, eig, truncation);
     break;
 
   default:
@@ -213,7 +214,7 @@ void subspace_inversion(MatrixXd &W, const Inversion ies_inversion,
 
 /**
  * Section 3.2 - Exact inversion assuming diagonal error covariance matrix
-  */
+ */
 void exact_inversion(MatrixXd &W, const MatrixXd &S, const MatrixXd &H,
                      double ies_steplength) {
   int ens_size = S.cols();
@@ -226,19 +227,20 @@ void exact_inversion(MatrixXd &W, const MatrixXd &S, const MatrixXd &H,
               (W - svd.matrixV() *
                        svd.singularValues().cwiseInverse().asDiagonal() *
                        svd.matrixV().transpose() * S.transpose() * H);
-  }
+}
 
 /**
  * @param Y Predicted ensemble anomalies normalized by sqrt(N-1),
  *          where N is the number of realizations.
  *          See line 4 of Algorithm 1 and Eq. 30.
  */
-MatrixXd
-create_transition_matrix(py::EigenDRef<MatrixXd> Y, py::EigenDRef<MatrixXd> R,
-                         py::EigenDRef<MatrixXd> E, py::EigenDRef<MatrixXd> D,
-                         const Inversion ies_inversion,
-                         const std::variant<double, int> &truncation,
-                         MatrixXd &W, double ies_steplength)
+MatrixXd create_transition_matrix(py::EigenDRef<MatrixXd> Y,
+                                  std::optional<py::EigenDRef<MatrixXd>> R,
+                                  py::EigenDRef<MatrixXd> E,
+                                  py::EigenDRef<MatrixXd> D,
+                                  const Inversion ies_inversion,
+                                  const std::variant<double, int> &truncation,
+                                  MatrixXd &W, double ies_steplength)
 
 {
   const int ens_size = Y.cols();
@@ -306,16 +308,16 @@ create_transition_matrix(py::EigenDRef<MatrixXd> Y, py::EigenDRef<MatrixXd> R,
 MatrixXd updateA(
     // Updated ensemble A retured to ERT.
     py::EigenDRef<MatrixXd> A, py::EigenDRef<MatrixXd> Y,
-    // Measurement error covariance matrix (not used)
-    py::EigenDRef<MatrixXd> Rin,
+    // Measurement error covariance matrix
+    std::optional<py::EigenDRef<MatrixXd>> R,
     // Ensemble of observation perturbations
-    py::EigenDRef<MatrixXd> Ein,
+    py::EigenDRef<MatrixXd> E,
     // (d+E-Y) Ensemble of perturbed observations - Y
     py::EigenDRef<MatrixXd> D, MatrixXd coefficient_matrix,
     const Inversion ies_inversion, const std::variant<double, int> &truncation,
     double ies_steplength) {
 
-  auto X = create_transition_matrix(Y, Rin, Ein, D, ies_inversion, truncation,
+  auto X = create_transition_matrix(Y, R, E, D, ies_inversion, truncation,
                                     coefficient_matrix, ies_steplength);
 
   A *= X;
@@ -353,12 +355,12 @@ MatrixXd makeD(const VectorXd &obs_values, const MatrixXd &E,
 PYBIND11_MODULE(_ies, m) {
   using namespace py::literals;
 
-  m.def("create_transition_matrix", &create_transition_matrix, "Y0"_a, "R"_a,
-        "E"_a, "D"_a, "ies_inversion"_a, "truncation"_a, "W"_a,
-        "ies_steplength"_a);
+  m.def("create_transition_matrix", &create_transition_matrix, "Y0"_a,
+        "R"_a = py::none(), "E"_a, "D"_a, "ies_inversion"_a, "truncation"_a,
+        "W"_a, "ies_steplength"_a);
   m.def("make_E", &makeE, "obs_errors"_a, "noise"_a);
   m.def("make_D", &makeD, "obs_values"_a, "E"_a, "S"_a);
-  m.def("update_A", &updateA, "A"_a, "Y"_a, "R"_a, "E"_a, "D"_a,
+  m.def("update_A", &updateA, "A"_a, "Y"_a, "R"_a = py::none(), "E"_a, "D"_a,
         "coefficient_matrix"_a, "inversion"_a, "truncation"_a, "step_length"_a);
 
   py::enum_<Inversion>(m, "InversionType")

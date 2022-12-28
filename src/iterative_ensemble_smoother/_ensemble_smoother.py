@@ -5,7 +5,11 @@ import numpy as np
 rng = np.random.default_rng()
 
 from ._ies import InversionType, make_D, make_E, create_transition_matrix
-from iterative_ensemble_smoother.utils import _compute_AA_projection, _validate_inputs
+from iterative_ensemble_smoother.utils import (
+    _compute_AA_projection,
+    _validate_inputs,
+    _create_errors,
+)
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -27,7 +31,8 @@ def ensemble_smoother_update_step(
         Has shape (number of observations, number of realizations). (Y in Evensen et. al)
     :param parameter_ensemble: Matrix of sampled model parameters. Has shape
         (number of parameters, number of realizations) (A in Evensen et. al).
-    :param observation_errors: List of measurement of errors for each observation.
+    :param observation_errors: Array of measurement errors for each observation,
+                               or covariance matrix if errors are correlated.
     :param observation_values: List of observations.
     :param noise: Optional list of noise used in the algorithm, Has same shape as
         response matrix.
@@ -37,6 +42,10 @@ def ensemble_smoother_update_step(
         to exact.
     :param projection: Whether to project response matrix.
     """
+
+    num_params = parameter_ensemble.shape[0]
+    R, observation_errors = _create_errors(observation_errors, inversion, num_params)
+
     _validate_inputs(
         response_ensemble,
         parameter_ensemble,
@@ -45,15 +54,14 @@ def ensemble_smoother_update_step(
         observation_values,
     )
 
-    num_params = parameter_ensemble.shape[0]
     ensemble_size = parameter_ensemble.shape[1]
     if noise is None:
         num_obs = len(observation_values)
         noise = rng.standard_normal(size=(num_obs, ensemble_size))
 
     E = make_E(observation_errors, noise)
-    R = np.identity(len(observation_errors), dtype=np.double)
     D = make_D(observation_values, E, response_ensemble)
+
     D = (D.T / observation_errors).T
     E = (E.T / observation_errors).T
     response_ensemble = (response_ensemble.T / observation_errors).T

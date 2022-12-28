@@ -5,7 +5,11 @@ import numpy as np
 rng = np.random.default_rng()
 
 from ._ies import InversionType, make_D, make_E, update_A
-from iterative_ensemble_smoother.utils import _compute_AA_projection, _validate_inputs
+from iterative_ensemble_smoother.utils import (
+    _compute_AA_projection,
+    _validate_inputs,
+    _create_errors,
+)
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -96,6 +100,12 @@ class IterativeEnsembleSmoother:
         :param inversion: The type of subspace inversion used in the algorithm, defaults
             to exact.
         """
+
+        num_params = parameter_ensemble.shape[0]
+        R, observation_errors = _create_errors(
+            observation_errors, inversion, num_params
+        )
+
         _validate_inputs(
             response_ensemble,
             parameter_ensemble,
@@ -104,7 +114,6 @@ class IterativeEnsembleSmoother:
             observation_values,
         )
 
-        num_params = parameter_ensemble.shape[0]
         num_obs = len(observation_values)
         # Note that this may differ from self._initial_ensemble_size,
         # as realizations may get deactivated between iterations.
@@ -115,7 +124,6 @@ class IterativeEnsembleSmoother:
             noise = rng.standard_normal(size=(num_obs, ensemble_size))
 
         E = make_E(observation_errors, noise)
-        R = np.identity(len(observation_errors), dtype=np.double)
         D = make_D(observation_values, E, response_ensemble)
         D = (D.T / observation_errors).T
 

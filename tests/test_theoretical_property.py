@@ -1,11 +1,32 @@
 import numpy as np
+import pytest
 
 rng = np.random.default_rng()
 
 import iterative_ensemble_smoother as ies
 
+var = 2.0
 
-def test_that_update_is_according_to_theory():
+
+@pytest.mark.parametrize(
+    "inversion,errors",
+    [
+        (ies.InversionType.EXACT, np.diag(np.array([var, var, var]))),
+        (ies.InversionType.EXACT, np.array([np.sqrt(var), np.sqrt(var), np.sqrt(var)])),
+        (ies.InversionType.EE_R, np.diag(np.array([var, var, var]))),
+        (ies.InversionType.EXACT_R, np.diag(np.array([var, var, var]))),
+        (
+            ies.InversionType.EXACT_R,
+            np.array([np.sqrt(var), np.sqrt(var), np.sqrt(var)]),
+        ),
+        (ies.InversionType.SUBSPACE_RE, np.diag(np.array([var, var, var]))),
+        (
+            ies.InversionType.SUBSPACE_RE,
+            np.array([np.sqrt(var), np.sqrt(var), np.sqrt(var)]),
+        ),
+    ],
+)
+def test_that_update_is_according_to_theory(inversion, errors):
     """
     Bayes' theorem states that
     p(x|y) is proportional to p(y|x)p(x)
@@ -20,7 +41,7 @@ def test_that_update_is_according_to_theory():
     """
     N = 1500
     nparam = 3
-    var = 2
+    var = 2.0
 
     # A is p(x)
     Sigma = var * np.identity(nparam)
@@ -29,16 +50,9 @@ def test_that_update_is_according_to_theory():
     Y = A
 
     obs_val = 10
-    # IES assumes that errors are given in the same units as the observations,
-    # which is why we take the square root of the variance.
-    observation_errors = np.array([np.sqrt(var), np.sqrt(var), np.sqrt(var)])
     observation_values = np.array([obs_val, obs_val, obs_val])
     A_ES = ies.ensemble_smoother_update_step(
-        Y,
-        A,
-        observation_errors,
-        observation_values,
-        inversion=ies.InversionType.EXACT,
+        Y, A, errors, observation_values, inversion=inversion, truncation=1.0
     )
 
     ens_mask = np.array([True] * N)
@@ -46,8 +60,10 @@ def test_that_update_is_according_to_theory():
     A_IES = ies.IterativeEnsembleSmoother(ensemble_size=N).update_step(
         Y[:, ens_mask],
         A[:, ens_mask],
-        observation_errors,
+        errors,
         observation_values,
+        truncation=1.0,
+        inversion=inversion,
         step_length=1.0,
         ensemble_mask=ens_mask,
     )

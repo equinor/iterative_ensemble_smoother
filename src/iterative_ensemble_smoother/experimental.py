@@ -24,8 +24,14 @@ def ensemble_smoother_update_step_row_scaling(
         num_obs = len(observation_values)
         noise = rng.standard_normal(size=(num_obs, ensemble_size))
 
+    if len(observation_errors.shape) == 2:
+        R = observation_errors
+        observation_errors = np.sqrt(observation_errors.diagonal())
+        R = (R.T / R.diagonal()).T
+    else:
+        R = None
+
     E = make_E(observation_errors, noise)
-    R = np.identity(len(observation_errors), dtype=np.double)
     D = make_D(observation_values, E, response_ensemble)
     D = (D.T / observation_errors).T
     E = (E.T / observation_errors).T
