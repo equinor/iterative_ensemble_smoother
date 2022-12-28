@@ -1,5 +1,9 @@
+from typing import Tuple
+
 import numpy as np
 import numpy.typing as npt
+
+from ._ies import InversionType
 
 
 def _compute_AA_projection(A: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
@@ -55,3 +59,19 @@ def _validate_inputs(
         raise ValueError(
             "observation_values must have the same number of elements as there are responses"
         )
+
+
+def _create_errors(
+    observation_errors: npt.NDArray[np.double],
+    inversion: InversionType,
+    num_params: int,
+) -> Tuple[npt.NDArray[np.double], npt.NDArray[np.double]]:
+    if len(observation_errors.shape) == 2:
+        R = observation_errors
+        observation_errors = np.sqrt(observation_errors.diagonal())
+        R = (R.T / R.diagonal()).T
+    elif len(observation_errors.shape) == 1 and inversion == InversionType.EXACT_R:
+        R = np.identity(num_params)
+    else:
+        R = None
+    return R, observation_errors
