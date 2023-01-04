@@ -1,6 +1,10 @@
-from typing import TYPE_CHECKING, Optional
+from __future__ import annotations
+from typing import Optional, TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    import numpy.typing as npt
 
 rng = np.random.default_rng()
 
@@ -11,20 +15,17 @@ from iterative_ensemble_smoother.utils import (
     _create_errors,
 )
 
-if TYPE_CHECKING:
-    import numpy.typing as npt
-
 
 def ensemble_smoother_update_step(
-    response_ensemble: "npt.NDArray[np.double]",
-    parameter_ensemble: "npt.NDArray[np.double]",
-    observation_errors: "npt.NDArray[np.double]",
-    observation_values: "npt.NDArray[np.double]",
-    noise: Optional["npt.NDArray[np.double]"] = None,
+    response_ensemble: npt.NDArray[np.double],
+    parameter_ensemble: npt.NDArray[np.double],
+    observation_errors: npt.NDArray[np.double],
+    observation_values: npt.NDArray[np.double],
+    noise: Optional[npt.NDArray[np.double]] = None,
     truncation: float = 0.98,
     inversion: InversionType = InversionType.EXACT,
     projection: bool = True,
-):
+) -> npt.NDArray[np.double]:
     """Perform one step of the ensemble smoother algorithm
 
     :param response_ensemble: Matrix of responses from the :term:`forward model`.
@@ -43,8 +44,7 @@ def ensemble_smoother_update_step(
     :param projection: Whether to project response matrix.
     """
 
-    num_params = parameter_ensemble.shape[0]
-    R, observation_errors = _create_errors(observation_errors, inversion, num_params)
+    R, observation_errors = _create_errors(observation_errors, inversion)
 
     _validate_inputs(
         response_ensemble,
@@ -54,6 +54,7 @@ def ensemble_smoother_update_step(
         observation_values,
     )
 
+    num_params = parameter_ensemble.shape[0]
     ensemble_size = parameter_ensemble.shape[1]
     if noise is None:
         num_obs = len(observation_values)
@@ -70,7 +71,7 @@ def ensemble_smoother_update_step(
         AA_projection = _compute_AA_projection(parameter_ensemble)
         response_ensemble = response_ensemble @ AA_projection
 
-    X = create_transition_matrix(
+    X: npt.NDArray[np.double] = create_transition_matrix(
         (response_ensemble - response_ensemble.mean(axis=1, keepdims=True))
         / np.sqrt(ensemble_size - 1),
         R,

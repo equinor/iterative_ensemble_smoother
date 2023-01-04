@@ -6,6 +6,10 @@ import numpy as np
 
 rng = np.random.default_rng()
 
+from iterative_ensemble_smoother.utils import (
+    _create_errors,
+)
+
 from ._ies import InversionType, make_D, make_E, create_transition_matrix
 
 
@@ -24,12 +28,7 @@ def ensemble_smoother_update_step_row_scaling(
         num_obs = len(observation_values)
         noise = rng.standard_normal(size=(num_obs, ensemble_size))
 
-    if len(observation_errors.shape) == 2:
-        R = observation_errors
-        observation_errors = np.sqrt(observation_errors.diagonal())
-        R = (R.T / R.diagonal()).T
-    else:
-        R = None
+    R, observation_errors = _create_errors(observation_errors, inversion)
 
     E = make_E(observation_errors, noise)
     D = make_D(observation_values, E, response_ensemble)
