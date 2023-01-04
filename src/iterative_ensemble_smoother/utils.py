@@ -1,7 +1,10 @@
-from typing import Tuple
+from __future__ import annotations
+from typing import Tuple, Optional, TYPE_CHECKING
 
 import numpy as np
-import numpy.typing as npt
+
+if TYPE_CHECKING:
+    import numpy.typing as npt
 
 from ._ies import InversionType
 
@@ -11,13 +14,14 @@ def _compute_AA_projection(A: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
     columns, and when the forward model is non-linear. Section 2.4.3
     """
     _, _, vh = np.linalg.svd(A - A.mean(axis=1, keepdims=True), full_matrices=False)
-    return vh.T @ vh
+    projection: npt.NDArray[np.double] = vh.T @ vh
+    return projection
 
 
 def _validate_inputs(
     response_ensemble: npt.NDArray[np.double],
     parameter_ensemble: npt.NDArray[np.double],
-    noise: npt.NDArray[np.double],
+    noise: Optional[npt.NDArray[np.double]],
     observation_errors: npt.NDArray[np.double],
     observation_values: npt.NDArray[np.double],
 ) -> None:
@@ -64,14 +68,13 @@ def _validate_inputs(
 def _create_errors(
     observation_errors: npt.NDArray[np.double],
     inversion: InversionType,
-    num_params: int,
 ) -> Tuple[npt.NDArray[np.double], npt.NDArray[np.double]]:
     if len(observation_errors.shape) == 2:
         R = observation_errors
         observation_errors = np.sqrt(observation_errors.diagonal())
         R = (R.T / R.diagonal()).T
     elif len(observation_errors.shape) == 1 and inversion == InversionType.EXACT_R:
-        R = np.identity(num_params)
+        R = np.identity(len(observation_errors))
     else:
         R = None
     return R, observation_errors

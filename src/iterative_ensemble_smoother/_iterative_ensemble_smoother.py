@@ -1,6 +1,10 @@
-from typing import TYPE_CHECKING, Optional
+from __future__ import annotations
+from typing import Optional, TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    import numpy.typing as npt
 
 rng = np.random.default_rng()
 
@@ -10,9 +14,6 @@ from iterative_ensemble_smoother.utils import (
     _validate_inputs,
     _create_errors,
 )
-
-if TYPE_CHECKING:
-    import numpy.typing as npt
 
 
 class IterativeEnsembleSmoother:
@@ -54,18 +55,18 @@ class IterativeEnsembleSmoother:
 
     def update_step(
         self,
-        response_ensemble: "npt.NDArray[np.double]",
-        parameter_ensemble: "npt.NDArray[np.double]",
-        observation_errors: "npt.NDArray[np.double]",
-        observation_values: "npt.NDArray[np.double]",
-        noise: Optional["npt.NDArray[np.double]"] = None,
+        response_ensemble: npt.NDArray[np.double],
+        parameter_ensemble: npt.NDArray[np.double],
+        observation_errors: npt.NDArray[np.double],
+        observation_values: npt.NDArray[np.double],
+        noise: Optional[npt.NDArray[np.double]] = None,
         truncation: float = 0.98,
         projection: bool = True,
         step_length: Optional[float] = None,
-        ensemble_mask: Optional["npt.ArrayLike"] = None,
-        observation_mask: Optional["npt.ArrayLike"] = None,
+        ensemble_mask: Optional[npt.NDArray[np.bool_]] = None,
+        observation_mask: Optional[npt.NDArray[np.bool_]] = None,
         inversion: InversionType = InversionType.EXACT,
-    ):
+    ) -> npt.NDArray[np.double]:
         """Perform one step of the iterative ensemble smoother algorithm
 
         :param response_ensemble: Matrix of responses from the :term:`forward model`.
@@ -101,10 +102,7 @@ class IterativeEnsembleSmoother:
             to exact.
         """
 
-        num_params = parameter_ensemble.shape[0]
-        R, observation_errors = _create_errors(
-            observation_errors, inversion, num_params
-        )
+        R, observation_errors = _create_errors(observation_errors, inversion)
 
         _validate_inputs(
             response_ensemble,
@@ -117,6 +115,7 @@ class IterativeEnsembleSmoother:
         num_obs = len(observation_values)
         # Note that this may differ from self._initial_ensemble_size,
         # as realizations may get deactivated between iterations.
+        num_params = parameter_ensemble.shape[0]
         ensemble_size = parameter_ensemble.shape[1]
         if step_length is None:
             step_length = self._get_steplength(self.iteration_nr)
@@ -135,7 +134,7 @@ class IterativeEnsembleSmoother:
             response_ensemble = response_ensemble @ AA_projection
 
         if ensemble_mask is None:
-            ensemble_mask = [True] * ensemble_size
+            ensemble_mask = np.array([True] * ensemble_size)
 
         coefficient_matrix = update_A(
             parameter_ensemble,
