@@ -153,16 +153,7 @@ void lowrankCinv(
 }
 
 /**
- * Implementation of algorithm as described in
- * "Efficient Implementation of an Iterative Ensemble Smoother for Data
- * Assimilation and Reservoir History Matching"
- * https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full
- *
- * Section 2.4.3
- */
-/**
- *  The standard inversion works on the equation
- *          S'*(S*S'+R)^{-1} H           (a)
+ * Sections 3.3 and 3.4
  */
 void subspace_inversion(MatrixXd &W, const Inversion ies_inversion,
                         const MatrixXd &E,
