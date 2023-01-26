@@ -196,7 +196,8 @@ void exact_inversion(MatrixXd &W, const MatrixXd &S, const MatrixXd &H,
                      double ies_steplength) {
   int ens_size = S.cols();
 
-  MatrixXd C = S.transpose() * S + MatrixXd::Identity(ens_size, ens_size);
+  MatrixXd C = S.transpose() * S;
+  C.diagonal().array() += 1;
 
   auto svd = C.bdcSvd(Eigen::ComputeFullV);
 
