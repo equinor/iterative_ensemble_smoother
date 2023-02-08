@@ -24,7 +24,7 @@ authors = [
 
 maintainers = [
     {name="Eivind Jahren", email="ejah@equinor.com"},
-    {name="Eirik Leikvoll", email="eleik@equinor.com"},
+    {name="Feda Curic", email="fcur@equinor.com"},
 ]
 
 [project.license]
