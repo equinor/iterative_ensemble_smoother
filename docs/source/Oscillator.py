@@ -6,24 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.14.1
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
-# %%
-# flake8: noqa
-# ---
-# jupyter:
-#   jupytext:
-#     formats: ipynb,py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.13.8
+#       jupytext_version: 1.14.4
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -32,7 +15,7 @@
 
 # %% [markdown]
 # # Example: Estimating parameters of an anharmonic oscillator
-
+#
 # The anharnomic oscillator can be modelled by a non-linear partial differential
 # equation as described in section 6.4.3 of the book Fundamentals of Algorithms
 # and Data Assimilation by Mark Asch, Marc Bocquet and Maëlle Nodet.
@@ -65,7 +48,6 @@ from scipy.special import erf
 
 
 def _generate_observations(K):
-
     x = _evaluate(omega=3.5e-2, lmbda=3e-4, K=K)
     rng = np.random.default_rng(12345)
     nobs = 50
@@ -140,7 +122,9 @@ plot_result(A, response_x_axis, uniform, priors)
 responses_before = forward_model(A, priors, response_x_axis)
 Y = responses_before[observation_x_axis]
 
-new_A = ies.ensemble_smoother_update_step(Y, A, observation_errors, observation_values)
+smoother = ies.ES()
+smoother.fit(Y, observation_errors, observation_values)
+new_A = smoother.update(A)
 
 plot_result(new_A, response_x_axis, uniform, priors)
 
@@ -156,7 +140,7 @@ import iterative_ensemble_smoother as ies
 def iterative_smoother():
     A_current = np.copy(A)
     iterations = 4
-    smoother = ies.IterativeEnsembleSmoother(realizations)
+    smoother = ies.SIES(realizations)
 
     for _ in range(iterations):
         plot_result(A_current, response_x_axis, uniform, priors)
@@ -164,9 +148,8 @@ def iterative_smoother():
         responses_before = forward_model(A_current, priors, response_x_axis)
         Y = responses_before[observation_x_axis]
 
-        A_current = smoother.update_step(
-            Y, A_current, observation_errors, observation_values
-        )
+        smoother.fit(Y, observation_errors, observation_values)
+        A_current = smoother.update(A_current)
     plot_result(A_current, response_x_axis, uniform, priors)
 
 
@@ -186,6 +169,7 @@ def es_mda():
     weights = [8, 4, 2, 1]
     length = sum(1.0 / x for x in weights)
 
+    smoother = ies.ES()
     for weight in weights:
         plot_result(A_current, response_x_axis, uniform, priors)
 
@@ -193,10 +177,11 @@ def es_mda():
         Y = responses_before[observation_x_axis]
 
         observation_errors_scaled = observation_errors * sqrt(weight * length)
-        A_current = ies.ensemble_smoother_update_step(
-            Y, A_current, observation_errors_scaled, observation_values
-        )
+        smoother.fit(Y, observation_errors_scaled, observation_values)
+        A_current = smoother.update(A_current)
     plot_result(A_current, response_x_axis, uniform, priors)
 
 
 es_mda()
+
+# %%

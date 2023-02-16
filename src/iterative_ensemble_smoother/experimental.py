@@ -10,7 +10,7 @@ from iterative_ensemble_smoother.utils import (
     _create_errors,
 )
 
-from ._ies import InversionType, make_D, make_E, create_transition_matrix
+from ._ies import InversionType, make_D, make_E, create_coefficient_matrix
 
 
 def ensemble_smoother_update_step_row_scaling(
@@ -35,8 +35,8 @@ def ensemble_smoother_update_step_row_scaling(
     D = (D.T / observation_errors).T
     E = (E.T / observation_errors).T
     response_ensemble = (response_ensemble.T / observation_errors).T
-    for (A, row_scale) in A_with_row_scaling:
-        X = create_transition_matrix(
+    for A, row_scale in A_with_row_scaling:
+        X = create_coefficient_matrix(
             (response_ensemble - response_ensemble.mean(axis=1, keepdims=True))
             / np.sqrt(ensemble_size - 1),
             R,

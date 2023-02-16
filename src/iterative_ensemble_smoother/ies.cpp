@@ -208,17 +208,28 @@ void exact_inversion(MatrixXd &W, const MatrixXd &S, const MatrixXd &H,
 }
 
 /**
+ * @brief Computer coefficient matrix (W) following steps 4-8
+ * of Algorithm 1.
+ *
+ * W = W - ies_steplength * (W - S' * (S * S' + R)^{-1} * H)
+ * When R=I Line 9 can be rewritten as
+ * W = W - ies_steplength * ( W - (S'*S + I)^{-1} * S' * H )
+ * Notice the expression being inverted.
+ * Instead of S * S' which is a (num_obs, num_obs) sized matrix,
+ * we get S' * S which is of size (ensemble_size, ensemble_size).
+ * This is great since num_obs is usually much larger than ensemble_size.
+ *
  * @param Y Predicted ensemble anomalies normalized by sqrt(N-1),
  *          where N is the number of realizations.
  *          See line 4 of Algorithm 1 and Eq. 30.
  */
-MatrixXd create_transition_matrix(py::EigenDRef<MatrixXd> Y,
-                                  std::optional<py::EigenDRef<MatrixXd>> R,
-                                  py::EigenDRef<MatrixXd> E,
-                                  py::EigenDRef<MatrixXd> D,
-                                  const Inversion ies_inversion,
-                                  const std::variant<double, int> &truncation,
-                                  MatrixXd &W, double ies_steplength)
+MatrixXd create_coefficient_matrix(py::EigenDRef<MatrixXd> Y,
+                                   std::optional<py::EigenDRef<MatrixXd>> R,
+                                   py::EigenDRef<MatrixXd> E,
+                                   py::EigenDRef<MatrixXd> D,
+                                   const Inversion ies_inversion,
+                                   const std::variant<double, int> &truncation,
+                                   MatrixXd &W, double ies_steplength)
 
 {
   const int ens_size = Y.cols();
@@ -241,27 +252,14 @@ MatrixXd create_transition_matrix(py::EigenDRef<MatrixXd> Y,
   MatrixXd H = D + S * W;
 
   /*
-   * COMPUTE NEW UPDATED W (Line 9 of Algorithm 1)
-   * W = W - ies_steplength * (W - S' * (S * S' + R)^{-1} * H)
-   * When R=I Line 9 can be rewritten as
-   * W = W - ies_steplength * ( W - (S'*S + I)^{-1} * S' * H )
-   * Notice the expression being inverted.
-   * Instead of S * S' which is a (num_obs, num_obs) sized matrix,
-   * we get S' * S which is of size (ensemble_size, ensemble_size).
-   * This is great since num_obs is usually much larger than ensemble_size.
-   *
    * With R=I the subspace inversion (ies_inversion=1) with
    * singular value trucation=1.000 gives exactly the same solution as the exact
-   * inversion (ies_inversion=0).
-   *
-   * Using ies_inversion=IES_INVERSION_SUBSPACE_EXACT_R(2), and a step length
-   * of 1.0, one update gives identical result to STD as long as the same SVD
-   * truncation is used.
+   * inversion (`ies_inversion`=Inversion::exact).
    *
    * With very large data sets it is likely that the inversion becomes poorly
-   * conditioned and a trucation=1.000 is not a good choice. In this case the
-   * ies_inversion > 0 and truncation set to 0.99 or so, should stabelize
-   * the algorithm.
+   * conditioned and a trucation=1.0 is not a good choice. In this case
+   * `ies_inversion` other than Inversion::exact and truncation set to less
+   * than 1.0 could stabilize the algorithm.
    */
 
   if (ies_inversion == Inversion::exact) {
@@ -271,36 +269,7 @@ MatrixXd create_transition_matrix(py::EigenDRef<MatrixXd> Y,
                        ies_steplength);
   }
 
-  /* Line 9 of Algorithm 1 */
-  MatrixXd X = W;
-  X /= sqrt(ens_size - 1.0);
-  X.diagonal().array() += 1;
-
-  return X;
-}
-
-/**
- * @param Y Predicted ensemble anomalies normalized by sqrt(ensemble_size-1).
- *          See line 4 of Algorithm 1 and Eq. 30.
- */
-MatrixXd updateA(
-    // Updated ensemble A retured to ERT.
-    py::EigenDRef<MatrixXd> A, py::EigenDRef<MatrixXd> Y,
-    // Measurement error covariance matrix
-    std::optional<py::EigenDRef<MatrixXd>> R,
-    // Ensemble of observation perturbations
-    py::EigenDRef<MatrixXd> E,
-    // (d+E-Y) Ensemble of perturbed observations - Y
-    py::EigenDRef<MatrixXd> D, MatrixXd coefficient_matrix,
-    const Inversion ies_inversion, const std::variant<double, int> &truncation,
-    double ies_steplength) {
-
-  auto X = create_transition_matrix(Y, R, E, D, ies_inversion, truncation,
-                                    coefficient_matrix, ies_steplength);
-
-  A *= X;
-
-  return X;
+  return W;
 }
 
 MatrixXd makeE(const VectorXd &obs_errors, const MatrixXd &noise) {
@@ -333,13 +302,11 @@ MatrixXd makeD(const VectorXd &obs_values, const MatrixXd &E,
 PYBIND11_MODULE(_ies, m) {
   using namespace py::literals;
 
-  m.def("create_transition_matrix", &create_transition_matrix, "Y0"_a,
+  m.def("create_coefficient_matrix", &create_coefficient_matrix, "Y0"_a,
         "R"_a = py::none(), "E"_a, "D"_a, "ies_inversion"_a, "truncation"_a,
         "W"_a, "ies_steplength"_a);
   m.def("make_E", &makeE, "obs_errors"_a, "noise"_a);
   m.def("make_D", &makeD, "obs_values"_a, "E"_a, "S"_a);
-  m.def("update_A", &updateA, "A"_a, "Y"_a, "R"_a = py::none(), "E"_a, "D"_a,
-        "coefficient_matrix"_a, "inversion"_a, "truncation"_a, "step_length"_a);
 
   py::enum_<Inversion>(m, "InversionType")
       .value("EXACT", Inversion::exact)
