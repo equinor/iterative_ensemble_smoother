@@ -40,7 +40,7 @@ def guassian_to_uniform(min_x, max_x):
 # iterative_ensemble_smoother library.
 
 # The setup contains a forward model (a second degree polynomial in this case),
-# where the coefficents of the polynomial is the model parameters.
+# where the coefficents of the polynomial are the model parameters.
 
 # There are 5 time steps t=0,1,2,3,4 and 3 observations at t=0,2,4.
 number_of_observations = 3
@@ -54,7 +54,7 @@ number_of_realizations = 10
 
 def forward_model(model_parameters):
     """Our :term:`forward_model` is s_0 * t**2 + s_1 * t + s_2 where s_0,
-    s_1,s_2 is the model parameters and t is the time.
+    s_1,s_2 are the model parameters and t is the time.
     """
     return np.array(
         [
@@ -116,9 +116,16 @@ def test_iterative_ensemble_smoother_update_step(snapshot, initial_A, initial_S)
     # for the ensemble
     rng = np.random.default_rng(12345)
     noise = rng.standard_normal(size=(len(observation_values), initial_A.shape[1]))
-    new_A = ies.ensemble_smoother_update_step(
-        initial_S, initial_A, observation_errors, observation_values, noise=noise
+    smoother = ies.SIES(ensemble_size=initial_A.shape[1])
+    smoother.fit(
+        initial_S,
+        observation_errors,
+        observation_values,
+        noise=noise,
+        step_length=1.0,
+        param_ensemble=initial_A,
     )
+    new_A = smoother.update(initial_A)
     assert new_A.shape == initial_A.shape
     assert new_A.dtype == initial_A.dtype
     snapshot.assert_match(
@@ -148,9 +155,17 @@ def test_ensemble_smoother_update_step(snapshot, initial_A, initial_S):
     # for the ensemble
     rng = np.random.default_rng(12345)
     noise = rng.standard_normal(size=(len(observation_values), initial_A.shape[1]))
-    new_A = ies.ensemble_smoother_update_step(
-        initial_S, initial_A, observation_errors, observation_values, noise=noise
+    ensemble_size = initial_A.shape[1]
+    smoother = ies.SIES(ensemble_size)
+    smoother.fit(
+        initial_S,
+        observation_errors,
+        observation_values,
+        step_length=1.0,
+        noise=noise,
+        param_ensemble=initial_A,
     )
+    new_A = smoother.update(initial_A)
     assert new_A.shape == initial_A.shape
     assert new_A.dtype == initial_A.dtype
     snapshot.assert_match(to_csv(new_A), "test_ensemble_smoother_update_step.csv")
@@ -169,6 +184,6 @@ def test_get_steplength():
         3.118117598427644355e-01,
         3.074409424311009276e-01,
     ]
-    iterative_es = ies.IterativeEnsembleSmoother(0)
+    iterative_es = ies.SIES(0)
     steplengths = [iterative_es._get_steplength(i) for i in range(10)]
     testing.assert_array_equal(expected, steplengths)

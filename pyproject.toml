@@ -52,7 +52,9 @@ dev = [
     "pre-commit",
     "matplotlib",
     "scipy",
-    "mypy"
+    "mypy",
+    "pandas",
+    "p_tqdm"
 ]
 
 [tool.setuptools_scm]

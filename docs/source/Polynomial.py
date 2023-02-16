@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.14.1
+#       jupytext_version: 1.14.4
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -14,185 +14,179 @@
 # ---
 
 # %% [markdown]
-# # Example: Polynomial function
+# # Fitting a polynomial with Gaussian priors
 #
-#
-# The following is an example of history matching with the
-# iterative_ensemble_smoother library.
-
-# ## Setup
-#
-# The setup contains a forward model (a second degree polynomial in this case),
-# where the coefficents of the polynomial is the model parameters.
-#
-# There are 5 time steps t=0,1,2,3,4 and 3 observations at t=0,2,4.
+# We fit a simple polynomial with Gaussian priors, which is an example of a Gauss-linear problem for which the results obtained using Subspace Iterative Ensemble Smoother (SIES) tend to those obtained using Ensemble Smoother (ES).
+# This notebook illustrated this property.
 # %%
 import numpy as np
+import pandas as pd
 
-number_of_observations = 3
-number_of_time_steps = 5
-observation_times = np.array([0, 2, 4])
-number_of_realizations = 100
+np.set_printoptions(suppress=True)
+rng = np.random.default_rng(12345)
 
+import matplotlib.pyplot as plt
 
-# %% [markdown]
-# Before history matching, these observations are predicted by the forward
-# model with the priors. In this case a polynomial function:
-# %%
-def forward_model(model_parameters):
-    """Our :term:`forward_model` is s_0 * t**2 + s_1 * t + s_2 where s_0,
-    s_1,s_2 is the model parameters and t is the time.
-    """
-    return np.array(
-        [
-            sum(
-                parameter * time ** (2 - i)
-                for i, parameter in enumerate(model_parameters)
-            )
-            for time in range(number_of_time_steps)
-        ]
-    )
+plt.rcParams["figure.figsize"] = (6, 6)
+plt.rcParams.update({"font.size": 10})
+from ipywidgets import interact
+import ipywidgets as widgets
 
+from p_tqdm import p_map
 
-# %% [markdown]
-# We create some simple plotting of forward-model with a single response
-# and parameters. The plots show the responses as a linegraph on the left,
-# and the distribution of the parameters towards the right.
-# %%
-from matplotlib import pyplot as plt
-
-
-def plot_result(A, responses, priors):
-    if priors is None:
-        priors = []
-    plt.rcParams["figure.figsize"] = [15, 4]
-    _, axs = plt.subplots(1, 1 + len(A))
-
-    axs[0].plot(range(number_of_time_steps), responses)
-    for i, param in enumerate(A):
-        A_trans = np.array([priors[i](v) for v in param])
-        axs[i + 1].hist(A_trans, bins=10)
-    plt.show()
-
-
-# %% [markdown]
-# We require a transformation of standard guassian random
-# variables (which arise from the algorithm) to uniformly
-# distributed variables inside an interval.
-# %%
-from math import sqrt
-
-from scipy.special import erf
-
-
-def guassian_to_uniform(min_x, max_x):
-    """Maps a standard guassian random variable
-        to random variable, uniformly distributied between
-        min_x and max_x.
-    :param min_x: The lower bound on the returned value.
-    :param max_x: The upper bound on the returned value.
-    """
-
-    def random_variable(x):
-        """maps standard normal random outcome x to
-        uniform outcome between min_x and max_x.
-        """
-        y = 0.5 * (1 + erf(x / sqrt(2.0)))
-        return y * (max_x - min_x) + min_x
-
-    return random_variable
-
-
-# %% [markdown]
-# The priors at t=0,2,4 are assumed uniform in [0,1], [0,2] and [0,5]
-# respectively.
-# %%
-priors = [
-    guassian_to_uniform(0, 1),
-    guassian_to_uniform(0, 2),
-    guassian_to_uniform(0, 5),
-]
-
-# %% [markdown]
-# As input to the history matching we have the observed values in
-# `observation_values`. These would normally be historic measurements.
-# %%
-observation_values = np.array(
-    [2.8532509308, 7.20311703432, 21.3864899107, 31.5145559347, 53.5676660405]
-)
-
-# %% [markdown]
-# The observed values have the measurement errors in `observation_errors`.
-# A is populated with initial guesses for the parameters of the ensemble.
-
-# As input to the history matching we have the following
-# observed values. These would normally be historic measurements.
-# %%
-observation_values = np.array([2.8532509308, 7.20311703432, 21.3864899107])
-# The observed values have the following measurement errors
-observation_errors = np.array([0.5 * (x + 1) for x, _ in enumerate(observation_values)])
-# The A matrix of model parameters is initially randomly generated
-A = np.random.normal(0, 1, size=(3, number_of_realizations))
-
-responses = forward_model([prior(x) for prior, x in zip(priors, A)])
-
-plot_result(A, responses, priors)
-
-# %% [markdown]
-# The above plot shows our initial forward models on the left, and the
-# distribution of parameters towards the right.
-
-# ## Update step
-# Now we perform one update step using the ensemble smoother algorithm
-
-# %%
 import iterative_ensemble_smoother as ies
 
-new_A = ies.ensemble_smoother_update_step(
-    responses[observation_times], A, observation_errors, observation_values
+# %% [markdown]
+# ## Define synthetic truth and use it to create noisy observations
+
+# %%
+ensemble_size = 200
+
+
+def poly(a, b, c, x):
+    return a * x**2 + b * x + c
+
+
+# True patameter values
+a_t = 0.5
+b_t = 1.0
+c_t = 3.0
+
+noise_scale = 0.01
+x_observations = [0, 2, 4, 6, 8]
+observations = [
+    (
+        poly(a_t, b_t, c_t, x)
+        + rng.normal(loc=0, scale=noise_scale * poly(a_t, b_t, c_t, x)),
+        noise_scale * poly(a_t, b_t, c_t, x),
+        x,
+    )
+    for x in x_observations
+]
+
+d = pd.DataFrame(observations, columns=["value", "sd", "x"])
+d = d.set_index("x")
+num_obs = d.shape[0]
+
+fig, ax = plt.subplots()
+x_plot = np.linspace(0, 10, 50)
+ax.set_title("Truth and noisy observations")
+ax.set_xlabel("Time step")
+ax.set_ylabel("Response")
+ax.plot(x_plot, poly(a_t, b_t, c_t, x_plot))
+ax.plot(d.index.get_level_values("x"), d.value.values, "o")
+ax.grid()
+
+# %% [markdown]
+# ## Assume diagonal observation error covariance matrix and define perturbed observations
+
+# %%
+R = np.diag(d.sd.values**2)
+
+E = rng.multivariate_normal(mean=np.zeros(len(R)), cov=R, size=ensemble_size).T
+assert E.shape == (num_obs, ensemble_size)
+
+D = np.ones((num_obs, ensemble_size)) * d.value.values.reshape(-1, 1) + E
+
+# %% [markdown]
+# ## Define Gaussian priors
+
+# %%
+coeff_a = rng.normal(0, 1, size=ensemble_size)
+coeff_b = rng.normal(0, 1, size=ensemble_size)
+coeff_c = rng.normal(0, 1, size=ensemble_size)
+
+X = np.concatenate(
+    (coeff_a.reshape(-1, 1), coeff_b.reshape(-1, 1), coeff_c.reshape(-1, 1)), axis=1
+).T
+
+# %% [markdown]
+# ## Run forward model in parallel
+
+# %%
+fwd_runs = p_map(
+    poly,
+    coeff_a,
+    coeff_b,
+    coeff_c,
+    [np.arange(max(x_observations) + 1)] * ensemble_size,
+    desc=f"Running forward model.",
 )
-plot_result(new_A, responses, priors)
 
 # %% [markdown]
-# The plot shows that the distribution of the parameters has changed and the
-# forward models are now more consentrated around the measurements.
-#
-# ## Iterative smoother
-# We can also perform an update using the iterative ensemble smoother. The
-# following performs 4 update steps, and plots the resulting ensemble for
-# each step.
-# %%
-smoother = ies.IterativeEnsembleSmoother(number_of_realizations)
-A_current = np.copy(A)
+# ## Pick responses where we have observations
 
-for _ in range(4):
-    responses = forward_model([prior(x) for prior, x in zip(priors, A_current)])
-    A_current = smoother.update_step(
-        responses[observation_times],
-        A_current,
-        observation_errors,
-        observation_values,
-    )
-    plot_result(A_current, responses, priors)
+# %%
+Y = np.array(
+    [fwd_run[d.index.get_level_values("x").to_list()] for fwd_run in fwd_runs]
+).T
+
+assert Y.shape == (
+    num_obs,
+    ensemble_size,
+), "Measured responses must be a matrix with dimensions (number of observations x number of realisations)"
 
 # %% [markdown]
-#
-# ## ES-MDA
-# We can also perform an update using the ES-MDA (Multiple Data Assimilation -
-# Ensemble Smoother). The following performs 4 update steps, and plots
-# the resulting ensemble for each step.
-# %%
-A_current = np.copy(A)
+# ## Condition on observations to calculate posterior using both `ES` and `SIES`
 
-weights = [8, 4, 2, 1]
-length = sum(1.0 / x for x in weights)
-for weight in weights:
-    responses = forward_model([prior(x) for prior, x in zip(priors, A_current)])
-    observation_errors_scaled = observation_errors * sqrt(weight * length)
-    A_current = ies.ensemble_smoother_update_step(
-        responses[observation_times],
-        A_current,
-        observation_errors_scaled,
-        observation_values,
+# %%
+X_ES_ert = X.copy()
+Y_ES_ert = Y.copy()
+smoother_es = ies.ES()
+smoother_es.fit(Y_ES_ert, d.sd.values, d.value.values, noise=E)
+X_ES_ert = smoother_es.update(X_ES_ert)
+
+X_IES_ert = X.copy()
+Y_IES_ert = Y.copy()
+smoother_ies = ies.SIES(ensemble_size=ensemble_size)
+n_ies_iter = 7
+for i in range(n_ies_iter):
+    smoother_ies.fit(Y_IES_ert, d.sd.values, d.value.values, noise=E)
+    X_IES_ert = smoother_ies.update(X_IES_ert)
+
+    _coeff_a = X_IES_ert[0, :]
+    _coeff_b = X_IES_ert[1, :]
+    _coeff_c = X_IES_ert[2, :]
+
+    _fwd_runs = p_map(
+        poly,
+        _coeff_a,
+        _coeff_b,
+        _coeff_c,
+        [np.arange(max(x_observations) + 1)] * ensemble_size,
+        desc=f"SIES ert iteration {i}",
     )
-    plot_result(A_current, responses, priors)
+
+    Y_IES_ert = np.array(
+        [fwd_run[d.index.get_level_values("x").to_list()] for fwd_run in _fwd_runs]
+    ).T
+
+
+# %% [markdown]
+# ## Plots to compare results
+
+
+# %%
+def plot_posterior(ax, posterior, method):
+    for i, param in enumerate(["a", "b", "c"]):
+        ax[i].set_title(param)
+        ax[i].hist(posterior[i, :], label=f"{method} posterior", alpha=0.5)
+        ax[i].legend()
+
+    fig.tight_layout()
+    return ax
+
+
+fig, ax = plt.subplots(nrows=3)
+fig.set_size_inches(8, 8)
+
+for i in range(3):
+    ax[i].hist(X[i, :], label="prior")
+ax[0].axvline(a_t, color="k", linestyle="--", label="truth")
+ax[1].axvline(b_t, color="k", linestyle="--", label="truth")
+ax[2].axvline(c_t, color="k", linestyle="--", label="truth")
+
+plot_posterior(ax, X_ES_ert, method="ES ert")
+_ = plot_posterior(ax, X_IES_ert, method=f"SIES ert ({n_ies_iter})")
+
+# %%

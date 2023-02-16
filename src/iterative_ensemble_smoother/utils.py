@@ -9,35 +9,19 @@ if TYPE_CHECKING:
 from ._ies import InversionType
 
 
-def _compute_AA_projection(A: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
-    """A^+A projection is necessary when the parameter matrix has fewer rows than
-    columns, and when the forward model is non-linear. Section 2.4.3
-    """
-    _, _, vh = np.linalg.svd(A - A.mean(axis=1, keepdims=True), full_matrices=False)
-    projection: npt.NDArray[np.double] = vh.T @ vh
-    return projection
-
-
 def _validate_inputs(
     response_ensemble: npt.NDArray[np.double],
-    parameter_ensemble: npt.NDArray[np.double],
     noise: Optional[npt.NDArray[np.double]],
     observation_errors: npt.NDArray[np.double],
     observation_values: npt.NDArray[np.double],
 ) -> None:
-
     if len(response_ensemble.shape) != 2:
         raise ValueError(
             "response_ensemble must be a matrix of size (number of responses by number of realizations)"
         )
 
-    if len(parameter_ensemble.shape) != 2:
-        raise ValueError(
-            "parameter_ensemble must be a matrix of size (number of parameters by number of realizations)"
-        )
-
     num_responses = response_ensemble.shape[0]
-    ensemble_size = parameter_ensemble.shape[1]
+    ensemble_size = response_ensemble.shape[1]
 
     if response_ensemble.shape[1] != ensemble_size:
         raise ValueError(

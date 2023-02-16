@@ -4,12 +4,14 @@ for Data Assimilation and Reservoir History Matching"
 https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full
 """
 
-from ._ensemble_smoother import ensemble_smoother_update_step
 from ._ies import InversionType
-from ._iterative_ensemble_smoother import IterativeEnsembleSmoother
+from ._iterative_ensemble_smoother import (
+    ES,
+    SIES,
+)
 
 __all__ = [
-    "ensemble_smoother_update_step",
-    "IterativeEnsembleSmoother",
+    "ES",
+    "SIES",
     "InversionType",
 ]
