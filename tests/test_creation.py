@@ -17,6 +17,8 @@ def test_that_repr_can_be_created():
 def test_that_bad_inputs_cause_nice_error_messages():
     ensemble_size = 10
     num_obs = 4
+    num_params = 3
+    param_ensemble = np.random.normal(size=(num_obs, ensemble_size))
     Y = np.ones(shape=(num_obs, ensemble_size))
     obs_errors = np.ones(num_obs)
     obs_values = np.ones(num_obs)
@@ -57,3 +59,29 @@ def test_that_bad_inputs_cause_nice_error_messages():
         ),
     ):
         _ = SIES(ensemble_size).fit(Y, obs_errors[1:], obs_values[1:], noise=noise)
+
+    with pytest.raises(
+        ValueError,
+        match="param_ensemble and response_ensemble must have the same number of columns",
+    ):
+        _ = SIES(ensemble_size).fit(
+            Y,
+            obs_errors,
+            obs_values,
+            noise=noise,
+            param_ensemble=param_ensemble[:, : ensemble_size - 2],
+        )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "parameter_ensemble must be a matrix of size (number of parameters by number of realizations)"
+        ),
+    ):
+        _ = SIES(ensemble_size).fit(
+            Y,
+            obs_errors,
+            obs_values,
+            noise=noise,
+            param_ensemble=param_ensemble[0, :].ravel(),
+        )

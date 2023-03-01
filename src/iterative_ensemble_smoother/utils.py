@@ -14,6 +14,7 @@ def _validate_inputs(
     noise: Optional[npt.NDArray[np.double]],
     observation_errors: npt.NDArray[np.double],
     observation_values: npt.NDArray[np.double],
+    param_ensemble: Optional[npt.NDArray[np.double]] = None,
 ) -> None:
     if len(response_ensemble.shape) != 2:
         raise ValueError(
@@ -46,6 +47,16 @@ def _validate_inputs(
     if len(observation_values) != num_responses:
         raise ValueError(
             "observation_values must have the same number of elements as there are responses"
+        )
+
+    if param_ensemble is not None and len(param_ensemble.shape) != 2:
+        raise ValueError(
+            "parameter_ensemble must be a matrix of size (number of parameters by number of realizations)"
+        )
+
+    if param_ensemble is not None and param_ensemble.shape[1] != ensemble_size:
+        raise ValueError(
+            "param_ensemble and response_ensemble must have the same number of columns"
         )
 
 
