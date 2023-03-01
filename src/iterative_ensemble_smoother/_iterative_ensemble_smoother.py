@@ -113,6 +113,7 @@ class SIES:
             noise,
             observation_errors,
             observation_values,
+            param_ensemble=param_ensemble,
         )
 
         num_obs = len(observation_values)
