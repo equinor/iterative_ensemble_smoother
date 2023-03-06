@@ -1,4 +1,4 @@
-from iterative_ensemble_smoother import ES, SIES
+from iterative_ensemble_smoother import ES, SIES, InversionType
 import numpy as np
 import pytest
 import re
@@ -85,3 +85,32 @@ def test_that_bad_inputs_cause_nice_error_messages():
             noise=noise,
             param_ensemble=param_ensemble[0, :].ravel(),
         )
+
+
+def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
+    rng = np.random.default_rng()
+    # Creating response matrix with large outlier that will
+    # lead to NaNs.
+    response_ensemble = np.array([[1, 1, 1e19], [1, 10, 100]])
+    noise = rng.normal(size=(2, 3))
+    obs_error = np.array([1, 2])
+    obs_value = np.array([10, 20])
+    smoother = ES()
+
+    with pytest.raises(
+        ValueError,
+        match="Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation.",
+    ):
+        smoother.fit(response_ensemble, obs_error, obs_value, noise=noise)
+
+    # Running with an inversion type that does truncation does not produce NaNs.
+    param_ensemble = np.array([[1, 2, 3]])
+    smoother.fit(
+        response_ensemble,
+        obs_error,
+        obs_value,
+        noise=noise,
+        inversion=InversionType.EXACT_R,
+    )
+    param_ensemble = smoother.update(param_ensemble)
+    assert np.isnan(param_ensemble).sum() == 0

@@ -153,6 +153,11 @@ class SIES:
             step_length,
         )
 
+        if np.isnan(W).sum() != 0:
+            raise ValueError(
+                "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."
+            )
+
         self.iteration_nr += 1
 
         self.coefficient_matrix[np.outer(ensemble_mask, ensemble_mask)] = W.ravel()
