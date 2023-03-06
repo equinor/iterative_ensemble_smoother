@@ -167,10 +167,8 @@ class SIES:
         ensemble_size = self.ensemble_mask.sum()
         I = np.identity(ensemble_size)
         W = self.coefficient_matrix[self.ensemble_mask, :][:, self.ensemble_mask]
-        transition_matrix: npt.NDArray[np.double] = param_ensemble @ (
-            I + W / np.sqrt(ensemble_size - 1)
-        )
-        return transition_matrix
+        transition_matrix: npt.NDArray[np.double] = I + W / np.sqrt(ensemble_size - 1)
+        return param_ensemble @ transition_matrix
 
     def __repr__(self) -> str:
         return (

@@ -36,7 +36,7 @@ def ensemble_smoother_update_step_row_scaling(
     E = (E.T / observation_errors).T
     response_ensemble = (response_ensemble.T / observation_errors).T
     for A, row_scale in A_with_row_scaling:
-        X = create_coefficient_matrix(
+        W = create_coefficient_matrix(
             (response_ensemble - response_ensemble.mean(axis=1, keepdims=True))
             / np.sqrt(ensemble_size - 1),
             R,
@@ -47,5 +47,7 @@ def ensemble_smoother_update_step_row_scaling(
             np.zeros((ensemble_size, ensemble_size)),
             1.0,
         )
-        row_scale.multiply(A, X)
+        I = np.identity(ensemble_size)
+        transition_matrix = I + W / np.sqrt(ensemble_size - 1)
+        row_scale.multiply(A, transition_matrix)
     return A_with_row_scaling
