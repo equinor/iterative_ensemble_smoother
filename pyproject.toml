@@ -42,7 +42,9 @@ doc = [
     "nbsphinx",
     "sphinxcontrib.bibtex",
     "matplotlib",
-    "jupytext"
+    "jupytext",
+    "pandas",
+    "p_tqdm"
 ]
 dev = [
     "pytest",
