@@ -52,8 +52,8 @@ def subspace_ies(
     """
     parameters, realizations = X.shape
     projection = not linear and parameters < realizations
-    if(projection):
-        print("Using projection matrix")
+    #if(projection):
+        #print("Using projection matrix")
     m = D.shape[0]
     W = np.zeros((realizations, realizations))
     Xi = X.copy()
@@ -99,27 +99,53 @@ def loss_function(xj, xj_prior, dj, Cxx, Cdd, g):
 
 
 # %%
-# Generate data
-#rng = np.random.default_rng(12345)
-realizations = 1000
-# sample x
-x1 = -1.0
-x1_sd = 1.0
-x = np.array([x1])
-bias = 1
-# Define prior
-X = np.array([
-    np.random.normal(x[0]+bias, x1_sd, size=(1,realizations))#, 
-    #np.random.normal(x2-bias, x2_sd, size=(1,realizations))
-]).reshape(1,realizations)
+res = []
+for _ in range(1000):
+    # Generate data
+    #rng = np.random.default_rng(12345)
+    realizations = 30
+    # sample x
+    x1 = -1.0
+    x1_sd = 1.0
+    x = np.array([x1])
+    bias = 1
+    # Define prior
+    X = np.array([
+        np.random.normal(x[0]+bias, x1_sd, size=(1,realizations)), 
+    ]).reshape(1,realizations)
 
-# Define observations with very little uncertainty
-d_sd = 1.0
-D = np.random.normal(g(x), d_sd, size=(1,realizations))
+    # Define observations with very little uncertainty
+    d_sd = 1.0
+    D = np.random.normal(g(x), d_sd, size=(1,realizations))
+    
+    # Find solutions with and without projection
+    iterations = 1
+    Xi_proj = subspace_ies(X, D, g, False, 0.3, iterations) # with projection
+    Xi_no_proj = subspace_ies(X, D, g, True, 0.3, iterations) # without projection
+    
+    centering_matrix = (
+        np.identity(realizations) - 
+        np.ones((realizations,realizations))/realizations
+    )/np.sqrt(realizations-1)
+    A = X @ centering_matrix
+    E = D @ centering_matrix
+    Cxx = A @ A.T
+    Cdd = E @ E.T
+    
+    loss_proj = [loss_function(Xi_proj[:,j], X[:,j], D[:,j], Cxx, Cdd, g) for j in range(realizations)]
+    loss_no_proj = [loss_function(Xi_no_proj[:,j], X[:,j], D[:,j], Cxx, Cdd, g) for j in range(realizations)]
+    
+    # is projection solution better?
+    res.append(np.sum(loss_proj) < np.sum(loss_no_proj))
 
 # %%
-Xi_proj = subspace_ies(X, D, g, False, 0.3, 50)
-Xi_no_proj = subspace_ies(X, D, g, True, 0.3, 50)
+all(res)
+
+# %%
+# Find solutions with and without projection
+iterations = 1
+Xi_proj = subspace_ies(X, D, g, False, 0.3, iterations) # with projection
+Xi_no_proj = subspace_ies(X, D, g, True, 0.3, iterations) # without projection
 
 # %%
 centering_matrix = (
@@ -138,11 +164,73 @@ loss_no_proj = [loss_function(Xi_no_proj[:,j], X[:,j], D[:,j], Cxx, Cdd, g) for 
 # %%
 print(np.sum(loss_proj))
 print(np.sum(loss_no_proj))
+# is projection solution better?
 np.sum(loss_proj) < np.sum(loss_no_proj)
 
 # %%
 plot = plt.figure()
 plt.scatter(loss_proj, loss_no_proj)
 plt.show()
+
+# %%
+m = 2  # number of observations
+d_sd = 0.5
+d = np.array([np.random.normal(0.0, d_sd) for _ in range(m)])
+errors = np.full(d.shape, d_sd)
+errors
+
+# %%
+R = np.diag(errors**2)
+
+# %%
+obs_sd = np.sqrt(R.diagonal())
+
+# %%
+(R.T / R.diagonal()).T
+
+# %%
+R
+
+# %%
+d.reshape(-1,1)
+
+# %%
+rng = np.random.default_rng()
+m = 2
+N=5
+Z = rng.standard_normal(size=(m, N))
+I = np.identity(N)
+Ones_NxN = np.ones((N,N))
+Ones_Nx1 = np.ones((N,1))
+mu = Z @ Ones_Nx1 / N
+Z
+
+# %%
+Z @ (I - Ones_NxN/N) # centering with mean
+
+# %%
+mu
+
+# %%
+Z - mu
+
+# %%
+(Z-mu) @ (Z-mu).T / (N-1) # empirical cov matrix
+
+# %%
+pert_var = ((Z-mu) * (Z-mu)) @ Ones_Nx1
+
+# %%
+pert_var
+
+# %%
+((Z-mu) * (Z-mu))
+
+# %%
+
+# %%
+
+# %%
+mu @ np.ones((1,N))
 
 # %%

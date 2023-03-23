@@ -40,6 +40,95 @@ class LinearModel:
         return self.a * x + self.b
 
 
+class NonLinearModel:
+    """Example 5.1 from Evensen 2019"""
+
+    def __init__(self, x):
+        self.x = x
+
+    @classmethod
+    def simulate_prior(cls, x_prior_mean, x_prior_sd):
+        return cls(
+            rng.normal(x_prior_mean, x_prior_sd),
+        )
+
+    def eval(self):
+        beta = 0.2
+        return self.x + beta * self.x**3
+
+
+@pytest.mark.parametrize("N", [100, 200])
+def test_that_projection_is_better_for_nonlinear_forward_model_small_N_big_p(N):
+    x_true = -1.0
+    x_sd = 1.0
+    bias = 0.5
+
+    # define observations
+    m = 1  # number of observations
+    d_sd = 1.0
+    true_model = NonLinearModel(x_true)
+    d = np.array([true_model.eval() + np.random.normal(0.0, d_sd) for _ in range(m)])
+    errors = np.full(d.shape, d_sd)
+
+    # define prior ensemble
+    ensemble = [NonLinearModel.simulate_prior(x_true + bias, x_sd)]
+    X_prior = np.array(
+        [realization.x for realization in ensemble],
+    )
+    # A = X_prior
+    Y = np.array([[realization.eval() for realization in ensemble] for _ in m])
+
+    # Property holds for small step-size and one iteration.
+    # Likely also holds for infinite iterations, or at convergence,
+    # but then for infinitessimal stepsize
+    step_length = 0.1
+    # find solutions with and without projection
+    model_projection = ies.SIES(N)
+    model_projection.fit(
+        Y,
+        errors,
+        d,
+        truncation=1.0,
+        step_length=step_length,
+        param_ensemble=X_prior,
+    )
+    X_posterior_projection = model_projection.update(X_prior)
+    model_no_projection = ies.SIES(N)
+    model_no_projection.fit(
+        Y,
+        errors,
+        d,
+        truncation=1.0,
+        step_length=step_length,
+    )
+    X_posterior_no_projection = model_no_projection.update(X_prior)
+
+    # evaluate solutions through loss functions. Equation 10 of Evensen 2019
+    def loss_function(xj, xj_prior, dj, Cxx, Cdd, g):
+        # Equation 10 in Evensen 2019
+        return 0.5 * (
+            (xj - xj_prior).T @ np.linalg.inv(Cxx) @ (xj - xj_prior)
+            + (g(xj) - dj).T @ np.linalg.inv(Cdd) @ (g(xj) - dj)
+        )
+
+    # Assert projection solution better than no-projection
+    # need perturbed observations dj
+    # but D matrix is "hidden"?
+    # SIES creates R and observations_errors through _create_errors()
+    # observation_errors will be observation standard deviations, 1d array (diagonal of cov)
+    # R will be Correlation matrix with ones on diagonal
+    centering_matrix = (np.identity(N) - np.ones((N, N)) / N) / np.sqrt(N - 1)
+    A = X_prior @ centering_matrix
+    Cxx = A @ A.T
+    Cdd = np.diag(errors**2)
+    np.diag()
+
+
+@pytest.mark.parametrize("N", [100])
+def test_that_N_is_100(N):
+    assert N == 100
+
+
 @pytest.mark.parametrize("number_of_realizations", [100, 200])
 def test_that_es_update_for_a_linear_model_follows_theory(number_of_realizations):
     true_model = LinearModel(a_true, b_true)
