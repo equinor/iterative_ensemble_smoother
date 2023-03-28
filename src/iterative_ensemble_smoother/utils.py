@@ -39,7 +39,20 @@ def _validate_inputs(
             "noise and response_ensemble must have the same number of rows"
         )
 
-    if len(observation_errors) != len(observation_values):
+    if len(observation_errors.shape) == 2:
+        if observation_errors.shape[0] != observation_errors.shape[1]:
+            raise ValueError(
+                "observation_errors as covariance matrix must be a square matrix"
+            )
+        if observation_errors.shape[0] != len(observation_values):
+            raise ValueError(
+                "observation_errors covariance matrix must match size of observation_values"
+            )
+        if not np.all(np.abs(observation_errors - observation_errors.T) < 1e-8):
+            raise ValueError(
+                "observation_errors as covariance matrix must be symmetric"
+            )
+    elif len(observation_errors) != len(observation_values):
         raise ValueError(
             "observation_errors and observation_values must have the same number of elements"
         )

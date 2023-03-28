@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 rng = np.random.default_rng()
 
-from ._ies import InversionType, make_D, make_E, create_coefficient_matrix
+from ._ies import InversionType, make_D, create_coefficient_matrix
 from iterative_ensemble_smoother.utils import (
     _validate_inputs,
     _create_errors,
@@ -90,6 +90,7 @@ class SIES:
                                    if errors are correlated.
         :param observation_values: 1D array of observations.
         :param noise: Optional noise matrix with the same shape as response matrix.
+            Elements should be sampled independently from a standard normal.
         :param truncation: float used to determine the number of significant singular
             values. Defaults to 0.98 (ie. 98% significant values).
         :param step_length: The step length to be used in the algorithm,
@@ -106,8 +107,6 @@ class SIES:
             less than ensemble_size - 1 and the dynamical model is non-linear.
         """
 
-        R, observation_errors = _create_errors(observation_errors, inversion)
-
         _validate_inputs(
             response_ensemble,
             noise,
@@ -120,11 +119,25 @@ class SIES:
         ensemble_size = response_ensemble.shape[1]
         if step_length is None:
             step_length = self._get_steplength(self.iteration_nr)
+
         if noise is None:
             noise = rng.standard_normal(size=(num_obs, ensemble_size))
 
-        E = make_E(observation_errors, noise)
+        # Columns of E should be sampled from N(0,Cdd) and centered, Evensen 2019
+        if len(observation_errors.shape) == 2:
+            E = np.linalg.cholesky(observation_errors) @ noise
+        else:
+            E = np.linalg.cholesky(np.diag(observation_errors**2)) @ noise
+        E = E @ (
+            np.identity(ensemble_size)
+            - np.ones((ensemble_size, ensemble_size)) / ensemble_size
+        )
+
+        R, observation_errors = _create_errors(observation_errors, inversion)
+
         D = make_D(observation_values, E, response_ensemble)
+
+        # Scale D and E with observation error standard deviations.
         D = (D.T / observation_errors).T
         E = (E.T / observation_errors).T
 

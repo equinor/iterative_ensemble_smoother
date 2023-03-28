@@ -10,7 +10,7 @@ from iterative_ensemble_smoother.utils import (
     _create_errors,
 )
 
-from ._ies import InversionType, make_D, make_E, create_coefficient_matrix
+from ._ies import InversionType, make_D, create_coefficient_matrix
 
 
 def ensemble_smoother_update_step_row_scaling(
@@ -28,9 +28,18 @@ def ensemble_smoother_update_step_row_scaling(
         num_obs = len(observation_values)
         noise = rng.standard_normal(size=(num_obs, ensemble_size))
 
+    # Columns of E should be sampled from N(0,Cdd) and centered, Evensen 2019
+    if len(observation_errors.shape) == 2:
+        E = np.linalg.cholesky(observation_errors) @ noise
+    else:
+        E = np.linalg.cholesky(np.diag(observation_errors**2)) @ noise
+    E = E @ (
+        np.identity(ensemble_size)
+        - np.ones((ensemble_size, ensemble_size)) / ensemble_size
+    )
+
     R, observation_errors = _create_errors(observation_errors, inversion)
 
-    E = make_E(observation_errors, noise)
     D = make_D(observation_values, E, response_ensemble)
     D = (D.T / observation_errors).T
     E = (E.T / observation_errors).T
