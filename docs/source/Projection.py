@@ -130,7 +130,8 @@ for _ in range(1000):
     A = X @ centering_matrix
     E = D @ centering_matrix
     Cxx = A @ A.T
-    Cdd = E @ E.T
+    #Cdd = E @ E.T
+    Cdd = np.diag(np.array([d_sd for _ in range(m)]))
     
     loss_proj = [loss_function(Xi_proj[:,j], X[:,j], D[:,j], Cxx, Cdd, g) for j in range(realizations)]
     loss_no_proj = [loss_function(Xi_no_proj[:,j], X[:,j], D[:,j], Cxx, Cdd, g) for j in range(realizations)]
@@ -172,65 +173,133 @@ plot = plt.figure()
 plt.scatter(loss_proj, loss_no_proj)
 plt.show()
 
-# %%
-m = 2  # number of observations
-d_sd = 0.5
-d = np.array([np.random.normal(0.0, d_sd) for _ in range(m)])
-errors = np.full(d.shape, d_sd)
-errors
 
 # %%
-R = np.diag(errors**2)
+# implementation using ies
+class NonLinearModel:
+    """Example 5.1 from Evensen 2019"""
+
+    def __init__(self, x):
+        self.x = x
+        
+    @classmethod
+    def g(cls, x):
+        beta = 0.2
+        return x[0] + beta * x[0]**3
+
+    @classmethod
+    def simulate_prior(cls, x_prior_mean, x_prior_sd):
+        return cls(
+            np.array([rng.normal(x_prior_mean, x_prior_sd)]),
+        )
+
+    def eval(self):
+        return self.g(self.x)
+
 
 # %%
-obs_sd = np.sqrt(R.diagonal())
+true_model = NonLinearModel(np.array([1.7]))
+print(true_model.x)
+true_model.eval()
+NonLinearModel.g(np.array([1.6]))
 
 # %%
-(R.T / R.diagonal()).T
+res = []
+for _ in range(100):
+    N=100
+    x_true = -1.0
+    x_sd = 1.0
+    bias = 0.5
+
+    # define observations
+    m = 1  # number of observations
+    d_sd = 1.0
+    true_model = NonLinearModel(np.array([x_true]))
+    d = np.array([true_model.eval() + np.random.normal(0.0, d_sd) for _ in range(m)])
+    d_sd = np.full(d.shape, d_sd)
+    Cdd = np.diag(d_sd**2)
+    noise_standard_normal = rng.standard_normal(size=(m, N))
+    D = d + np.linalg.cholesky(Cdd) @ noise_standard_normal
+
+    # define prior ensemble
+    ensemble = [NonLinearModel.simulate_prior(x_true + bias, x_sd) for _ in range(N)]
+
+    X_prior = np.array(
+        [realization.x for realization in ensemble],
+    ).reshape(m,N)
+    Y = np.array([realization.eval() for realization in ensemble]).reshape(m,N)
+
+    import iterative_ensemble_smoother as ies
+    # Property holds for small step-size and one iteration.
+    # Likely also holds for infinite iterations, or at convergence,
+    # but then for infinitessimal stepsize
+    step_length = 0.1
+    # find solutions with and without projection
+    model_projection = ies.SIES(N)
+    model_projection.fit(
+        Y,
+        d_sd,
+        d,
+        truncation=1.0,
+        step_length=step_length,
+        param_ensemble=X_prior,
+    )
+    X_posterior_projection = model_projection.update(X_prior)
+    model_no_projection = ies.SIES(N)
+    model_no_projection.fit(
+        Y,
+        d_sd,
+        d,
+        truncation=1.0,
+        step_length=step_length,
+    )
+    X_posterior_no_projection = model_no_projection.update(X_prior)
+
+    # evaluate solutions through loss functions. Equation 10 of Evensen 2019
+    def loss_function(xj, xj_prior, dj, Cxx, Cdd, g):
+        # Equation 10 in Evensen 2019
+        return 0.5 * (
+            (xj - xj_prior).T @ np.linalg.inv(Cxx) @ (xj - xj_prior)
+            + (g(xj) - dj).T @ np.linalg.inv(Cdd) @ (g(xj) - dj)
+        )
+
+    # Assert projection solution better than no-projection
+    # need perturbed observations dj
+    # but D matrix is "hidden"?
+    # SIES creates R and observations_errors through _create_errors()
+    # observation_errors will be observation standard deviations, 1d array (diagonal of cov)
+    # R will be Correlation matrix with ones on diagonal
+    centering_matrix = (np.identity(N) - np.ones((N, N)) / N) / np.sqrt(N - 1)
+    A = X_prior @ centering_matrix
+    Cxx = A @ A.T
+    #Y_posterior_projection = np.array([NonLinearModel.g(xj) for xj in X_posterior_projection.T]).reshape(m,N)
+    #Y_posterior_no_projection = np.array([NonLinearModel.g(xj) for xj in X_posterior_no_projection.T]).reshape(m,N)
+
+    loss_proj = [
+        loss_function(
+            X_posterior_projection[:, j],
+            X_prior[:, j],
+            D[:, j],
+            Cxx,
+            Cdd,
+            NonLinearModel.g,
+        )
+        for j in range(N)
+    ]
+    loss_no_proj = [
+        loss_function(
+            X_posterior_no_projection[:, j],
+            X_prior[:, j],
+            D[:, j],
+            Cxx,
+            Cdd,
+            NonLinearModel.g,
+        )
+        for j in range(N)
+    ]
+    res.append(np.sum(loss_proj) < np.sum(loss_no_proj))
 
 # %%
-R
-
-# %%
-d.reshape(-1,1)
-
-# %%
-rng = np.random.default_rng()
-m = 2
-N=5
-Z = rng.standard_normal(size=(m, N))
-I = np.identity(N)
-Ones_NxN = np.ones((N,N))
-Ones_Nx1 = np.ones((N,1))
-mu = Z @ Ones_Nx1 / N
-Z
-
-# %%
-Z @ (I - Ones_NxN/N) # centering with mean
-
-# %%
-mu
-
-# %%
-Z - mu
-
-# %%
-(Z-mu) @ (Z-mu).T / (N-1) # empirical cov matrix
-
-# %%
-pert_var = ((Z-mu) * (Z-mu)) @ Ones_Nx1
-
-# %%
-pert_var
-
-# %%
-((Z-mu) * (Z-mu))
-
-# %%
-
-# %%
-
-# %%
-mu @ np.ones((1,N))
+all(res)
 
 # %%
