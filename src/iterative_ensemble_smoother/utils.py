@@ -80,7 +80,7 @@ def _create_errors(
     if len(observation_errors.shape) == 2:
         R = observation_errors
         observation_errors = np.sqrt(observation_errors.diagonal())
-        R = (R.T / R.diagonal()).T
+        R = np.diag(1 / observation_errors) @ R @ np.diag(1 / observation_errors)
     elif len(observation_errors.shape) == 1 and inversion == InversionType.EXACT_R:
         R = np.identity(len(observation_errors))
     else:
