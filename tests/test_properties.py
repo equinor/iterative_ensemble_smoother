@@ -47,14 +47,18 @@ class NonLinearModel:
         self.x = x
 
     @classmethod
+    def g(cls, x):
+        beta = 0.2
+        return x + beta * x**3
+
+    @classmethod
     def simulate_prior(cls, x_prior_mean, x_prior_sd):
         return cls(
-            rng.normal(x_prior_mean, x_prior_sd),
+            np.array([rng.normal(x_prior_mean, x_prior_sd)]),
         )
 
     def eval(self):
-        beta = 0.2
-        return self.x + beta * self.x**3
+        return self.g(self.x)
 
 
 @pytest.mark.parametrize("N", [100, 200])
@@ -68,15 +72,18 @@ def test_that_projection_is_better_for_nonlinear_forward_model_small_N_big_p(N):
     d_sd = 1.0
     true_model = NonLinearModel(x_true)
     d = np.array([true_model.eval() + np.random.normal(0.0, d_sd) for _ in range(m)])
-    errors = np.full(d.shape, d_sd)
+    d_sd = np.full(d.shape, d_sd)
+    Cdd = np.diag(d_sd**2)
+    noise_standard_normal = rng.standard_normal(size=(m, N))
+    D = d + np.linalg.cholesky(Cdd) @ noise_standard_normal
 
     # define prior ensemble
-    ensemble = [NonLinearModel.simulate_prior(x_true + bias, x_sd)]
+    ensemble = [NonLinearModel.simulate_prior(x_true + bias, x_sd) for _ in range(N)]
     X_prior = np.array(
         [realization.x for realization in ensemble],
-    )
+    ).reshape(m, N)
     # A = X_prior
-    Y = np.array([[realization.eval() for realization in ensemble] for _ in m])
+    Y = np.array([realization.eval() for realization in ensemble]).reshape(m, N)
 
     # Property holds for small step-size and one iteration.
     # Likely also holds for infinite iterations, or at convergence,
@@ -86,7 +93,7 @@ def test_that_projection_is_better_for_nonlinear_forward_model_small_N_big_p(N):
     model_projection = ies.SIES(N)
     model_projection.fit(
         Y,
-        errors,
+        d_sd,
         d,
         truncation=1.0,
         step_length=step_length,
@@ -96,7 +103,7 @@ def test_that_projection_is_better_for_nonlinear_forward_model_small_N_big_p(N):
     model_no_projection = ies.SIES(N)
     model_no_projection.fit(
         Y,
-        errors,
+        d_sd,
         d,
         truncation=1.0,
         step_length=step_length,
@@ -120,13 +127,37 @@ def test_that_projection_is_better_for_nonlinear_forward_model_small_N_big_p(N):
     centering_matrix = (np.identity(N) - np.ones((N, N)) / N) / np.sqrt(N - 1)
     A = X_prior @ centering_matrix
     Cxx = A @ A.T
-    Cdd = np.diag(errors**2)
-    np.diag()
-
-
-@pytest.mark.parametrize("N", [100])
-def test_that_N_is_100(N):
-    assert N == 100
+    E = D @ centering_matrix
+    Cdd = E @ E.T
+    # Y_posterior_projection = np.array(
+    #    [NonLinearModel.g(xj) for xj in X_posterior_projection.T]
+    # ).reshape(m, N)
+    # Y_posterior_no_projection = np.array(
+    #    [NonLinearModel.g(xj) for xj in X_posterior_no_projection.T]
+    # ).reshape(m, N)
+    loss_proj = [
+        loss_function(
+            X_posterior_projection[:, j],
+            X_prior[:, j],
+            D[:, j],
+            Cxx,
+            Cdd,
+            NonLinearModel.g,
+        )
+        for j in range(N)
+    ]
+    loss_no_proj = [
+        loss_function(
+            X_posterior_no_projection[:, j],
+            X_prior[:, j],
+            D[:, j],
+            Cxx,
+            Cdd,
+            NonLinearModel.g,
+        )
+        for j in range(N)
+    ]
+    assert np.sum(loss_proj) < np.sum(loss_no_proj)
 
 
 @pytest.mark.parametrize("number_of_realizations", [100, 200])
