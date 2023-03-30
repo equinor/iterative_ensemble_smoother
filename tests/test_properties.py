@@ -62,7 +62,7 @@ class NonLinearModel:
 
 
 @pytest.mark.parametrize("N", [100, 200])
-def test_that_projection_is_better_for_nonlinear_forward_model_small_N_big_p(N):
+def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_p(N):
     x_true = -1.0
     x_sd = 1.0
     bias = 0.5
@@ -95,6 +95,7 @@ def test_that_projection_is_better_for_nonlinear_forward_model_small_N_big_p(N):
         Y,
         d_sd,
         d,
+        noise=noise_standard_normal,
         truncation=1.0,
         step_length=step_length,
         param_ensemble=X_prior,
@@ -105,6 +106,7 @@ def test_that_projection_is_better_for_nonlinear_forward_model_small_N_big_p(N):
         Y,
         d_sd,
         d,
+        noise=noise_standard_normal,
         truncation=1.0,
         step_length=step_length,
     )
