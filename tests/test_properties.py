@@ -40,50 +40,44 @@ class LinearModel:
         return self.a * x + self.b
 
 
-class NonLinearModel:
-    """Example 5.1 from Evensen 2019"""
-
-    def __init__(self, x):
-        self.x = x
-
-    @classmethod
-    def g(cls, x):
-        beta = 0.2
-        return x + beta * x**3
-
-    @classmethod
-    def simulate_prior(cls, x_prior_mean, x_prior_sd):
-        return cls(
-            np.array([rng.normal(x_prior_mean, x_prior_sd)]),
-        )
-
-    def eval(self):
-        return self.g(self.x)
+def g(x):
+    """Non-linear model, Example 5.1 from Evensen 2019"""
+    x1 = x[0]
+    return x1 + 0.2 * x1**3
 
 
 @pytest.mark.parametrize("N", [100, 200])
 def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_p(N):
-    x_true = -1.0
+    # For non-linear forward model, g, and m<N,
+    # Eq.27 should provide a better update than Eq. 28.
+    # "Better" in terms of a better optimum, given by loss in Eq. 10
+    # We here solve using both Equations 27 and 28 (with/without projection)
+    # and then evaluate the loss function.
+
+    N = 100
+    m = 1
+    x_true = np.array([-1.0])
+
+    # sample parameters from prior
     x_sd = 1.0
-    bias = 0.5
+    prior_bias = 0.5
+    X_prior = np.array(
+        [
+            np.random.normal(x_true[0] + prior_bias, x_sd, size=(m, N)),
+        ]
+    ).reshape(m, N)
+
+    # Evaluate response ensemble
+    gX = np.array([g(parvec) for parvec in X_prior.T]).reshape(m, N)
 
     # define observations
-    m = 1  # number of observations
-    d_sd = 1.0
-    true_model = NonLinearModel(x_true)
-    d = np.array([true_model.eval() + np.random.normal(0.0, d_sd) for _ in range(m)])
-    d_sd = np.full(d.shape, d_sd)
-    Cdd = np.diag(d_sd**2)
+    d_sd = np.array([1.0])
+    d = np.array([g(x_true) + np.random.normal(0.0, d_sd)])
+
+    # define noise to perturb observations
+    Cdd = np.diag([d_sd**2]).reshape(m, m)
     noise_standard_normal = rng.standard_normal(size=(m, N))
     D = d + np.linalg.cholesky(Cdd) @ noise_standard_normal
-
-    # define prior ensemble
-    ensemble = [NonLinearModel.simulate_prior(x_true + bias, x_sd) for _ in range(N)]
-    X_prior = np.array(
-        [realization.x for realization in ensemble],
-    ).reshape(m, N)
-    # A = X_prior
-    Y = np.array([realization.eval() for realization in ensemble]).reshape(m, N)
 
     # Property holds for small step-size and one iteration.
     # Likely also holds for infinite iterations, or at convergence,
@@ -92,7 +86,7 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_p(N):
     # find solutions with and without projection
     model_projection = ies.SIES(N)
     model_projection.fit(
-        Y,
+        gX,
         d_sd,
         d,
         noise=noise_standard_normal,
@@ -103,7 +97,7 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_p(N):
     X_posterior_projection = model_projection.update(X_prior)
     model_no_projection = ies.SIES(N)
     model_no_projection.fit(
-        Y,
+        gX,
         d_sd,
         d,
         noise=noise_standard_normal,
@@ -121,22 +115,9 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_p(N):
         )
 
     # Assert projection solution better than no-projection
-    # need perturbed observations dj
-    # but D matrix is "hidden"?
-    # SIES creates R and observations_errors through _create_errors()
-    # observation_errors will be observation standard deviations, 1d array (diagonal of cov)
-    # R will be Correlation matrix with ones on diagonal
     centering_matrix = (np.identity(N) - np.ones((N, N)) / N) / np.sqrt(N - 1)
     A = X_prior @ centering_matrix
     Cxx = A @ A.T
-    E = D @ centering_matrix
-    Cdd = E @ E.T
-    # Y_posterior_projection = np.array(
-    #    [NonLinearModel.g(xj) for xj in X_posterior_projection.T]
-    # ).reshape(m, N)
-    # Y_posterior_no_projection = np.array(
-    #    [NonLinearModel.g(xj) for xj in X_posterior_no_projection.T]
-    # ).reshape(m, N)
     loss_proj = [
         loss_function(
             X_posterior_projection[:, j],
@@ -144,7 +125,7 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_p(N):
             D[:, j],
             Cxx,
             Cdd,
-            NonLinearModel.g,
+            g,
         )
         for j in range(N)
     ]
@@ -155,7 +136,7 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_p(N):
             D[:, j],
             Cxx,
             Cdd,
-            NonLinearModel.g,
+            g,
         )
         for j in range(N)
     ]
