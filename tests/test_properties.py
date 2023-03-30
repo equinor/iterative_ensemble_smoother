@@ -54,9 +54,8 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_p(N):
     # We here solve using both Equations 27 and 28 (with/without projection)
     # and then evaluate the loss function.
 
-    # evaluate solutions through loss functions. Equation 10 of Evensen 2019
     def loss_function(xj, xj_prior, dj, Cxx, Cdd, g):
-        # Equation 10 in Evensen 2019
+        """Equation 10 in Evensen 2019"""
         return 0.5 * (
             (xj - xj_prior).T @ np.linalg.inv(Cxx) @ (xj - xj_prior)
             + (g(xj) - dj).T @ np.linalg.inv(Cdd) @ (g(xj) - dj)
