@@ -54,6 +54,14 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_p(N):
     # We here solve using both Equations 27 and 28 (with/without projection)
     # and then evaluate the loss function.
 
+    # evaluate solutions through loss functions. Equation 10 of Evensen 2019
+    def loss_function(xj, xj_prior, dj, Cxx, Cdd, g):
+        # Equation 10 in Evensen 2019
+        return 0.5 * (
+            (xj - xj_prior).T @ np.linalg.inv(Cxx) @ (xj - xj_prior)
+            + (g(xj) - dj).T @ np.linalg.inv(Cdd) @ (g(xj) - dj)
+        )
+
     N = 100
     m = 1
     x_true = np.array([-1.0])
@@ -105,14 +113,6 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_p(N):
         step_length=step_length,
     )
     X_posterior_no_projection = model_no_projection.update(X_prior)
-
-    # evaluate solutions through loss functions. Equation 10 of Evensen 2019
-    def loss_function(xj, xj_prior, dj, Cxx, Cdd, g):
-        # Equation 10 in Evensen 2019
-        return 0.5 * (
-            (xj - xj_prior).T @ np.linalg.inv(Cxx) @ (xj - xj_prior)
-            + (g(xj) - dj).T @ np.linalg.inv(Cdd) @ (g(xj) - dj)
-        )
 
     # Assert projection solution better than no-projection
     centering_matrix = (np.identity(N) - np.ones((N, N)) / N) / np.sqrt(N - 1)
