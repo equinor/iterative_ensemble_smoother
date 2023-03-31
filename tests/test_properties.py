@@ -40,6 +40,105 @@ class LinearModel:
         return self.a * x + self.b
 
 
+def g(x):
+    """Non-linear model, Example 5.1 from Evensen 2019"""
+    x1 = x[0]
+    return x1 + 0.2 * x1**3
+
+
+@pytest.mark.parametrize("N", [100, 200])
+def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_n(N):
+    # For non-linear forward model, g, and n<N,
+    # Eq.27 should provide a better update than Eq. 28.
+    # "Better" in terms of a better optimum, given by loss in Eq. 10
+    # We here solve using both Equations 27 and 28 (with/without projection)
+    # and then evaluate the loss function.
+
+    def loss_function(xj, xj_prior, dj, Cxx, Cdd, g):
+        """Equation 10 in Evensen 2019"""
+        return 0.5 * (
+            (xj - xj_prior).T @ np.linalg.inv(Cxx) @ (xj - xj_prior)
+            + (g(xj) - dj).T @ np.linalg.inv(Cdd) @ (g(xj) - dj)
+        )
+
+    N = 100
+    n = 1
+    m = 1
+    x_true = np.array([-1.0])
+
+    # sample parameters from prior
+    x_sd = 1.0
+    prior_bias = 0.5
+    X_prior = np.random.normal(x_true[0] + prior_bias, x_sd, size=(n, N))
+
+    # Evaluate response ensemble
+    gX = np.array([g(parvec) for parvec in X_prior.T]).reshape(m, N)
+
+    # define observations
+    d_sd = np.array([1.0])
+    d = np.array([g(x_true) + rng.normal(0.0, d_sd)])
+
+    # define noise to perturb observations
+    Cdd = np.diag([d_sd**2]).reshape(m, m)
+    noise_standard_normal = rng.standard_normal(size=(m, N))
+    D = d + np.linalg.cholesky(Cdd) @ noise_standard_normal
+
+    # Property holds for small step-size and one iteration.
+    # Likely also holds for infinite iterations, or at convergence,
+    # but then for infinitessimal stepsize
+    step_length = 0.1
+    # find solutions with and without projection
+    model_projection = ies.SIES(N)
+    model_projection.fit(
+        gX,
+        d_sd,
+        d,
+        noise=noise_standard_normal,
+        truncation=1.0,
+        step_length=step_length,
+        param_ensemble=X_prior,
+    )
+    X_posterior_projection = model_projection.update(X_prior)
+    model_no_projection = ies.SIES(N)
+    model_no_projection.fit(
+        gX,
+        d_sd,
+        d,
+        noise=noise_standard_normal,
+        truncation=1.0,
+        step_length=step_length,
+    )
+    X_posterior_no_projection = model_no_projection.update(X_prior)
+
+    # Assert projection solution better than no-projection
+    centering_matrix = (np.identity(N) - np.ones((N, N)) / N) / np.sqrt(N - 1)
+    A = X_prior @ centering_matrix
+    Cxx = A @ A.T
+    loss_proj = [
+        loss_function(
+            X_posterior_projection[:, j],
+            X_prior[:, j],
+            D[:, j],
+            Cxx,
+            Cdd,
+            g,
+        )
+        for j in range(N)
+    ]
+    loss_no_proj = [
+        loss_function(
+            X_posterior_no_projection[:, j],
+            X_prior[:, j],
+            D[:, j],
+            Cxx,
+            Cdd,
+            g,
+        )
+        for j in range(N)
+    ]
+    assert np.sum(loss_proj) < np.sum(loss_no_proj)
+
+
 @pytest.mark.parametrize("number_of_realizations", [100, 200])
 def test_that_es_update_for_a_linear_model_follows_theory(number_of_realizations):
     true_model = LinearModel(a_true, b_true)
