@@ -47,7 +47,7 @@ def g(x):
 
 
 @pytest.mark.parametrize("N", [100, 200])
-def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_p(N):
+def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_m(N):
     # For non-linear forward model, g, and m<N,
     # Eq.27 should provide a better update than Eq. 28.
     # "Better" in terms of a better optimum, given by loss in Eq. 10
