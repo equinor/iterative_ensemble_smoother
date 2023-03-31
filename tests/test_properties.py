@@ -47,8 +47,8 @@ def g(x):
 
 
 @pytest.mark.parametrize("N", [100, 200])
-def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_m(N):
-    # For non-linear forward model, g, and m<N,
+def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_n(N):
+    # For non-linear forward model, g, and n<N,
     # Eq.27 should provide a better update than Eq. 28.
     # "Better" in terms of a better optimum, given by loss in Eq. 10
     # We here solve using both Equations 27 and 28 (with/without projection)
@@ -62,13 +62,14 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_m(N):
         )
 
     N = 100
+    n = 1
     m = 1
     x_true = np.array([-1.0])
 
     # sample parameters from prior
     x_sd = 1.0
     prior_bias = 0.5
-    X_prior = np.random.normal(x_true[0] + prior_bias, x_sd, size=(m, N))
+    X_prior = np.random.normal(x_true[0] + prior_bias, x_sd, size=(n, N))
 
     # Evaluate response ensemble
     gX = np.array([g(parvec) for parvec in X_prior.T]).reshape(m, N)
