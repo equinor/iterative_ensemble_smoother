@@ -68,18 +68,14 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_m(N):
     # sample parameters from prior
     x_sd = 1.0
     prior_bias = 0.5
-    X_prior = np.array(
-        [
-            np.random.normal(x_true[0] + prior_bias, x_sd, size=(m, N)),
-        ]
-    ).reshape(m, N)
+    X_prior = np.random.normal(x_true[0] + prior_bias, x_sd, size=(m, N))
 
     # Evaluate response ensemble
     gX = np.array([g(parvec) for parvec in X_prior.T]).reshape(m, N)
 
     # define observations
     d_sd = np.array([1.0])
-    d = np.array([g(x_true) + np.random.normal(0.0, d_sd)])
+    d = np.array([g(x_true) + rng.normal(0.0, d_sd)])
 
     # define noise to perturb observations
     Cdd = np.diag([d_sd**2]).reshape(m, m)
