@@ -5,6 +5,7 @@ sphinxcontrib.bibtex==2.5.0
 matplotlib==3.5.3
 jupytext==1.14.1
 ipykernel==6.15.1
-scipy==1.10.1
-pandas==2.0.0
 p_tqdm==1.4.0
+pandas==2.0.1
+scipy==1.10.1
+ipywidgets==8.0.6

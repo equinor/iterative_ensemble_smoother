@@ -3,7 +3,7 @@ from subprocess import check_output
 project = "iterative_ensemble_smoother"
 copyright = "2022, Equinor"
 author = "Equinor"
-release = "0.0.1"
+release = "0.1.1"
 
 
 check_output(["jupytext", "Polynomial.py", "-o", "Polynomial.ipynb"])
