@@ -272,23 +272,12 @@ MatrixXd create_coefficient_matrix(py::EigenDRef<MatrixXd> Y,
   return W;
 }
 
-MatrixXd makeD(const VectorXd &obs_values, const MatrixXd &E,
-               const MatrixXd &S) {
-
-  MatrixXd D = E - S;
-
-  D.colwise() += obs_values;
-
-  return D;
-}
-
 PYBIND11_MODULE(_ies, m) {
   using namespace py::literals;
 
   m.def("create_coefficient_matrix", &create_coefficient_matrix, "Y0"_a,
         "R"_a = py::none(), "E"_a, "D"_a, "ies_inversion"_a, "truncation"_a,
         "W"_a, "ies_steplength"_a);
-  m.def("make_D", &makeD, "obs_values"_a, "E"_a, "S"_a);
 
   py::enum_<Inversion>(m, "InversionType")
       .value("EXACT", Inversion::exact)

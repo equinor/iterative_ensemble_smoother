@@ -49,6 +49,7 @@ doc = [
 dev = [
     "pytest",
     "pytest-snapshot",
+    "pytest-memray",
     "tox",
     "pre-commit",
     "matplotlib",

@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 rng = np.random.default_rng()
 
-from ._ies import InversionType, make_D, create_coefficient_matrix
+from ._ies import InversionType, create_coefficient_matrix
 from iterative_ensemble_smoother.utils import (
     _validate_inputs,
     _create_errors,
@@ -127,27 +127,33 @@ class SIES:
         if len(observation_errors.shape) == 2:
             E = np.linalg.cholesky(observation_errors) @ noise
         else:
-            E = np.linalg.cholesky(np.diag(observation_errors**2)) @ noise
-        E = E @ (
-            np.identity(ensemble_size)
-            - np.ones((ensemble_size, ensemble_size)) / ensemble_size
-        )
+            # This is equivalent to cholesky(np.diag(observation_errors**2)) @ noise as the Cholesky
+            # decomposition of a diagonal matrix is another diagonal matrix with the square root
+            # of the original diagonal elements.
+            E = noise * observation_errors.reshape(num_obs, 1)
+        E -= E.mean(axis=1, keepdims=True)
 
         R, observation_errors = _create_errors(observation_errors, inversion)
 
-        D = make_D(observation_values, E, response_ensemble)
+        D = (E + observation_values.reshape(num_obs, 1)) - response_ensemble
 
         # Scale D and E with observation error standard deviations.
-        D = (D.T / observation_errors).T
-        E = (E.T / observation_errors).T
+        D /= observation_errors.reshape(num_obs, 1)
+        E /= observation_errors.reshape(num_obs, 1)
 
         if param_ensemble is not None:
             projected_response = response_ensemble @ _response_projection(
                 param_ensemble
             )
-            response_ensemble = (projected_response.T / observation_errors).T
+            _response_ensemble = projected_response / observation_errors.reshape(
+                num_obs, 1
+            )
         else:
-            response_ensemble = (response_ensemble.T / observation_errors).T
+            _response_ensemble = response_ensemble / observation_errors.reshape(
+                num_obs, 1
+            )
+        _response_ensemble -= _response_ensemble.mean(axis=1, keepdims=True)
+        _response_ensemble /= np.sqrt(ensemble_size - 1)
 
         if ensemble_mask is None:
             ensemble_mask = np.array([True] * ensemble_size)
@@ -155,8 +161,7 @@ class SIES:
         self.ensemble_mask = ensemble_mask
 
         W: npt.NDArray[np.double] = create_coefficient_matrix(
-            (response_ensemble - response_ensemble.mean(axis=1, keepdims=True))
-            / np.sqrt(ensemble_size - 1),
+            _response_ensemble,
             R,
             E,
             D,

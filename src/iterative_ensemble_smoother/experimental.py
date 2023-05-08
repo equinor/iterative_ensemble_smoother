@@ -10,7 +10,7 @@ from iterative_ensemble_smoother.utils import (
     _create_errors,
 )
 
-from ._ies import InversionType, make_D, create_coefficient_matrix
+from ._ies import InversionType, create_coefficient_matrix
 
 
 def ensemble_smoother_update_step_row_scaling(
@@ -40,7 +40,7 @@ def ensemble_smoother_update_step_row_scaling(
 
     R, observation_errors = _create_errors(observation_errors, inversion)
 
-    D = make_D(observation_values, E, response_ensemble)
+    D = (E + observation_values.reshape(num_obs, 1)) - response_ensemble
     D = (D.T / observation_errors).T
     E = (E.T / observation_errors).T
     response_ensemble = (response_ensemble.T / observation_errors).T
