@@ -3,7 +3,6 @@ import pytest
 import pandas as pd
 from p_tqdm import p_map
 
-from iterative_ensemble_smoother._ies import make_D
 import iterative_ensemble_smoother as ies
 
 rng = np.random.default_rng()
@@ -387,16 +386,6 @@ def test_that_update_correctly_multiples_gaussians(inversion, errors):
     assert (np.abs(np.cov(A_ES) - np.identity(nparam)) < 0.15).all()
 
 
-def test_make_D():
-    S = np.array([[2.0, 4.0], [6.0, 8.0]])
-    E = np.array([[1.0, 2.0], [3.0, 4.0]])
-    observation_values = np.array([1.0, 1.0])
-    assert make_D(observation_values, E, S).tolist() == [
-        [1.0 - 2 + 1.0, 2.0 - 4.0 + 1.0],
-        [3.0 - 6.0 + 1.0, 4.0 - 8 + 1.0],
-    ]
-
-
 @pytest.mark.parametrize(
     "ensemble_size,num_params,linear",
     [
@@ -513,3 +502,48 @@ def test_that_ies_runs_with_failed_realizations():
     param_ensemble = smoother.update(param_ensemble)
 
     assert param_ensemble.shape == (num_params, ens_mask.sum())
+
+
+@pytest.mark.limit_memory("70 MB")
+def test_memory_usage():
+    """Estimate expected memory usage and make sure ES does not waste memory
+
+    # approx. 65
+    # Size of input arrays
+    nbytes = (
+        X.nbytes
+        + Y.nbytes
+        + observation_errors.nbytes
+        + observation_values.nbytes
+        + noise.nbytes
+    )
+    nbytes += noise.nbytes  # Creating E
+    nbytes += noise.nbytes  # Creating D
+    nbytes += (
+        noise.nbytes
+    )  # scaling response_ensemble (can't scale in-place because response_ensemble is an input argument)
+    nbytes += 80000 # Omega in C++ (ensemble_size, ensemble_size)
+    nbytes += Y.nbytes # Solving for S^T needs Y^T which causes a copy in C++ code
+    nbytes += Y.nbytes # Solving for S^T causes both Y^T and S^T to be in memory
+    nbytes += Y.nbytes # Creating H in C++
+    nbytes /= 1e6
+    """
+    ensemble_size = 100
+    num_params = 1000
+    num_obs = 10000
+    X = rng.normal(size=(num_params, ensemble_size))
+
+    Y = rng.normal(size=(num_obs, ensemble_size))
+
+    observation_errors = rng.uniform(size=num_obs)
+    observation_values = rng.normal(np.zeros(num_obs), observation_errors)
+    noise = rng.normal(size=(num_obs, ensemble_size))
+
+    smoother = ies.ES()
+    smoother.fit(
+        Y,
+        observation_errors,
+        observation_values,
+        noise=noise,
+    )
+    X_ES_global = smoother.update(X)
