@@ -55,7 +55,8 @@ dev = [
     "scipy",
     "mypy",
     "pandas",
-    "p_tqdm"
+    "p_tqdm",
+    "pylint"
 ]
 
 [tool.setuptools_scm]
