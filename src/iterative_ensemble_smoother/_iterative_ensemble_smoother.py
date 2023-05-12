@@ -182,7 +182,7 @@ class SIES:
 
         # First get W, then divide by square root, then add identity matrix
         # Equivalent to (I + W / np.sqrt(ensemble_size - 1))
-        transition_matrix = self.coefficient_matrix[
+        transition_matrix: npt.NDArray[np.double] = self.coefficient_matrix[
             np.ix_(self.ensemble_mask, self.ensemble_mask)
         ]
         transition_matrix /= np.sqrt(ensemble_size - 1)
