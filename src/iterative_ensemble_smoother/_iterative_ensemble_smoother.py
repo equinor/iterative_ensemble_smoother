@@ -156,7 +156,7 @@ class SIES:
         _response_ensemble /= np.sqrt(ensemble_size - 1)
 
         if ensemble_mask is None:
-            ensemble_mask = np.array([True] * ensemble_size)
+            ensemble_mask = np.ones(ensemble_size, dtype=bool)
 
         self.ensemble_mask = ensemble_mask
 
@@ -167,7 +167,7 @@ class SIES:
             D,
             inversion,
             truncation,
-            self.coefficient_matrix[ensemble_mask, :][:, ensemble_mask],
+            self.coefficient_matrix[np.ix_(ensemble_mask, ensemble_mask)],
             step_length,
         )
 
@@ -178,14 +178,21 @@ class SIES:
 
         self.iteration_nr += 1
 
-        self.coefficient_matrix[np.outer(ensemble_mask, ensemble_mask)] = W.ravel()
+        # Put the values back into the coefficient matrix
+        self.coefficient_matrix[np.ix_(ensemble_mask, ensemble_mask)] = W
 
     def update(self, param_ensemble: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
         # Line 9 of Algorithm 1
         ensemble_size = self.ensemble_mask.sum()
-        I = np.identity(ensemble_size)
-        W = self.coefficient_matrix[self.ensemble_mask, :][:, self.ensemble_mask]
-        transition_matrix: npt.NDArray[np.double] = I + W / np.sqrt(ensemble_size - 1)
+
+        # First get W, then divide by square root, then add identity matrix
+        # Equivalent to (I + W / np.sqrt(ensemble_size - 1))
+        transition_matrix: npt.NDArray[np.double] = self.coefficient_matrix[
+            np.ix_(self.ensemble_mask, self.ensemble_mask)
+        ]
+        transition_matrix /= np.sqrt(ensemble_size - 1)
+        transition_matrix.flat[:: ensemble_size + 1] += 1.0
+
         return param_ensemble @ transition_matrix
 
     def __repr__(self) -> str:
