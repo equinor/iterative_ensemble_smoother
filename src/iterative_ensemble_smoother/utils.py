@@ -11,7 +11,6 @@ from ._ies import InversionType
 
 def _validate_inputs(
     response_ensemble: npt.NDArray[np.double],
-    noise: Optional[npt.NDArray[np.double]],
     observation_errors: npt.NDArray[np.double],
     observation_values: npt.NDArray[np.double],
     param_ensemble: Optional[npt.NDArray[np.double]] = None,
@@ -27,16 +26,6 @@ def _validate_inputs(
     if response_ensemble.shape[1] != ensemble_size:
         raise ValueError(
             "response_ensemble and parameter_ensemble must have the same number of columns"
-        )
-
-    if noise is not None and noise.shape[1] != ensemble_size:
-        raise ValueError(
-            "noise and response_ensemble must have the same number of columns"
-        )
-
-    if noise is not None and noise.shape[0] != num_responses:
-        raise ValueError(
-            "noise and response_ensemble must have the same number of rows"
         )
 
     if len(observation_errors.shape) == 2:

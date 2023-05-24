@@ -73,7 +73,6 @@ class SIES:
         observation_errors: npt.NDArray[np.double],
         observation_values: npt.NDArray[np.double],
         *,
-        noise: Optional[npt.NDArray[np.double]] = None,
         truncation: float = 0.98,
         step_length: Optional[float] = None,
         ensemble_mask: Optional[npt.NDArray[np.bool_]] = None,
@@ -89,8 +88,6 @@ class SIES:
                                    for each observation, or covariance matrix
                                    if errors are correlated.
         :param observation_values: 1D array of observations.
-        :param noise: Optional noise matrix with the same shape as response matrix.
-            Elements should be sampled independently from a standard normal.
         :param truncation: float used to determine the number of significant singular
             values. Defaults to 0.98 (ie. 98% significant values).
         :param step_length: The step length to be used in the algorithm,
@@ -109,7 +106,6 @@ class SIES:
 
         _validate_inputs(
             response_ensemble,
-            noise,
             observation_errors,
             observation_values,
             param_ensemble=param_ensemble,
@@ -120,17 +116,20 @@ class SIES:
         if step_length is None:
             step_length = self._get_steplength(self.iteration_nr)
 
-        if noise is None:
-            noise = rng.standard_normal(size=(num_obs, ensemble_size))
-
+        # A covariance matrix was passed
         # Columns of E should be sampled from N(0,Cdd) and centered, Evensen 2019
         if len(observation_errors.shape) == 2:
-            E = np.linalg.cholesky(observation_errors) @ noise
+            E = rng.multivariate_normal(
+                mean=np.zeros_like(num_obs), cov=observation_errors, size=ensemble_size
+            ).T
+        # A vector of standard deviations was passed
         else:
-            # This is equivalent to cholesky(np.diag(observation_errors**2)) @ noise as the Cholesky
-            # decomposition of a diagonal matrix is another diagonal matrix with the square root
-            # of the original diagonal elements.
-            E = noise * observation_errors.reshape(num_obs, 1)
+            E = rng.normal(
+                loc=0, scale=observation_errors, size=(ensemble_size, num_obs)
+            ).T
+
+        assert E.shape == (num_obs, ensemble_size)
+
         E -= E.mean(axis=1, keepdims=True)
 
         R, observation_errors = _create_errors(observation_errors, inversion)
