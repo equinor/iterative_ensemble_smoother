@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Tuple, Optional, TYPE_CHECKING
 
 import numpy as np
+import numbers
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -16,7 +17,7 @@ def _validate_inputs(
     observation_values: npt.NDArray[np.double],
     param_ensemble: Optional[npt.NDArray[np.double]] = None,
 ) -> None:
-    if len(response_ensemble.shape) != 2:
+    if response_ensemble.ndim != 2:
         raise ValueError(
             "response_ensemble must be a matrix of size (number of responses by number of realizations)"
         )
@@ -39,7 +40,7 @@ def _validate_inputs(
             "noise and response_ensemble must have the same number of rows"
         )
 
-    if len(observation_errors.shape) == 2:
+    if observation_errors.ndim == 2:
         if observation_errors.shape[0] != observation_errors.shape[1]:
             raise ValueError(
                 "observation_errors as covariance matrix must be a square matrix"
@@ -62,7 +63,7 @@ def _validate_inputs(
             "observation_values must have the same number of elements as there are responses"
         )
 
-    if param_ensemble is not None and len(param_ensemble.shape) != 2:
+    if param_ensemble is not None and param_ensemble.ndim != 2:
         raise ValueError(
             "parameter_ensemble must be a matrix of size (number of parameters by number of realizations)"
         )
@@ -77,12 +78,48 @@ def _create_errors(
     observation_errors: npt.NDArray[np.double],
     inversion: InversionType,
 ) -> Tuple[npt.NDArray[np.double], npt.NDArray[np.double]]:
-    if len(observation_errors.shape) == 2:
+    if observation_errors.ndim == 2:
         R = observation_errors
         observation_errors = np.sqrt(observation_errors.diagonal())
-        R = np.diag(1 / observation_errors) @ R @ np.diag(1 / observation_errors)
-    elif len(observation_errors.shape) == 1 and inversion == InversionType.EXACT_R:
+        # The line below is equivalent to:
+        # R = np.diag(1 / observation_errors) @ R @ np.diag(1 / observation_errors)
+        R = R * np.outer(1 / observation_errors, 1 / observation_errors)
+
+    elif observation_errors.ndim == 1 and inversion == InversionType.EXACT_R:
         R = np.identity(len(observation_errors))
+
     else:
         R = None
+
     return R, observation_errors
+
+
+def check_random_state(
+    seed: Optional[None, int, np.random.RandomState]
+) -> np.random.RandomState:
+    """Turn seed into a np.random.RandomState instance.
+
+    Parameters
+    ----------
+    seed : None, int or instance of RandomState
+        If seed is None, return the RandomState singleton used by np.random.
+        If seed is an int, return a new RandomState instance seeded with seed.
+        If seed is already a RandomState instance, return it.
+        Otherwise raise ValueError.
+
+    Returns
+    -------
+    :class:`numpy:numpy.random.RandomState`
+        The random state object based on `seed` parameter.
+    """
+    # This code is from sklearn:
+    # https://scikit-learn.org/stable/modules/generated/sklearn.utils.check_random_state.html
+    if seed is None or seed is np.random:
+        return np.random.mtrand._rand
+    if isinstance(seed, numbers.Integral):
+        return np.random.RandomState(seed)
+    if isinstance(seed, np.random.RandomState):
+        return seed
+    raise ValueError(
+        "%r cannot be used to seed a numpy.random.RandomState instance" % seed
+    )

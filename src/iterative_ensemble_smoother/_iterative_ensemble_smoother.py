@@ -6,12 +6,11 @@ import numpy as np
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-rng = np.random.default_rng()
-
 from ._ies import InversionType, create_coefficient_matrix
 from iterative_ensemble_smoother.utils import (
     _validate_inputs,
     _create_errors,
+    check_random_state,
 )
 
 
@@ -46,6 +45,7 @@ class SIES:
         max_steplength: float = 0.6,
         min_steplength: float = 0.3,
         dec_steplength: float = 2.5,
+        random_state: Optional[None, int, np.random.RandomState] = None,
     ):
         self._initial_ensemble_size = ensemble_size
         self.iteration_nr = 1
@@ -53,6 +53,7 @@ class SIES:
         self.min_steplength = min_steplength
         self.dec_steplength = dec_steplength
         self.coefficient_matrix = np.zeros(shape=(ensemble_size, ensemble_size))
+        self._rng = check_random_state(random_state)
 
     def _get_steplength(self, iteration_nr: int) -> float:
         """
@@ -121,10 +122,10 @@ class SIES:
             step_length = self._get_steplength(self.iteration_nr)
 
         if noise is None:
-            noise = rng.standard_normal(size=(num_obs, ensemble_size))
+            noise = self._rng.standard_normal(size=(num_obs, ensemble_size))
 
         # Columns of E should be sampled from N(0,Cdd) and centered, Evensen 2019
-        if len(observation_errors.shape) == 2:
+        if observation_errors.ndim == 2:
             E = np.linalg.cholesky(observation_errors) @ noise
         else:
             # This is equivalent to cholesky(np.diag(observation_errors**2)) @ noise as the Cholesky
@@ -133,23 +134,23 @@ class SIES:
             E = noise * observation_errors.reshape(num_obs, 1)
         E -= E.mean(axis=1, keepdims=True)
 
-        R, observation_errors = _create_errors(observation_errors, inversion)
+        R, observation_errors_std = _create_errors(observation_errors, inversion)
 
         D = (E + observation_values.reshape(num_obs, 1)) - response_ensemble
 
         # Scale D and E with observation error standard deviations.
-        D /= observation_errors.reshape(num_obs, 1)
-        E /= observation_errors.reshape(num_obs, 1)
+        D /= observation_errors_std.reshape(num_obs, 1)
+        E /= observation_errors_std.reshape(num_obs, 1)
 
         if param_ensemble is not None:
             projected_response = response_ensemble @ _response_projection(
                 param_ensemble
             )
-            _response_ensemble = projected_response / observation_errors.reshape(
+            _response_ensemble = projected_response / observation_errors_std.reshape(
                 num_obs, 1
             )
         else:
-            _response_ensemble = response_ensemble / observation_errors.reshape(
+            _response_ensemble = response_ensemble / observation_errors_std.reshape(
                 num_obs, 1
             )
         _response_ensemble -= _response_ensemble.mean(axis=1, keepdims=True)
