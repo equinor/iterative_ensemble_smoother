@@ -10,7 +10,6 @@ from ._ies import InversionType, create_coefficient_matrix
 from iterative_ensemble_smoother.utils import (
     _validate_inputs,
     _create_errors,
-    check_random_state,
 )
 
 
@@ -45,7 +44,7 @@ class SIES:
         max_steplength: float = 0.6,
         min_steplength: float = 0.3,
         dec_steplength: float = 2.5,
-        random_state: Optional[None, int, np.random.RandomState] = None,
+        seed: Optional[int] = None,
     ):
         self._initial_ensemble_size = ensemble_size
         self.iteration_nr = 1
@@ -53,7 +52,7 @@ class SIES:
         self.min_steplength = min_steplength
         self.dec_steplength = dec_steplength
         self.coefficient_matrix = np.zeros(shape=(ensemble_size, ensemble_size))
-        self._rng = check_random_state(random_state)
+        self.rng = np.random.default_rng(seed)
 
     def _get_steplength(self, iteration_nr: int) -> float:
         """
@@ -122,7 +121,7 @@ class SIES:
             step_length = self._get_steplength(self.iteration_nr)
 
         if noise is None:
-            noise = self._rng.standard_normal(size=(num_obs, ensemble_size))
+            noise = self.rng.standard_normal(size=(num_obs, ensemble_size))
 
         # Columns of E should be sampled from N(0,Cdd) and centered, Evensen 2019
         if observation_errors.ndim == 2:

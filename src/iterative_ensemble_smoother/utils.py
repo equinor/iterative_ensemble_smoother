@@ -2,7 +2,6 @@ from __future__ import annotations
 from typing import Tuple, Optional, TYPE_CHECKING
 
 import numpy as np
-import numbers
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -92,34 +91,3 @@ def _create_errors(
         R = None
 
     return R, observation_errors
-
-
-def check_random_state(
-    seed: Optional[None, int, np.random.RandomState]
-) -> np.random.RandomState:
-    """Turn seed into a np.random.RandomState instance.
-
-    Parameters
-    ----------
-    seed : None, int or instance of RandomState
-        If seed is None, return the RandomState singleton used by np.random.
-        If seed is an int, return a new RandomState instance seeded with seed.
-        If seed is already a RandomState instance, return it.
-        Otherwise raise ValueError.
-
-    Returns
-    -------
-    :class:`numpy:numpy.random.RandomState`
-        The random state object based on `seed` parameter.
-    """
-    # This code is from sklearn:
-    # https://scikit-learn.org/stable/modules/generated/sklearn.utils.check_random_state.html
-    if seed is None or seed is np.random:
-        return np.random.mtrand._rand
-    if isinstance(seed, numbers.Integral):
-        return np.random.RandomState(seed)
-    if isinstance(seed, np.random.RandomState):
-        return seed
-    raise ValueError(
-        "%r cannot be used to seed a numpy.random.RandomState instance" % seed
-    )
