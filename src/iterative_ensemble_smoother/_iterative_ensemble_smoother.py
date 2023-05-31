@@ -35,6 +35,7 @@ class SIES:
     :param max_steplength: parameter used to tweaking the step length.
     :param min_steplength: parameter used to tweaking the step length.
     :param dec_steplength: parameter used to tweaking the step length.
+    :param seed: Integer used to seed the random number generator.
     """
 
     def __init__(
