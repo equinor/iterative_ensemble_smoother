@@ -6,7 +6,7 @@ import numpy as np
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-from ._ies import InversionType, create_coefficient_matrix
+from iterative_ensemble_smoother._ies import InversionType, create_coefficient_matrix
 from iterative_ensemble_smoother.utils import (
     _validate_inputs,
     _create_errors,
