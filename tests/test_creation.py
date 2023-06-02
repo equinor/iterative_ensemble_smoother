@@ -18,7 +18,7 @@ def test_that_bad_inputs_cause_nice_error_messages():
     ensemble_size = 10
     num_obs = 4
     num_params = 3
-    param_ensemble = np.random.normal(size=(num_obs, ensemble_size))
+    param_ensemble = np.random.normal(size=(num_params, ensemble_size))
     Y = np.ones(shape=(num_obs, ensemble_size))
     obs_errors = np.ones(num_obs)
     obs_values = np.ones(num_obs)

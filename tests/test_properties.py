@@ -78,8 +78,6 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_n(N):
 
     # define noise to perturb observations
     Cdd = np.diag([d_sd**2]).reshape(m, m)
-    # noise_standard_normal = rng.standard_normal(size=(m, N))
-    # D = d + np.linalg.cholesky(Cdd) @ noise_standard_normal
 
     # Property holds for small step-size and one iteration.
     # Likely also holds for infinite iterations, or at convergence,
@@ -93,7 +91,6 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_n(N):
         gX,
         d_sd,
         d,
-        # noise=noise_standard_normal,
         truncation=1.0,
         step_length=step_length,
         param_ensemble=X_prior,
@@ -105,7 +102,6 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_n(N):
         gX,
         d_sd,
         d,
-        # noise=noise_standard_normal,
         truncation=1.0,
         step_length=step_length,
     )
