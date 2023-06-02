@@ -12,7 +12,6 @@ rng = np.random.default_rng()
 # https://ert.readthedocs.io/en/latest/theory/ensemble_based_methods.html#kalman-posterior-properties
 a_true = 1.0
 b_true = 5.0
-number_of_parameters = 2
 number_of_observations = 45
 
 
@@ -79,35 +78,41 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_n(N):
 
     # define noise to perturb observations
     Cdd = np.diag([d_sd**2]).reshape(m, m)
-    noise_standard_normal = rng.standard_normal(size=(m, N))
-    D = d + np.linalg.cholesky(Cdd) @ noise_standard_normal
+    # noise_standard_normal = rng.standard_normal(size=(m, N))
+    # D = d + np.linalg.cholesky(Cdd) @ noise_standard_normal
 
     # Property holds for small step-size and one iteration.
     # Likely also holds for infinite iterations, or at convergence,
     # but then for infinitessimal stepsize
     step_length = 0.1
+
+    seed = 123
     # find solutions with and without projection
-    model_projection = ies.SIES(N)
+    model_projection = ies.SIES(N, seed=seed)
     model_projection.fit(
         gX,
         d_sd,
         d,
-        noise=noise_standard_normal,
+        # noise=noise_standard_normal,
         truncation=1.0,
         step_length=step_length,
         param_ensemble=X_prior,
     )
     X_posterior_projection = model_projection.update(X_prior)
-    model_no_projection = ies.SIES(N)
+
+    model_no_projection = ies.SIES(N, seed=seed)
     model_no_projection.fit(
         gX,
         d_sd,
         d,
-        noise=noise_standard_normal,
+        # noise=noise_standard_normal,
         truncation=1.0,
         step_length=step_length,
     )
     X_posterior_no_projection = model_no_projection.update(X_prior)
+
+    assert np.allclose(model_projection.D_, model_no_projection.D_)
+    D = model_projection.D_
 
     # Assert projection solution better than no-projection
     centering_matrix = (np.identity(N) - np.ones((N, N)) / N) / np.sqrt(N - 1)
@@ -257,13 +262,6 @@ def test_that_sies_converges_to_es_in_gauss_linear_case():
 
     d = pd.DataFrame(observations, columns=["value", "sd", "x"])
     d = d.set_index("x")
-    num_obs = d.shape[0]
-
-    # Assume diagonal ensemble covariance matrix for the measurement perturbations.
-    R = np.diag(d.sd.values**2)
-
-    E = rng.multivariate_normal(mean=np.zeros(len(R)), cov=R, size=ensemble_size).T
-    assert E.shape == (num_obs, ensemble_size)
 
     coeff_a = rng.normal(0, 1, size=ensemble_size)
     coeff_b = rng.normal(0, 1, size=ensemble_size)
@@ -287,17 +285,22 @@ def test_that_sies_converges_to_es_in_gauss_linear_case():
         [fwd_run[d.index.get_level_values("x").to_list()] for fwd_run in fwd_runs]
     ).T
 
-    smoother_es = ies.ES()
-    smoother_es.fit(response_ensemble, d.sd.values, d.value.values, noise=E)
+    seed = 12345
+    smoother_es = ies.ES(seed=seed)
+    smoother_es.fit(
+        response_ensemble,
+        d.sd.values,  # Assume diagonal ensemble covariance matrix for the measurement perturbations.
+        d.value.values,
+    )
     params_es = smoother_es.update(X)
 
     assert np.linalg.det(np.cov(X)) > np.linalg.det(np.cov(params_es))
 
     params_ies = X.copy()
     responses_ies = response_ensemble.copy()
-    smoother_ies = ies.SIES(ensemble_size)
+    smoother_ies = ies.SIES(ensemble_size, seed=seed)
     for _ in range(10):
-        smoother_ies.fit(responses_ies, d.sd.values, d.value.values, noise=E)
+        smoother_ies.fit(responses_ies, d.sd.values, d.value.values)
         params_ies = smoother_ies.update(params_ies)
 
         _coeff_a = params_ies[0, :]
@@ -370,6 +373,7 @@ def test_that_update_correctly_multiples_gaussians(inversion, errors):
     obs_val = 10
     observation_values = np.array([obs_val, obs_val, obs_val])
     smoother = ies.SIES(N)
+    print(errors)
     smoother.fit(
         Y,
         errors,
@@ -413,18 +417,16 @@ def test_that_global_es_update_is_identical_to_local(ensemble_size, num_params, 
 
     observation_errors = rng.uniform(size=num_obs)
     observation_values = rng.normal(np.zeros(num_params), observation_errors)
-    noise = rng.normal(size=(num_obs, ensemble_size))
 
     param_ensemble = None
     if not linear and num_params < ensemble_size - 1:
         param_ensemble = X
 
-    smoother = ies.ES()
+    smoother = ies.ES(seed=12345)
     smoother.fit(
         Y,
         observation_errors,
         observation_values,
-        noise=noise,
         param_ensemble=param_ensemble,
     )
     X_ES_global = smoother.update(X)
@@ -441,7 +443,6 @@ def test_that_global_es_update_is_identical_to_local(ensemble_size, num_params, 
         Y,
         observation_errors,
         observation_values,
-        noise=noise,
         param_ensemble=param_ensemble,
     )
     X_ES_local[batch, :] = smoother.update(X[batch])
@@ -451,7 +452,6 @@ def test_that_global_es_update_is_identical_to_local(ensemble_size, num_params, 
             Y,
             observation_errors,
             observation_values,
-            noise=noise,
             param_ensemble=param_ensemble,
         )
         X_ES_local[i, :] = smoother.update(X[i, :])
@@ -460,7 +460,7 @@ def test_that_global_es_update_is_identical_to_local(ensemble_size, num_params, 
 
 
 def test_that_ies_runs_with_failed_realizations():
-    rng = np.random.default_rng()
+
     ensemble_size = 50
     num_params = 100
     num_responses = 5
@@ -468,9 +468,9 @@ def test_that_ies_runs_with_failed_realizations():
     response_ensemble = np.power(param_ensemble, 2)[:num_responses, :] + rng.normal(
         size=(num_responses, ensemble_size)
     )
-    noise = rng.normal(size=(num_responses, ensemble_size))
+
     obs_values = rng.normal(size=num_responses)
-    obs_errors = rng.normal(size=num_responses)
+    obs_errors = 0.01 + np.abs(rng.normal(size=num_responses))  # Stds must be positive
     ens_mask = np.array([True] * ensemble_size)
     ens_mask[10:] = False
     smoother = ies.SIES(ensemble_size)
@@ -478,7 +478,6 @@ def test_that_ies_runs_with_failed_realizations():
         response_ensemble[:, ens_mask],
         obs_errors,
         obs_values,
-        noise=noise[:, ens_mask],
         ensemble_mask=ens_mask,
     )
     param_ensemble = smoother.update(param_ensemble[:, ens_mask])
@@ -487,7 +486,6 @@ def test_that_ies_runs_with_failed_realizations():
         response_ensemble[:, ens_mask],
         obs_errors,
         obs_values,
-        noise=noise[:, ens_mask],
         ensemble_mask=ens_mask,
     )
     param_ensemble = smoother.update(param_ensemble)
@@ -496,7 +494,6 @@ def test_that_ies_runs_with_failed_realizations():
         response_ensemble[:, ens_mask],
         obs_errors,
         obs_values,
-        noise=noise[:, ens_mask],
         ensemble_mask=ens_mask,
     )
     param_ensemble = smoother.update(param_ensemble)
@@ -537,13 +534,11 @@ def test_memory_usage():
 
     observation_errors = rng.uniform(size=num_obs)
     observation_values = rng.normal(np.zeros(num_obs), observation_errors)
-    noise = rng.normal(size=(num_obs, ensemble_size))
 
     smoother = ies.ES()
     smoother.fit(
         Y,
         observation_errors,
         observation_values,
-        noise=noise,
     )
-    X_ES_global = smoother.update(X)
+    smoother.update(X)

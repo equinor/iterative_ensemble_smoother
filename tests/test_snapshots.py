@@ -114,14 +114,12 @@ def to_csv(nparray):
 def test_iterative_ensemble_smoother_update_step(snapshot, initial_A, initial_S):
     # performing an update step gives us a new A matrix with updated parameters
     # for the ensemble
-    rng = np.random.default_rng(12345)
-    noise = rng.standard_normal(size=(len(observation_values), initial_A.shape[1]))
-    smoother = ies.SIES(ensemble_size=initial_A.shape[1])
+    seed = 12345
+    smoother = ies.SIES(ensemble_size=initial_A.shape[1], seed=seed)
     smoother.fit(
         initial_S,
         observation_errors,
         observation_values,
-        noise=noise,
         step_length=1.0,
         param_ensemble=initial_A,
     )
@@ -153,16 +151,14 @@ def test_ensemble_smoother_update_step_with_rowscaling(snapshot, initial_A, init
 def test_ensemble_smoother_update_step(snapshot, initial_A, initial_S):
     # performing an update step gives us a new A matrix with updated parameters
     # for the ensemble
-    rng = np.random.default_rng(12345)
-    noise = rng.standard_normal(size=(len(observation_values), initial_A.shape[1]))
+    seed = 12345
     ensemble_size = initial_A.shape[1]
-    smoother = ies.SIES(ensemble_size)
+    smoother = ies.SIES(ensemble_size, seed=seed)
     smoother.fit(
         initial_S,
         observation_errors,
         observation_values,
         step_length=1.0,
-        noise=noise,
         param_ensemble=initial_A,
     )
     new_A = smoother.update(initial_A)

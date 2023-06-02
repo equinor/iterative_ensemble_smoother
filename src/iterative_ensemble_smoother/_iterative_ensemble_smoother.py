@@ -6,8 +6,6 @@ import numpy as np
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-rng = np.random.default_rng()
-
 from ._ies import InversionType, create_coefficient_matrix
 from iterative_ensemble_smoother.utils import (
     _validate_inputs,
@@ -37,6 +35,7 @@ class SIES:
     :param max_steplength: parameter used to tweaking the step length.
     :param min_steplength: parameter used to tweaking the step length.
     :param dec_steplength: parameter used to tweaking the step length.
+    :param seed: Integer used to seed the random number generator.
     """
 
     def __init__(
@@ -46,6 +45,7 @@ class SIES:
         max_steplength: float = 0.6,
         min_steplength: float = 0.3,
         dec_steplength: float = 2.5,
+        seed: Optional[int] = None,
     ):
         self._initial_ensemble_size = ensemble_size
         self.iteration_nr = 1
@@ -53,6 +53,7 @@ class SIES:
         self.min_steplength = min_steplength
         self.dec_steplength = dec_steplength
         self.coefficient_matrix = np.zeros(shape=(ensemble_size, ensemble_size))
+        self.rng = np.random.default_rng(seed)
 
     def _get_steplength(self, iteration_nr: int) -> float:
         """
@@ -113,18 +114,21 @@ class SIES:
 
         num_obs = len(observation_values)
         ensemble_size = response_ensemble.shape[1]
+
         if step_length is None:
             step_length = self._get_steplength(self.iteration_nr)
 
         # A covariance matrix was passed
         # Columns of E should be sampled from N(0,Cdd) and centered, Evensen 2019
-        if len(observation_errors.shape) == 2:
-            E = rng.multivariate_normal(
-                mean=np.zeros_like(num_obs), cov=observation_errors, size=ensemble_size
+        if observation_errors.ndim == 2:
+            E = self.rng.multivariate_normal(
+                mean=np.zeros_like(observation_values),
+                cov=observation_errors,
+                size=ensemble_size,
             ).T
         # A vector of standard deviations was passed
         else:
-            E = rng.normal(
+            E = self.rng.normal(
                 loc=0, scale=observation_errors, size=(ensemble_size, num_obs)
             ).T
 
@@ -132,23 +136,25 @@ class SIES:
 
         E -= E.mean(axis=1, keepdims=True)
 
-        R, observation_errors = _create_errors(observation_errors, inversion)
+        R, observation_errors_std = _create_errors(observation_errors, inversion)
 
-        D = (E + observation_values.reshape(num_obs, 1)) - response_ensemble
+        # Store D as defined by Equation (14) in Evensen (2019)
+        self.D_ = E + observation_values.reshape(num_obs, 1)
+        D = self.D_ - response_ensemble
 
         # Scale D and E with observation error standard deviations.
-        D /= observation_errors.reshape(num_obs, 1)
-        E /= observation_errors.reshape(num_obs, 1)
+        D /= observation_errors_std.reshape(num_obs, 1)
+        E /= observation_errors_std.reshape(num_obs, 1)
 
         if param_ensemble is not None:
             projected_response = response_ensemble @ _response_projection(
                 param_ensemble
             )
-            _response_ensemble = projected_response / observation_errors.reshape(
+            _response_ensemble = projected_response / observation_errors_std.reshape(
                 num_obs, 1
             )
         else:
-            _response_ensemble = response_ensemble / observation_errors.reshape(
+            _response_ensemble = response_ensemble / observation_errors_std.reshape(
                 num_obs, 1
             )
         _response_ensemble -= _response_ensemble.mean(axis=1, keepdims=True)
@@ -203,8 +209,12 @@ class SIES:
 
 
 class ES:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        seed: Optional[int] = None,
+    ) -> None:
         self.smoother: Optional[SIES] = None
+        self.seed = seed
 
     def fit(
         self,
@@ -212,17 +222,15 @@ class ES:
         observation_errors: npt.NDArray[np.double],
         observation_values: npt.NDArray[np.double],
         *,
-        noise: Optional[npt.NDArray[np.double]] = None,
         truncation: float = 0.98,
         inversion: InversionType = InversionType.EXACT,
         param_ensemble: Optional[npt.NDArray[np.double]] = None,
     ) -> None:
-        self.smoother = SIES(ensemble_size=response_ensemble.shape[1])
+        self.smoother = SIES(ensemble_size=response_ensemble.shape[1], seed=self.seed)
         self.smoother.fit(
             response_ensemble,
             observation_errors,
             observation_values,
-            noise=noise,
             truncation=truncation,
             step_length=1.0,
             ensemble_mask=None,
