@@ -28,12 +28,12 @@ def steplength_exponential(
 
     Examples
     --------
-    >>> steplength_exponential(1, 0.0, 1.0, 1.0)
-    1.0
-    >>> steplength_exponential(2, 0.0, 1.0, 1.0)
-    0.5
-    >>> steplength_exponential(3, 0.0, 1.0, 1.0)
-    0.25
+    >>> [steplength_exponential(i, 0.0, 1.0, 1.0) for i in [1, 2, 3, 4]]
+    [1.0, 0.5, 0.25, 0.125]
+    >>> [steplength_exponential(i, 0.0, 1.0, 0.5) for i in [1, 2, 3, 4]]
+    [1.0, 0.25, 0.0625, 0.015625]
+    >>> [steplength_exponential(i, 0.5, 1.0, 1.0) for i in [1, 2, 3]]
+    [1.0, 0.75, 0.625]
 
     """
 
@@ -128,6 +128,7 @@ class SIES:
         num_obs = len(observation_values)
         ensemble_size = response_ensemble.shape[1]
 
+        # Determine the step length
         if step_length is None:
             if self.steplength_schedule is None:
                 step_length = steplength_exponential(self.iteration_nr)
@@ -137,12 +138,13 @@ class SIES:
         assert 0 < step_length <= 1, "Step length must be in (0, 1]"
 
         # A covariance matrix was passed
-        # Columns of E should be sampled from N(0,Cdd) and centered, Evensen 2019
+        # Columns of E should be sampled from N(0, Cdd) and centered, Evensen 2019
         if observation_errors.ndim == 2:
             E = self.rng.multivariate_normal(
                 mean=np.zeros_like(observation_values),
                 cov=observation_errors,
                 size=ensemble_size,
+                method="cholesky",  # An order of magnitude faster than 'svd'
             ).T
         # A vector of standard deviations was passed
         else:
