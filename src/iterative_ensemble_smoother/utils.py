@@ -9,6 +9,52 @@ if TYPE_CHECKING:
 from ._ies import InversionType
 
 
+def steplength_exponential(
+    iteration: int,
+    min_steplength: float = 0.3,
+    max_steplength: float = 0.6,
+    halflife: float = 1.5,
+) -> float:
+    """
+    This is an implementation of Eq. (49), which calculates a suitable step length for
+    the update step, from the book:
+
+    Geir Evensen, Formulating the history matching problem with consistent error statistics,
+    Computational Geosciences (2021) 25:945 –970
+
+    Examples
+    --------
+    >>> [steplength_exponential(i, 0.0, 1.0, 1.0) for i in [1, 2, 3, 4]]
+    [1.0, 0.5, 0.25, 0.125]
+    >>> [steplength_exponential(i, 0.0, 1.0, 0.5) for i in [1, 2, 3, 4]]
+    [1.0, 0.25, 0.0625, 0.015625]
+    >>> [steplength_exponential(i, 0.5, 1.0, 1.0) for i in [1, 2, 3]]
+    [1.0, 0.75, 0.625]
+
+    """
+    assert max_steplength > min_steplength
+    assert iteration >= 1
+    assert halflife > 0
+
+    delta = max_steplength - min_steplength
+    exponent = -(iteration - 1) / halflife
+    return min_steplength + delta * 2**exponent
+
+
+def response_projection(
+    param_ensemble: npt.NDArray[np.double],
+) -> npt.NDArray[np.double]:
+    """A^+A projection is necessary when the parameter matrix has fewer rows than
+    columns, and when the forward model is non-linear. Section 2.4.3
+    """
+    ensemble_size = param_ensemble.shape[1]
+    A = (param_ensemble - param_ensemble.mean(axis=1, keepdims=True)) / np.sqrt(
+        ensemble_size - 1
+    )
+    projection: npt.NDArray[np.double] = np.linalg.pinv(A) @ A
+    return projection
+
+
 def _validate_inputs(
     response_ensemble: npt.NDArray[np.double],
     observation_errors: npt.NDArray[np.double],

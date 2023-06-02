@@ -173,7 +173,6 @@ def test_ensemble_smoother_update_step(snapshot, initial_A, initial_S):
 
 def test_get_steplength():
     expected = [
-        7.762203155904597862e-01,
         5.999999999999999778e-01,
         4.889881574842309675e-01,
         4.190550788976149521e-01,
@@ -185,5 +184,5 @@ def test_get_steplength():
         3.074409424311009276e-01,
     ]
     # iterative_es = ies.SIES(0)
-    steplengths = [steplength_exponential(i) for i in range(10)]
+    steplengths = [steplength_exponential(i) for i in range(1, 10)]
     testing.assert_array_equal(expected, steplengths)
