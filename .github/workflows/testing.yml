@@ -11,17 +11,22 @@ jobs:
         python-version: ["3.8", "3.9", "3.10", "3.11"]
 
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v3
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: install pandoc
         run: sudo apt-get update && sudo apt-get install -y pandoc
+
       - name: Install tox
         run: pip install tox tox-gh-actions
+
       - name: Test with tox
         run: tox
+
       - name: Run Doctests
-        run: pytest src/ --doctest-modules
+
+        run: pip install pytest |
+             pytest src/ --doctest-modules
