@@ -27,6 +27,6 @@ jobs:
         run: tox
 
       - name: Run Doctests
-
-        run: pip install pytest |
-             pytest src/ --doctest-modules
+        run: |
+          pip install pytest
+          pytest src/ --doctest-modules
