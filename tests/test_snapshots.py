@@ -11,6 +11,10 @@ from iterative_ensemble_smoother.experimental import (
     ensemble_smoother_update_step_row_scaling,
 )
 
+from iterative_ensemble_smoother._iterative_ensemble_smoother import (
+    steplength_exponential,
+)
+
 
 # We fix the random seed in the tests for convenience
 @pytest.fixture(autouse=True)
@@ -180,6 +184,6 @@ def test_get_steplength():
         3.118117598427644355e-01,
         3.074409424311009276e-01,
     ]
-    iterative_es = ies.SIES(0)
-    steplengths = [iterative_es._get_steplength(i) for i in range(10)]
+    # iterative_es = ies.SIES(0)
+    steplengths = [steplength_exponential(i) for i in range(10)]
     testing.assert_array_equal(expected, steplengths)

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Callable
 
 import numpy as np
 
@@ -11,6 +11,37 @@ from iterative_ensemble_smoother.utils import (
     _validate_inputs,
     _create_errors,
 )
+
+
+def steplength_exponential(
+    iteration: int,
+    min_steplength: float = 0.3,
+    max_steplength: float = 0.6,
+    halflife: float = 1.5,
+) -> float:
+    """
+    This is an implementation of Eq. (49), which calculates a suitable step length for
+    the update step, from the book:
+
+    Geir Evensen, Formulating the history matching problem with consistent error statistics,
+    Computational Geosciences (2021) 25:945 –970
+
+    Examples
+    --------
+    >>> steplength_exponential(1, 0.0, 1.0, 1.0)
+    1.0
+    >>> steplength_exponential(2, 0.0, 1.0, 1.0)
+    0.5
+    >>> steplength_exponential(3, 0.0, 1.0, 1.0)
+    0.25
+
+    """
+
+    steplength = min_steplength + (max_steplength - min_steplength) * pow(
+        2, -(iteration - 1) / halflife
+    )
+
+    return steplength
 
 
 def _response_projection(
@@ -32,9 +63,7 @@ class SIES:
     algorithm. See `Evensen[1]`_.
 
     :param ensemble_size: The number of realizations in the ensemble model.
-    :param max_steplength: parameter used to tweaking the step length.
-    :param min_steplength: parameter used to tweaking the step length.
-    :param dec_steplength: parameter used to tweaking the step length.
+    :param steplength_schedule: A function that takes the iteration number (starting at 1) and returns steplength.
     :param seed: Integer used to seed the random number generator.
     """
 
@@ -42,31 +71,15 @@ class SIES:
         self,
         ensemble_size: int,
         *,
-        max_steplength: float = 0.6,
-        min_steplength: float = 0.3,
-        dec_steplength: float = 2.5,
+        steplength_schedule: Optional[Callable[[int], float]] = None,
         seed: Optional[int] = None,
     ):
         self._initial_ensemble_size = ensemble_size
         self.iteration_nr = 1
-        self.max_steplength = max_steplength
-        self.min_steplength = min_steplength
-        self.dec_steplength = dec_steplength
+        self.steplength_schedule = steplength_schedule
         self.coefficient_matrix = np.zeros(shape=(ensemble_size, ensemble_size))
+        self.seed = seed
         self.rng = np.random.default_rng(seed)
-
-    def _get_steplength(self, iteration_nr: int) -> float:
-        """
-        This is an implementation of Eq. (49), which calculates a suitable step length for
-        the update step, from the book:
-
-        Geir Evensen, Formulating the history matching problem with consistent error statistics,
-        Computational Geosciences (2021) 25:945 –970
-        """
-        steplength = self.min_steplength + (
-            self.max_steplength - self.min_steplength
-        ) * pow(2, -(iteration_nr - 1) / (self.dec_steplength - 1))
-        return steplength
 
     def fit(
         self,
@@ -116,7 +129,12 @@ class SIES:
         ensemble_size = response_ensemble.shape[1]
 
         if step_length is None:
-            step_length = self._get_steplength(self.iteration_nr)
+            if self.steplength_schedule is None:
+                step_length = steplength_exponential(self.iteration_nr)
+            else:
+                step_length = self.steplength_schedule(self.iteration_nr)
+
+        assert 0 < step_length <= 1, "Step length must be in (0, 1]"
 
         # A covariance matrix was passed
         # Columns of E should be sampled from N(0,Cdd) and centered, Evensen 2019
@@ -203,8 +221,7 @@ class SIES:
     def __repr__(self) -> str:
         return (
             f"SIES(ensemble_size={self._initial_ensemble_size}, "
-            f"max_steplength={self.max_steplength}, min_steplength={self.min_steplength}, "
-            f"dec_steplength={self.dec_steplength})"
+            f"steplength_schedule={self.steplength_schedule}, seed={self.seed})"
         )
 
 
@@ -243,4 +260,4 @@ class ES:
         return self.smoother.update(param_ensemble)
 
     def __repr__(self) -> str:
-        return "ES()"
+        return f"ES(seed={self.seed})"
