@@ -6,8 +6,8 @@ import numpy as np
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-from .._ies import InversionType, create_coefficient_matrix
-from ..utils import (
+from ._ies import InversionType, create_coefficient_matrix
+from .utils import (
     _validate_inputs,
     _create_errors,
     steplength_exponential,
