@@ -176,10 +176,7 @@ class SIES:
         return param_ensemble @ transition_matrix
 
     def __repr__(self) -> str:
-        return (
-            f"SIES(ensemble_size={self._initial_ensemble_size}, "
-            f"steplength_schedule={self.steplength_schedule}, seed={self.seed})"
-        )
+        return f"SIES(ensemble_size={self._initial_ensemble_size})"
 
 
 class ES:
@@ -217,4 +214,4 @@ class ES:
         return self.smoother.update(param_ensemble)
 
     def __repr__(self) -> str:
-        return f"ES(seed={self.seed})"
+        return "ES()"

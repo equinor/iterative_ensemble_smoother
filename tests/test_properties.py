@@ -369,7 +369,7 @@ def test_that_update_correctly_multiples_gaussians(inversion, errors):
     obs_val = 10
     observation_values = np.array([obs_val, obs_val, obs_val])
     smoother = ies.SIES(N)
-    print(errors)
+
     smoother.fit(
         Y,
         errors,
