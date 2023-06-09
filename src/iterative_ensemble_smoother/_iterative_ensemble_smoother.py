@@ -36,7 +36,6 @@ class SIES:
         self.steplength_schedule = steplength_schedule
         self.coefficient_matrix = np.zeros(shape=(ensemble_size, ensemble_size))
         self.seed = seed
-        self.rng = np.random.default_rng(seed)
 
     def fit(
         self,
@@ -94,10 +93,13 @@ class SIES:
 
         assert 0 < step_length <= 1, "Step length must be in (0, 1]"
 
+        # Seed here so we draw the same samples in every iteration (call to update())
+        rng = np.random.default_rng(self.seed)
+
         # A covariance matrix was passed
         # Columns of E should be sampled from N(0, Cdd) and centered, Evensen 2019
         if observation_errors.ndim == 2:
-            E = self.rng.multivariate_normal(
+            E = rng.multivariate_normal(
                 mean=np.zeros_like(observation_values),
                 cov=observation_errors,
                 size=ensemble_size,
@@ -105,7 +107,7 @@ class SIES:
             ).T
         # A vector of standard deviations was passed
         else:
-            E = self.rng.normal(
+            E = rng.normal(
                 loc=0, scale=observation_errors, size=(ensemble_size, num_obs)
             ).T
 
