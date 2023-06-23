@@ -3,5 +3,4 @@
 
 
 def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
-
     Omega = ...
