@@ -3,7 +3,7 @@ from os import path
 from pathlib import Path
 from subprocess import check_output
 
-from pybind11.setup_helpers import Pybind11Extension, build_ext
+from pybind11.setup_helpers import Pybind11Extension
 from setuptools import setup
 
 check_output(["conan", "install", "."])

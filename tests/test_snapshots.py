@@ -11,6 +11,10 @@ from iterative_ensemble_smoother.experimental import (
     ensemble_smoother_update_step_row_scaling,
 )
 
+from iterative_ensemble_smoother._iterative_ensemble_smoother import (
+    steplength_exponential,
+)
+
 
 # We fix the random seed in the tests for convenience
 @pytest.fixture(autouse=True)
@@ -114,14 +118,12 @@ def to_csv(nparray):
 def test_iterative_ensemble_smoother_update_step(snapshot, initial_A, initial_S):
     # performing an update step gives us a new A matrix with updated parameters
     # for the ensemble
-    rng = np.random.default_rng(12345)
-    noise = rng.standard_normal(size=(len(observation_values), initial_A.shape[1]))
-    smoother = ies.SIES(ensemble_size=initial_A.shape[1])
+    seed = 12345
+    smoother = ies.SIES(ensemble_size=initial_A.shape[1], seed=seed)
     smoother.fit(
         initial_S,
         observation_errors,
         observation_values,
-        noise=noise,
         step_length=1.0,
         param_ensemble=initial_A,
     )
@@ -153,16 +155,14 @@ def test_ensemble_smoother_update_step_with_rowscaling(snapshot, initial_A, init
 def test_ensemble_smoother_update_step(snapshot, initial_A, initial_S):
     # performing an update step gives us a new A matrix with updated parameters
     # for the ensemble
-    rng = np.random.default_rng(12345)
-    noise = rng.standard_normal(size=(len(observation_values), initial_A.shape[1]))
+    seed = 12345
     ensemble_size = initial_A.shape[1]
-    smoother = ies.SIES(ensemble_size)
+    smoother = ies.SIES(ensemble_size, seed=seed)
     smoother.fit(
         initial_S,
         observation_errors,
         observation_values,
         step_length=1.0,
-        noise=noise,
         param_ensemble=initial_A,
     )
     new_A = smoother.update(initial_A)
@@ -173,7 +173,6 @@ def test_ensemble_smoother_update_step(snapshot, initial_A, initial_S):
 
 def test_get_steplength():
     expected = [
-        7.762203155904597862e-01,
         5.999999999999999778e-01,
         4.889881574842309675e-01,
         4.190550788976149521e-01,
@@ -184,6 +183,6 @@ def test_get_steplength():
         3.118117598427644355e-01,
         3.074409424311009276e-01,
     ]
-    iterative_es = ies.SIES(0)
-    steplengths = [iterative_es._get_steplength(i) for i in range(10)]
+    # iterative_es = ies.SIES(0)
+    steplengths = [steplength_exponential(i) for i in range(1, 10)]
     testing.assert_array_equal(expected, steplengths)

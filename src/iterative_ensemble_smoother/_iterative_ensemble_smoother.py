@@ -1,30 +1,18 @@
 from __future__ import annotations
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Callable
 
 import numpy as np
 
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-from ._ies import InversionType, create_coefficient_matrix
+from iterative_ensemble_smoother._ies import InversionType, create_coefficient_matrix
 from iterative_ensemble_smoother.utils import (
     _validate_inputs,
     _create_errors,
+    steplength_exponential,
+    response_projection,
 )
-
-
-def _response_projection(
-    param_ensemble: npt.NDArray[np.double],
-) -> npt.NDArray[np.double]:
-    """A^+A projection is necessary when the parameter matrix has fewer rows than
-    columns, and when the forward model is non-linear. Section 2.4.3
-    """
-    ensemble_size = param_ensemble.shape[1]
-    A = (param_ensemble - param_ensemble.mean(axis=1, keepdims=True)) / np.sqrt(
-        ensemble_size - 1
-    )
-    projection: npt.NDArray[np.double] = np.linalg.pinv(A) @ A
-    return projection
 
 
 class SIES:
@@ -32,9 +20,7 @@ class SIES:
     algorithm. See `Evensen[1]`_.
 
     :param ensemble_size: The number of realizations in the ensemble model.
-    :param max_steplength: parameter used to tweaking the step length.
-    :param min_steplength: parameter used to tweaking the step length.
-    :param dec_steplength: parameter used to tweaking the step length.
+    :param steplength_schedule: A function that takes the iteration number (starting at 1) and returns steplength.
     :param seed: Integer used to seed the random number generator.
     """
 
@@ -42,31 +28,14 @@ class SIES:
         self,
         ensemble_size: int,
         *,
-        max_steplength: float = 0.6,
-        min_steplength: float = 0.3,
-        dec_steplength: float = 2.5,
+        steplength_schedule: Optional[Callable[[int], float]] = None,
         seed: Optional[int] = None,
     ):
         self._initial_ensemble_size = ensemble_size
         self.iteration_nr = 1
-        self.max_steplength = max_steplength
-        self.min_steplength = min_steplength
-        self.dec_steplength = dec_steplength
+        self.steplength_schedule = steplength_schedule
         self.coefficient_matrix = np.zeros(shape=(ensemble_size, ensemble_size))
-        self.rng = np.random.default_rng(seed)
-
-    def _get_steplength(self, iteration_nr: int) -> float:
-        """
-        This is an implementation of Eq. (49), which calculates a suitable step length for
-        the update step, from the book:
-
-        Geir Evensen, Formulating the history matching problem with consistent error statistics,
-        Computational Geosciences (2021) 25:945 –970
-        """
-        steplength = self.min_steplength + (
-            self.max_steplength - self.min_steplength
-        ) * pow(2, -(iteration_nr - 1) / (self.dec_steplength - 1))
-        return steplength
+        self.seed = seed
 
     def fit(
         self,
@@ -74,7 +43,6 @@ class SIES:
         observation_errors: npt.NDArray[np.double],
         observation_values: npt.NDArray[np.double],
         *,
-        noise: Optional[npt.NDArray[np.double]] = None,
         truncation: float = 0.98,
         step_length: Optional[float] = None,
         ensemble_mask: Optional[npt.NDArray[np.bool_]] = None,
@@ -90,8 +58,6 @@ class SIES:
                                    for each observation, or covariance matrix
                                    if errors are correlated.
         :param observation_values: 1D array of observations.
-        :param noise: Optional noise matrix with the same shape as response matrix.
-            Elements should be sampled independently from a standard normal.
         :param truncation: float used to determine the number of significant singular
             values. Defaults to 0.98 (ie. 98% significant values).
         :param step_length: The step length to be used in the algorithm,
@@ -110,7 +76,6 @@ class SIES:
 
         _validate_inputs(
             response_ensemble,
-            noise,
             observation_errors,
             observation_values,
             param_ensemble=param_ensemble,
@@ -118,34 +83,50 @@ class SIES:
 
         num_obs = len(observation_values)
         ensemble_size = response_ensemble.shape[1]
+
+        # Determine the step length
         if step_length is None:
-            step_length = self._get_steplength(self.iteration_nr)
+            if self.steplength_schedule is None:
+                step_length = steplength_exponential(self.iteration_nr)
+            else:
+                step_length = self.steplength_schedule(self.iteration_nr)
 
-        if noise is None:
-            noise = self.rng.standard_normal(size=(num_obs, ensemble_size))
+        assert 0 < step_length <= 1, "Step length must be in (0, 1]"
 
-        # Columns of E should be sampled from N(0,Cdd) and centered, Evensen 2019
+        # Seed here so we draw the same samples in every iteration (call to update())
+        rng = np.random.default_rng(self.seed)
+
+        # A covariance matrix was passed
+        # Columns of E should be sampled from N(0, Cdd) and centered, Evensen 2019
         if observation_errors.ndim == 2:
-            E = np.linalg.cholesky(observation_errors) @ noise
+            E = rng.multivariate_normal(
+                mean=np.zeros_like(observation_values),
+                cov=observation_errors,
+                size=ensemble_size,
+                method="cholesky",  # An order of magnitude faster than 'svd'
+            ).T
+        # A vector of standard deviations was passed
         else:
-            # This is equivalent to cholesky(np.diag(observation_errors**2)) @ noise as the Cholesky
-            # decomposition of a diagonal matrix is another diagonal matrix with the square root
-            # of the original diagonal elements.
-            E = noise * observation_errors.reshape(num_obs, 1)
+            E = rng.normal(
+                loc=0, scale=observation_errors, size=(ensemble_size, num_obs)
+            ).T
+
+        assert E.shape == (num_obs, ensemble_size)
+
         E -= E.mean(axis=1, keepdims=True)
 
         R, observation_errors_std = _create_errors(observation_errors, inversion)
 
-        D = (E + observation_values.reshape(num_obs, 1)) - response_ensemble
+        # Store D as defined by Equation (14) in Evensen (2019)
+        self.D_ = E + observation_values.reshape(num_obs, 1)
+        D = self.D_ - response_ensemble
 
         # Scale D and E with observation error standard deviations.
         D /= observation_errors_std.reshape(num_obs, 1)
         E /= observation_errors_std.reshape(num_obs, 1)
 
         if param_ensemble is not None:
-            projected_response = response_ensemble @ _response_projection(
-                param_ensemble
-            )
+            projected_response = response_ensemble @ response_projection(param_ensemble)
             _response_ensemble = projected_response / observation_errors_std.reshape(
                 num_obs, 1
             )
@@ -197,16 +178,16 @@ class SIES:
         return param_ensemble @ transition_matrix
 
     def __repr__(self) -> str:
-        return (
-            f"SIES(ensemble_size={self._initial_ensemble_size}, "
-            f"max_steplength={self.max_steplength}, min_steplength={self.min_steplength}, "
-            f"dec_steplength={self.dec_steplength})"
-        )
+        return f"SIES(ensemble_size={self._initial_ensemble_size})"
 
 
 class ES:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        seed: Optional[int] = None,
+    ) -> None:
         self.smoother: Optional[SIES] = None
+        self.seed = seed
 
     def fit(
         self,
@@ -214,17 +195,15 @@ class ES:
         observation_errors: npt.NDArray[np.double],
         observation_values: npt.NDArray[np.double],
         *,
-        noise: Optional[npt.NDArray[np.double]] = None,
         truncation: float = 0.98,
         inversion: InversionType = InversionType.EXACT,
         param_ensemble: Optional[npt.NDArray[np.double]] = None,
     ) -> None:
-        self.smoother = SIES(ensemble_size=response_ensemble.shape[1])
+        self.smoother = SIES(ensemble_size=response_ensemble.shape[1], seed=self.seed)
         self.smoother.fit(
             response_ensemble,
             observation_errors,
             observation_values,
-            noise=noise,
             truncation=truncation,
             step_length=1.0,
             ensemble_mask=None,
