@@ -389,43 +389,293 @@ def add_identity(a):
 
 
 def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
+    """Creates the coefficient matrix W_i defined in line 8 in Algorithm 1.
 
-    assert inversion in ("exact", "subspace_exact_r", "subspace_re")
 
-    _, ensemble_size = Y.shape
+    Examples
+    --------
+    >>> Y = np.array([[1, 2], [3, 4]])
+    >>> E = np.array([[2, 0], [1, 3]])
+    >>> R = E @ E.T
+    >>> W0 = np.array([[2, 1], [2, 2]])
+    >>> D = np.array([[0, 1], [1, 1]])
+    >>> create_coefficient_matrix(Y, R, E, D, "naive", 1.0, W0, 1.0)
+    array([[0.90140845, 0.73380282],
+           [1.94366197, 1.74788732]])
+    >>> create_coefficient_matrix(Y, R, E, D, "subspace_re", 1.0, W0, 1.0)
+    array([[0.90140845, 0.73380282],
+           [1.94366197, 1.74788732]])
+    >>> create_coefficient_matrix(Y, R, E, D, "subspace_exact_r", 1.0, W0, 1.0)
+    array([[0.90140845, 0.73380282],
+           [1.94366197, 1.74788732]])
 
-    # This corresponds to line 4 in Algorithm 1
-    Omega = Y - Y.mean(axis=1, keepdims=True)
+    Diagonal corvariane matrix:
+
+    >>> R = np.eye(2)
+    >>> create_coefficient_matrix(Y, R, E, D, "naive", 1.0, W0, 1.0)
+    array([[0.90140845, 0.73380282],
+           [1.94366197, 1.74788732]])
+    >>> create_coefficient_matrix(Y, R, E, D, "exact", 1.0, W0, 1.0)
+    array([[1.2300885 , 0.86725664],
+           [2.43362832, 2.22418879]])
+
+    """
+
+    assert inversion in ("naive", "exact", "subspace_exact_r", "subspace_re")
+
+    _, ensemble_size = W.shape
+
+    # Line 5 in Algorithm 1
+    Omega = W - W.mean(axis=1, keepdims=True)
     Omega /= np.sqrt(ensemble_size - 1)
 
     # Add the identity matrix in place
     # See: https://github.com/numpy/numpy/blob/db4f43983cb938f12c311e1f5b7165e270c393b4/numpy/lib/index_tricks.py#L786
     Omega.flat[: ensemble_size * ensemble_size : ensemble_size + 1] += 1
 
-    # Solving for the average sensitivity matrix.
     # Line 6 of Algorithm 1, also Section 5
-    S = sp.linalg.solve(
-        Omega.T,
-        Y.T,
-        lower=False,
-        overwrite_a=False,
-        overwrite_b=False,
-        check_finite=True,
-        assume_a="gen",
-        transposed=False,
-    )
+    # Solving for the average sensitivity matrix.
+    S = sp.linalg.solve(Omega.T, Y.T, lower=False, assume_a="gen")
 
+    # Line 7 of Algorithm 1, also Section 2.6
     # Similar to the innovation term.
     # Differs in that `D` here is defined as dobs + E - Y instead of just dobs +
-    # E as in the paper. Line 7 of Algorithm 1, also Section 2.6
+    # E as in the paper
     H = D + S @ W
 
-    if inversion == "exact":
+    if inversion == "naive":
+        return W - steplength * (W - S.T @ np.linalg.inv(S @ S.T + E @ E.T) @ H)
+    elif inversion == "exact":
         return exact_inversion(W, S, H, steplength)
     else:
-        pass
+        return subspace_inversion(S, E, H, truncation, inversion, steplength, R=R)
 
     return None
+
+
+# =============================================================================
+# /**
+#  Routine computes X1 and eig corresponding to Eqs 14.54-14.55
+#  Geir Evensen
+# */
+# void lowrankE(
+#     const MatrixXd &S, /* (nrobs x nrens) */
+#     const MatrixXd &E, /* (nrobs x nrens) */
+#     MatrixXd &W, /* (nrobs x nrmin) Corresponding to X1 from Eqs. 14.54-14.55 */
+#     VectorXd &eig, /* (nrmin) Corresponding to 1 / (1 + Lambda1^2) (14.54) */
+#     const std::variant<double, int> &truncation) {
+#
+#   const int nrobs = S.rows();
+#   const int nrens = S.cols();
+#   const int nrmin = std::min(nrobs, nrens);
+#
+#   VectorXd inv_sig0(nrmin);
+#   MatrixXd U0(nrobs, nrmin);
+#
+#   /* Compute SVD of S=HA`  ->  U0, invsig0=sig0^(-1) */
+#   svdS(S, truncation, inv_sig0, U0);
+#
+#   MatrixXd Sigma_inv = inv_sig0.asDiagonal();
+#
+#   /* X0(nrmin x nrens) =  Sigma0^(+) * U0'* E  (14.51)  */
+#   MatrixXd X0 = Sigma_inv * U0.transpose() * E;
+#
+#   /* Compute SVD of X0->  U1*eig*V1   14.52 */
+#   auto svd = X0.bdcSvd(ComputeThinU);
+#   const auto &sig1 = svd.singularValues();
+#
+#   /* Lambda1 = 1/(I + Lambda^2)  in 14.56 */
+#   for (int i = 0; i < nrmin; i++)
+#     eig[i] = 1.0 / (1.0 + sig1[i] * sig1[i]);
+#
+#   /* Compute X1 = W = U0 * (U1=sig0^+ U1) = U0 * Sigma0^(+') * U1  (14.55) */
+#   W = U0 * Sigma_inv.transpose() * svd.matrixU();
+# }
+# =============================================================================
+
+
+def lowrankE(S, E, truncation):
+    """Compute inverse of S @ S.T + E @ E.T
+
+
+    Parameters
+    ----------
+    S : TYPE
+        DESCRIPTION.
+    E : TYPE
+        DESCRIPTION.
+    truncation : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    None.
+
+    Examples
+    --------
+    >>> S = np.array([[1, 2], [3, 4]])
+    >>> E = np.array([[1, 1], [0, 1]])
+
+    Naive computation:
+
+    >>> np.linalg.inv(S @ S.T + E @ E.T)
+    array([[ 0.68421053, -0.31578947],
+           [-0.31578947,  0.18421053]])
+
+    Using this function:
+
+    >>> eig, W = lowrankE(S, E, truncation=1.0)
+    >>> W @ np.diag(eig) @ W.T
+    array([[ 0.68421053, -0.31578947],
+           [-0.31578947,  0.18421053]])
+    """
+
+    num_observations, ensemble_size = S.shape
+
+    U0, inv_sig0, _ = svdS(S, truncation)
+
+    # /* X0(nrmin x nrens) =  Sigma0^(+) * U0'* E  (14.51)  */
+    X0 = (U0 * inv_sig0).T @ E  # Same as diag(inv_sig0) @ U0.T @ E
+
+    U1, sig, VT1 = sp.linalg.svd(X0, full_matrices=False)
+
+    W = U0 @ np.diag(inv_sig0) @ U1
+
+    eig = 1 / (1 + sig**2)
+
+    return eig, W
+
+
+# =============================================================================
+# void lowrankCinv(
+#     const MatrixXd &S, const MatrixXd &R,
+#     MatrixXd &W,   /* Corresponding to X1 from Eq. 14.29 */
+#     VectorXd &eig, /* Corresponding to 1 / (1 + Lambda_1) (14.29) */
+#     const std::variant<double, int> &truncation) {
+#
+#   const int nrobs = S.rows();
+#   const int nrens = S.cols();
+#   const int nrmin = std::min(nrobs, nrens);
+#
+#   MatrixXd U0(nrobs, nrmin);
+#   MatrixXd Z(nrmin, nrmin);
+#
+#   VectorXd inv_sig0(nrmin);
+#   svdS(S, truncation, inv_sig0, U0);
+#
+#   MatrixXd Sigma_inv = inv_sig0.asDiagonal();
+#
+#   /* B = Xo = (N-1) * Sigma0^(+) * U0'* Cee * U0 * Sigma0^(+')  (14.26)*/
+#   MatrixXd B = (nrens - 1.0) * Sigma_inv * U0.transpose() * R * U0 *
+#                Sigma_inv.transpose();
+#
+#   auto svd = B.bdcSvd(ComputeThinU);
+#   Z = svd.matrixU();
+#   eig = svd.singularValues();
+#
+#   /* Lambda1 = (I + Lambda)^(-1) */
+#   for (int i = 0; i < nrmin; i++)
+#     eig[i] = 1.0 / (1 + eig[i]);
+#
+#   Z = Sigma_inv * Z;
+#
+#   W = U0 * Z; /* X1 = W = U0 * Z2 = U0 * Sigma0^(+') * Z    */
+# }
+# =============================================================================
+
+
+def lowrankCinv(S, R, truncation):
+    """Invert S @ S.T + R
+
+    Examples
+    --------
+    >>> S = np.array([[1, 2], [3, 4]])
+    >>> R = np.array([[2, 1], [1, 2]])
+
+    Naive computation:
+
+    >>> np.linalg.inv(S @ S.T + R)
+    array([[ 0.6       , -0.26666667],
+           [-0.26666667,  0.15555556]])
+
+    Using this function:
+
+    >>> eig, W = lowrankCinv(S, R, truncation=1.0)
+    >>> W @ np.diag(eig) @ W.T
+    array([[ 0.6       , -0.26666667],
+           [-0.26666667,  0.15555556]])
+    """
+
+    num_observations, ensemble_size = S.shape
+
+    U0, inv_sig0, _ = svdS(S, truncation)
+
+    # B = (ensemble_size - 1) * np.diag(inv_sig0) @ U0.T @ R @ U0 @ np.diag(inv_sig0)
+    U0_inv_sigma = U0 * inv_sig0
+    B = (ensemble_size - 1) * np.linalg.multi_dot([U0_inv_sigma.T, R, U0_inv_sigma])
+
+    U1, sig, _ = sp.linalg.svd(B, full_matrices=False)
+
+    W = (U0 * inv_sig0) @ U1
+
+    eig = 1 / (1 + sig)
+    return eig, W
+
+
+# =============================================================================
+# void subspace_inversion(MatrixXd &W, const Inversion ies_inversion,
+#                         const MatrixXd &E,
+#                         std::optional<py::EigenDRef<MatrixXd>> R,
+#                         const MatrixXd &S, const MatrixXd &H,
+#                         const std::variant<double, int> &truncation,
+#                         double ies_steplength) {
+#   int ens_size = S.cols();
+#   int nrobs = S.rows();
+#   double nsc = 1.0 / sqrt(ens_size - 1.0);
+#   MatrixXd X1 = MatrixXd::Zero(
+#       nrobs, std::min(ens_size, nrobs)); // Used in subspace inversion
+#   VectorXd eig(ens_size);
+#
+#   switch (ies_inversion) {
+#   case Inversion::subspace_re:
+#     lowrankE(S, E * nsc, X1, eig, truncation);
+#     break;
+#
+#   case Inversion::subspace_exact_r:
+#     lowrankCinv(S, R.value() * nsc * nsc, X1, eig, truncation);
+#     break;
+#
+#   default:
+#     break;
+#   }
+#
+#   // X3 = X1 * diag(eig) * X1' * H (Similar to Eq. 14.31, Evensen (2007))
+#   Eigen::Map<VectorXd> eig_vector(eig.data(), eig.size());
+#   MatrixXd X3 = genX3(X1, H, eig_vector);
+#
+#   // (Line 9)
+#   W = ies_steplength * S.transpose() * X3 + (1.0 - ies_steplength) * W;
+# }
+# =============================================================================
+
+
+def subspace_inversion(S, E, H, truncation, inversion, steplength, R=None):
+    assert inversion in ("subspace_exact_r", "subspace_re")
+
+    num_observations, ensemble_size = S.shape
+    nsc = 1.0 / np.sqrt(ensemble_size - 1.0)
+
+    if inversion == "subspace_re":
+        eig, W = lowrankE(S, E * nsc, truncation)
+    elif inversion == "subspace_exact_r":
+        eig, W = lowrankCinv(S, R * nsc * nsc, truncation)
+    else:
+        raise Exception("test")
+
+    X3 = genX3(W, H, eig)
+
+    W = steplength * S.T @ X3 + (1 - steplength) * W
+    return W
 
 
 if __name__ == "__main__":
