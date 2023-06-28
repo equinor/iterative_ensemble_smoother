@@ -171,6 +171,8 @@ class SIES:
             step_length,
         )
 
+        assert np.allclose(W, W2)
+
         if np.isnan(W).sum() != 0:
             raise ValueError(
                 "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."

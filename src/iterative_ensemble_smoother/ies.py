@@ -1,33 +1,5 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import numpy as np
 import scipy as sp
-
-
-# =============================================================================
-# int calc_num_significant(const VectorXd &singular_values, double truncation) {
-#   int num_significant = 0;
-#   double total_sigma2 = singular_values.squaredNorm();
-#
-#   /*
-#    * Determine the number of singular values by enforcing that
-#    * less than a fraction @truncation of the total variance be
-#    * accounted for.
-#    */
-#   double running_sigma2 = 0;
-#   for (auto sig : singular_values) {
-#     if (running_sigma2 / total_sigma2 <
-#         truncation) { /* Include one more singular value ? */
-#       num_significant++;
-#       running_sigma2 += sig * sig;
-#     } else
-#       break;
-#   }
-#
-#   return num_significant;
-# }
-# =============================================================================
 
 
 def calc_num_significant(singular_values, truncation):
@@ -452,7 +424,7 @@ def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
     elif inversion == "exact":
         return exact_inversion(W, S, H, steplength)
     else:
-        return subspace_inversion(S, E, H, truncation, inversion, steplength, R=R)
+        return subspace_inversion(W, S, E, H, truncation, inversion, steplength, R=R)
 
     return None
 
@@ -663,7 +635,7 @@ def lowrankCinv(S, R, truncation):
 # =============================================================================
 
 
-def subspace_inversion(S, E, H, truncation, inversion, steplength, R=None):
+def subspace_inversion(W, S, E, H, truncation, inversion, steplength, R=None):
 
     assert inversion in ("exact_r", "subspace_re")
 
@@ -671,13 +643,13 @@ def subspace_inversion(S, E, H, truncation, inversion, steplength, R=None):
     nsc = 1.0 / np.sqrt(ensemble_size - 1.0)
 
     if inversion == "subspace_re":
-        eig, W = lowrankE(S, E * nsc, truncation)
+        eig, W2 = lowrankE(S, E * nsc, truncation)
     elif inversion == "exact_r":
-        eig, W = lowrankCinv(S, R * nsc * nsc, truncation)
+        eig, W2 = lowrankCinv(S, R * nsc * nsc, truncation)
     else:
         raise Exception("test")
 
-    X3 = genX3(W, H, eig)
+    X3 = genX3(W2, H, eig)
 
     W = steplength * S.T @ X3 + (1 - steplength) * W
     return W
