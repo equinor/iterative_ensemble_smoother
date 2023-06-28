@@ -400,28 +400,29 @@ def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
     >>> W0 = np.array([[2, 1], [2, 2]])
     >>> D = np.array([[0, 1], [1, 1]])
     >>> create_coefficient_matrix(Y, R, E, D, "naive", 1.0, W0, 1.0)
-    array([[0.90140845, 0.73380282],
-           [1.94366197, 1.74788732]])
+    array([[0.76348548, 0.63347165],
+           [1.94605809, 1.79944675]])
+    >>> create_coefficient_matrix(Y, R, E, D, "exact_r", 1.0, W0, 1.0)
+    array([[0.76348548, 0.63347165],
+           [1.94605809, 1.79944675]])
     >>> create_coefficient_matrix(Y, R, E, D, "subspace_re", 1.0, W0, 1.0)
-    array([[0.90140845, 0.73380282],
-           [1.94366197, 1.74788732]])
-    >>> create_coefficient_matrix(Y, R, E, D, "subspace_exact_r", 1.0, W0, 1.0)
-    array([[0.90140845, 0.73380282],
-           [1.94366197, 1.74788732]])
+    array([[0.76348548, 0.63347165],
+           [1.94605809, 1.79944675]])
 
     Diagonal corvariane matrix:
 
     >>> R = np.eye(2)
+    >>> E = np.eye(2)
     >>> create_coefficient_matrix(Y, R, E, D, "naive", 1.0, W0, 1.0)
-    array([[0.90140845, 0.73380282],
-           [1.94366197, 1.74788732]])
+    array([[1.07964602, 0.75516224],
+           [2.43362832, 2.25958702]])
     >>> create_coefficient_matrix(Y, R, E, D, "exact", 1.0, W0, 1.0)
-    array([[1.2300885 , 0.86725664],
-           [2.43362832, 2.22418879]])
+    array([[1.07964602, 0.75516224],
+           [2.43362832, 2.25958702]])
 
     """
 
-    assert inversion in ("naive", "exact", "subspace_exact_r", "subspace_re")
+    assert inversion in ("naive", "exact", "exact_r", "subspace_re")
 
     _, ensemble_size = W.shape
 
@@ -433,9 +434,12 @@ def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
     # See: https://github.com/numpy/numpy/blob/db4f43983cb938f12c311e1f5b7165e270c393b4/numpy/lib/index_tricks.py#L786
     Omega.flat[: ensemble_size * ensemble_size : ensemble_size + 1] += 1
 
+    # Omega.transposeInPlace();
+    # MatrixXd S = Omega.fullPivLu().solve(Y.transpose()).transpose();
+
     # Line 6 of Algorithm 1, also Section 5
     # Solving for the average sensitivity matrix.
-    S = sp.linalg.solve(Omega.T, Y.T, lower=False, assume_a="gen")
+    S = sp.linalg.solve(Omega.T, Y.T, lower=False, assume_a="gen").T
 
     # Line 7 of Algorithm 1, also Section 2.6
     # Similar to the innovation term.
@@ -513,21 +517,21 @@ def lowrankE(S, E, truncation):
 
     Examples
     --------
-    >>> S = np.array([[1, 2], [3, 4]])
+    >>> S = np.array([[1, 2, 3], [3, 4, 5]])
     >>> E = np.array([[1, 1], [0, 1]])
 
     Naive computation:
 
     >>> np.linalg.inv(S @ S.T + E @ E.T)
-    array([[ 0.68421053, -0.31578947],
-           [-0.31578947,  0.18421053]])
+    array([[ 0.5862069 , -0.31034483],
+           [-0.31034483,  0.18390805]])
 
     Using this function:
 
     >>> eig, W = lowrankE(S, E, truncation=1.0)
     >>> W @ np.diag(eig) @ W.T
-    array([[ 0.68421053, -0.31578947],
-           [-0.31578947,  0.18421053]])
+    array([[ 0.5862069 , -0.31034483],
+           [-0.31034483,  0.18390805]])
     """
 
     num_observations, ensemble_size = S.shape
@@ -660,14 +664,15 @@ def lowrankCinv(S, R, truncation):
 
 
 def subspace_inversion(S, E, H, truncation, inversion, steplength, R=None):
-    assert inversion in ("subspace_exact_r", "subspace_re")
+
+    assert inversion in ("exact_r", "subspace_re")
 
     num_observations, ensemble_size = S.shape
     nsc = 1.0 / np.sqrt(ensemble_size - 1.0)
 
     if inversion == "subspace_re":
         eig, W = lowrankE(S, E * nsc, truncation)
-    elif inversion == "subspace_exact_r":
+    elif inversion == "exact_r":
         eig, W = lowrankCinv(S, R * nsc * nsc, truncation)
     else:
         raise Exception("test")

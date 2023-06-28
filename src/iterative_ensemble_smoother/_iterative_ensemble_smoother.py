@@ -14,6 +14,10 @@ from iterative_ensemble_smoother.utils import (
     response_projection,
 )
 
+from iterative_ensemble_smoother.ies import (
+    create_coefficient_matrix as create_coefficient_matrix2,
+)
+
 
 class SIES:
     """SIES performs the update step of the Subspace Iterative Ensemble Smoother
@@ -148,6 +152,20 @@ class SIES:
             E,
             D,
             inversion,
+            truncation,
+            self.coefficient_matrix[np.ix_(ensemble_mask, ensemble_mask)],
+            step_length,
+        )
+
+        # { exact = 0, subspace_exact_r = 1, subspace_re = 3 }
+        inv = inversion.name.lower()
+
+        W2 = create_coefficient_matrix2(
+            _response_ensemble,
+            R,
+            E,
+            D,
+            inv,
             truncation,
             self.coefficient_matrix[np.ix_(ensemble_mask, ensemble_mask)],
             step_length,
