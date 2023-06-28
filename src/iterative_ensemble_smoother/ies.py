@@ -15,7 +15,8 @@ def calc_num_significant(singular_values, truncation):
 
     Returns
     -------
-    None.
+    int
+        Last index to be included in singular values array.
 
     Examples
     --------
@@ -38,116 +39,32 @@ def calc_num_significant(singular_values, truncation):
     return np.searchsorted(relative_energy, truncation, side="right")
 
 
-# =============================================================================
-# MatrixXd genX3(const MatrixXd &W, const MatrixXd &D, const VectorXd &eig) {
-#   const int nrmin = std::min(D.rows(), D.cols());
-#   // Corresponds to (I + \Lambda_1)^{-1} since `eig` has already been
-#   // transformed.
-#   MatrixXd Lambda_inv = eig(Eigen::seq(0, nrmin - 1)).asDiagonal();
-#   MatrixXd X1 = Lambda_inv * W.transpose();
-#
-#   MatrixXd X2 = X1 * D;
-#   MatrixXd X3 = W * X2;
-#
-#   return X3;
-# }
-# =============================================================================
-
-
-def genX3(W, D, eig):
-    r"""
-    * Implements parts of Eq. 14.31 in the book Data Assimilation,
-    * The Ensemble Kalman Filter, 2nd Edition by Geir Evensen.
-    * Specifically, this implements
-    * X_1 (I + \Lambda_1)^{-1} X_1^T (D - M[A^f])
-
-    Examples
-    --------
-    >>> W = np.array([[1, 2], [3,4]])
-    >>> D = np.array([[3, 1], [5, 9]])
-    >>> eig = np.array([10, 1])
-    >>> genX3(W, D, eig)
-    array([[232, 356],
-           [644, 992]])
-    >>> W @ np.diag(eig) @ W.T @ D
-    array([[232, 356],
-           [644, 992]])
-
+def truncated_svd_inv_sigma(S, truncation, full_matrices=False):
     """
-    # X3 = X1 * diag(eig) * X1' * H (Similar to Eq. 14.31, Evensen (2007))
+    Compute truncated SVD of a matrix S, keeping a fraction `truncation` of the
+    total energy.
 
-    nrmin = min(D.shape)
-
-    lambda_inv = eig[:nrmin]  # Keep first `nrmin` values
-
-    # Compute W @ diag(lambda_inv) @ W.T @ D
-    return np.linalg.multi_dot([W * lambda_inv, W.T, D])
-
-
-# =============================================================================
-# int svdS(const MatrixXd &S, const std::variant<double, int> &truncation,
-#          VectorXd &inv_sig0, MatrixXd &U0) {
-#
-#   int num_significant = 0;
-#
-#   auto svd = S.bdcSvd(ComputeThinU);
-#   U0 = svd.matrixU();
-#   VectorXd singular_values = svd.singularValues();
-#
-#   if (std::holds_alternative<int>(truncation)) {
-#     num_significant = std::get<int>(truncation);
-#   } else {
-#     num_significant =
-#         calc_num_significant(singular_values, std::get<double>(truncation));
-#   }
-#
-#   inv_sig0 = singular_values.cwiseInverse();
-#
-#   inv_sig0(Eigen::seq(num_significant, Eigen::last)).setZero();
-#
-#   return num_significant;
-# }
-# =============================================================================
-
-
-def svdS(S, truncation):
-    """
-
-
-    Parameters
-    ----------
-    S : TYPE
-        DESCRIPTION.
-    truncation : TYPE
-        DESCRIPTION.
-
-    Returns
-    -------
-    U0 : TYPE
-        DESCRIPTION.
-    singular_values : TYPE
-        DESCRIPTION.
-    num_significant : TYPE
-        DESCRIPTION.
 
     Examples
     --------
     >>> S = np.array([[1, 2], [3, 4]])
-    >>> svdS(S, 1)
+    >>> truncated_svd_inv_sigma(S, 1)
     (array([[-0.40455358, -0.9145143 ],
-           [-0.9145143 ,  0.40455358]]), array([0.1829831, 0.       ]), 1)
+           [-0.9145143 ,  0.40455358]]), array([0.1829831, 0.       ]), array([[-0.57604844, -0.81741556],
+           [ 0.81741556, -0.57604844]]))
 
     On a singular matrix
 
     >>> S = np.array([[1, 2], [2, 4]])
-    >>> svdS(S, 0.99)
+    >>> truncated_svd_inv_sigma(S, 0.99)
     (array([[-0.4472136 , -0.89442719],
-           [-0.89442719,  0.4472136 ]]), array([0., 0.]), 0)
+           [-0.89442719,  0.4472136 ]]), array([0., 0.]), array([[-0.4472136 , -0.89442719],
+           [-0.89442719,  0.4472136 ]]))
     """
 
-    U0, singular_values, Vh = sp.linalg.svd(
+    U, singular_values, VT = sp.linalg.svd(
         S,
-        full_matrices=False,
+        full_matrices=full_matrices,
         compute_uv=True,
         overwrite_a=False,
         check_finite=True,
@@ -163,52 +80,21 @@ def svdS(S, truncation):
         singular_values[:num_significant] > 0
     ), "Must have positive singular values"
 
-    inv_sig0 = np.zeros_like(singular_values)
-    inv_sig0[:num_significant] = 1 / singular_values[:num_significant]
+    inverted_singular_values = np.zeros_like(singular_values)
+    inverted_singular_values[:num_significant] = 1 / singular_values[:num_significant]
 
-    return U0, inv_sig0, num_significant
-
-
-# =============================================================================
-# /**
-#  * Section 3.2 - Exact inversion assuming diagonal error covariance matrix
-#  */
-# void exact_inversion(MatrixXd &W, const MatrixXd &S, const MatrixXd &H,
-#                      double ies_steplength) {
-#   int ens_size = S.cols();
-#
-#   MatrixXd C = S.transpose() * S;
-#   C.diagonal().array() += 1;
-#
-#   auto svd = C.bdcSvd(Eigen::ComputeFullV);
-#
-#   W = W - ies_steplength *
-#               (W - svd.matrixV() *
-#                        svd.singularValues().cwiseInverse().asDiagonal() *
-#                        svd.matrixV().transpose() * S.transpose() * H);
-# }
-# =============================================================================
+    return U, inverted_singular_values, VT
 
 
 def exact_inversion(W, S, H, steplength):
-    """
+    """Compute exact inversion, assuming identity error covariance matrix.
 
-
-    Parameters
-    ----------
-    W : TYPE
-        DESCRIPTION.
-    S : TYPE
-        DESCRIPTION.
-    H : TYPE
-        DESCRIPTION.
-    steplength : TYPE
-        DESCRIPTION.
+    This is equation (51) in the paper.
 
     Returns
     -------
-    TYPE
-        DESCRIPTION.
+    W : np.ndarray
+        Updated matrix W_i+1.
 
     Examples
     --------
@@ -243,7 +129,7 @@ def exact_inversion(W, S, H, steplength):
 
     # TODO: Why not follow equation (52) in the paper here?
 
-    # Create the matrix C
+    # Form the matrix C
     _, ensemble_size = S.shape
     C = S.T @ S
     # Add the identity matrix in place
@@ -253,59 +139,9 @@ def exact_inversion(W, S, H, steplength):
     # Compute the correction term that multiplies the step length
     u, V = np.linalg.eig(C)
 
-    # assert np.allclose(np.linalg.inv(C), V @ np.diag(1/u) @ V.T)
-    # assert np.allclose(np.linalg.inv(C), (V/u) @ V.T)
-
+    # The dot product is equivalent to V @ np.diag(1/u) @ V.T @ S.T @ H
     correction = W - np.linalg.multi_dot([(V / u), V.T, S.T, H])
     return W - steplength * correction
-
-
-def add_identity(a):
-    """Mutates the argument in place, adding the identity matrix.
-
-
-    Parameters
-    ----------
-    A : TYPE
-        DESCRIPTION.
-
-    Returns
-    -------
-    None.
-
-    Examples
-    --------
-    >>> A = np.array([[1, 1], [1, 1]])
-    >>> add_identity(A)
-    >>> A
-    array([[2, 1],
-           [1, 2]])
-
-    >>> A = np.array([[1, 1], [1, 1], [1, 1]])
-    >>> add_identity(A)
-    >>> A
-    array([[2, 1],
-           [1, 2],
-           [1, 1]])
-
-    >>> A = np.array([[1, 1, 1], [1, 1, 1]])
-    >>> add_identity(A)
-    >>> A
-    array([[2, 1, 1],
-           [1, 2, 1]])
-    """
-    if a.ndim != 2:
-        raise ValueError("array must be 2-d")
-    end = None
-
-    # Explicit, fast formula for the common case.  For 2-d arrays, we
-    # accept rectangular ones.
-    step = a.shape[1] + 1
-    # This is needed to don't have tall matrix have the diagonal wrap.
-    end = a.shape[1] * a.shape[1]
-
-    # Write the value out into the diagonal.
-    a.flat[:end:step] += 1
 
 
 # =============================================================================
@@ -419,6 +255,16 @@ def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
     # E as in the paper
     H = D + S @ W
 
+    # With R=I the subspace inversion (ies_inversion=1) with
+    # singular value trucation=1.000 gives exactly the same solution as the exact
+    # inversion (`ies_inversion`=Inversion::exact).
+    #
+    # With very large data sets it is likely that the inversion becomes poorly
+    # conditioned and a trucation=1.0 is not a good choice. In this case
+    # `ies_inversion` other than Inversion::exact and truncation set to less
+    # than 1.0 could stabilize the algorithm.
+
+    # Naive computation, used for testing purposes only
     if inversion == "naive":
         return W - steplength * (W - S.T @ np.linalg.inv(S @ S.T + E @ E.T) @ H)
     elif inversion == "exact":
@@ -508,7 +354,7 @@ def lowrankE(S, E, truncation):
 
     num_observations, ensemble_size = S.shape
 
-    U0, inv_sig0, _ = svdS(S, truncation)
+    U0, inv_sig0, _ = truncated_svd_inv_sigma(S, truncation)
 
     # /* X0(nrmin x nrens) =  Sigma0^(+) * U0'* E  (14.51)  */
     X0 = (U0 * inv_sig0).T @ E  # Same as diag(inv_sig0) @ U0.T @ E
@@ -584,7 +430,7 @@ def lowrankCinv(S, R, truncation):
 
     num_observations, ensemble_size = S.shape
 
-    U0, inv_sig0, _ = svdS(S, truncation)
+    U0, inv_sig0, _ = truncated_svd_inv_sigma(S, truncation)
 
     # B = (ensemble_size - 1) * np.diag(inv_sig0) @ U0.T @ R @ U0 @ np.diag(inv_sig0)
     U0_inv_sigma = U0 * inv_sig0
@@ -649,7 +495,11 @@ def subspace_inversion(W, S, E, H, truncation, inversion, steplength, R=None):
     else:
         raise Exception("test")
 
-    X3 = genX3(W2, H, eig)
+    # Implements parts of Eq. 14.31 in the book Data Assimilation,
+    # The Ensemble Kalman Filter, 2nd Edition by Geir Evensen.
+
+    # Compute W2 @ diag(lambda_inv) @ W2.T @ H
+    X3 = np.linalg.multi_dot([W2 * eig, W2.T, H])
 
     W = steplength * S.T @ X3 + (1 - steplength) * W
     return W
