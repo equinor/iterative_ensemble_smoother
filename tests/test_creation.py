@@ -80,6 +80,8 @@ def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
         ValueError,
         match="Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation.",
     ):
+
+        # Keep going until error is raised
         for exponent in np.linspace(10, 200, num=25):
             response_ensemble = np.array([[1, 0], [1, 10**exponent]], dtype=float)
             obs_error = np.array([1, 2])
