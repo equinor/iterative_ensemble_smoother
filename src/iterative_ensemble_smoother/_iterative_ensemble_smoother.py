@@ -6,7 +6,6 @@ import numpy as np
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-from iterative_ensemble_smoother._ies import InversionType, create_coefficient_matrix
 from iterative_ensemble_smoother.utils import (
     _validate_inputs,
     _create_errors,
@@ -15,7 +14,7 @@ from iterative_ensemble_smoother.utils import (
 )
 
 from iterative_ensemble_smoother.ies import (
-    create_coefficient_matrix as create_coefficient_matrix2,
+    create_coefficient_matrix as create_coefficient_matrix,
 )
 
 
@@ -50,7 +49,7 @@ class SIES:
         truncation: float = 0.98,
         step_length: Optional[float] = None,
         ensemble_mask: Optional[npt.NDArray[np.bool_]] = None,
-        inversion: InversionType = InversionType.EXACT,
+        inversion: str = "exact",
         param_ensemble: Optional[npt.NDArray[np.double]] = None,
     ) -> None:
         """Perform one step of the iterative ensemble smoother algorithm
@@ -157,22 +156,6 @@ class SIES:
             step_length,
         )
 
-        # { exact = 0, subspace_exact_r = 1, subspace_re = 3 }
-        inv = inversion.name.lower()
-
-        W2 = create_coefficient_matrix2(
-            _response_ensemble,
-            R,
-            E,
-            D,
-            inv,
-            truncation,
-            self.coefficient_matrix[np.ix_(ensemble_mask, ensemble_mask)],
-            step_length,
-        )
-
-        assert np.allclose(W, W2)
-
         if np.isnan(W).sum() != 0:
             raise ValueError(
                 "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."
@@ -216,7 +199,7 @@ class ES:
         observation_values: npt.NDArray[np.double],
         *,
         truncation: float = 0.98,
-        inversion: InversionType = InversionType.EXACT,
+        inversion: str = "exact",
         param_ensemble: Optional[npt.NDArray[np.double]] = None,
     ) -> None:
         self.smoother = SIES(ensemble_size=response_ensemble.shape[1], seed=self.seed)

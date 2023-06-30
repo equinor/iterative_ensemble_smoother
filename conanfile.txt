@@ -1,4 +1,0 @@
-[requires]
-eigen/3.4.0
-[generators]
-compiler_args

@@ -1,4 +1,4 @@
-from iterative_ensemble_smoother import ES, SIES, InversionType
+from iterative_ensemble_smoother import ES, SIES
 import numpy as np
 import pytest
 import re
@@ -92,7 +92,7 @@ def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
         response_ensemble,
         obs_error,
         obs_value,
-        inversion=InversionType.EXACT_R,
+        inversion="exact_r",
     )
     param_ensemble = smoother.update(param_ensemble)
     assert np.isnan(param_ensemble).sum() == 0

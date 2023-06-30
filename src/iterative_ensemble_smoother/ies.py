@@ -137,63 +137,18 @@ def exact_inversion(W, S, H, steplength):
     C.flat[:: ensemble_size + 1] += 1
 
     # Compute the correction term that multiplies the step length
-    u, V = np.linalg.eig(C)
+    # u, V = np.linalg.eig(C)
+    V, u, _ = np.linalg.svd(C)
+
+    # Exact inversion requires (S.T @ S + I) to be positive symmetric definite
+    if not np.all(u > 0):
+        raise ValueError(
+            "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."
+        )
 
     # The dot product is equivalent to V @ np.diag(1/u) @ V.T @ S.T @ H
     correction = W - np.linalg.multi_dot([(V / u), V.T, S.T, H])
     return W - steplength * correction
-
-
-# =============================================================================
-# MatrixXd create_coefficient_matrix(py::EigenDRef<MatrixXd> Y,
-#                                    std::optional<py::EigenDRef<MatrixXd>> R,
-#                                    py::EigenDRef<MatrixXd> E,
-#                                    py::EigenDRef<MatrixXd> D,
-#                                    const Inversion ies_inversion,
-#                                    const std::variant<double, int> &truncation,
-#                                    MatrixXd &W, double ies_steplength)
-#
-# {
-#   const int ens_size = Y.cols();
-#
-#   /* Line 5 of Algorithm 1 */
-#   MatrixXd Omega =
-#       (1.0 / sqrt(ens_size - 1.0)) * (W.colwise() - W.rowwise().mean());
-#   Omega.diagonal().array() += 1.0;
-#
-#   /* Solving for the average sensitivity matrix.
-#      Line 6 of Algorithm 1, also Section 5
-#   */
-#   Omega.transposeInPlace();
-#   MatrixXd S = Omega.fullPivLu().solve(Y.transpose()).transpose();
-#
-#   /* Similar to the innovation term.
-#      Differs in that `D` here is defined as dobs + E - Y instead of just dobs +
-#      E as in the paper. Line 7 of Algorithm 1, also Section 2.6
-#   */
-#   MatrixXd H = D + S * W;
-#
-#   /*
-#    * With R=I the subspace inversion (ies_inversion=1) with
-#    * singular value trucation=1.000 gives exactly the same solution as the exact
-#    * inversion (`ies_inversion`=Inversion::exact).
-#    *
-#    * With very large data sets it is likely that the inversion becomes poorly
-#    * conditioned and a trucation=1.0 is not a good choice. In this case
-#    * `ies_inversion` other than Inversion::exact and truncation set to less
-#    * than 1.0 could stabilize the algorithm.
-#    */
-#
-#   if (ies_inversion == Inversion::exact) {
-#     exact_inversion(W, S, H, ies_steplength);
-#   } else {
-#     subspace_inversion(W, ies_inversion, E, R, S, H, truncation,
-#                        ies_steplength);
-#   }
-#
-#   return W;
-# }
-# =============================================================================
 
 
 def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
