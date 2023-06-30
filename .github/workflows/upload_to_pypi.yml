@@ -7,6 +7,21 @@ on:
       - published
 
 jobs:
+  build_wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build sdist
+        run: pipx run build --wheel
+
+      - uses: actions/upload-artifact@v3
+        with:
+          path: ./dist/*.whl
 
   build_sdist:
     name: Build source distribution
