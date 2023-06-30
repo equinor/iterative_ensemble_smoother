@@ -275,63 +275,18 @@ def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
     return None
 
 
-# =============================================================================
-# /**
-#  Routine computes X1 and eig corresponding to Eqs 14.54-14.55
-#  Geir Evensen
-# */
-# void lowrankE(
-#     const MatrixXd &S, /* (nrobs x nrens) */
-#     const MatrixXd &E, /* (nrobs x nrens) */
-#     MatrixXd &W, /* (nrobs x nrmin) Corresponding to X1 from Eqs. 14.54-14.55 */
-#     VectorXd &eig, /* (nrmin) Corresponding to 1 / (1 + Lambda1^2) (14.54) */
-#     const std::variant<double, int> &truncation) {
-#
-#   const int nrobs = S.rows();
-#   const int nrens = S.cols();
-#   const int nrmin = std::min(nrobs, nrens);
-#
-#   VectorXd inv_sig0(nrmin);
-#   MatrixXd U0(nrobs, nrmin);
-#
-#   /* Compute SVD of S=HA`  ->  U0, invsig0=sig0^(-1) */
-#   svdS(S, truncation, inv_sig0, U0);
-#
-#   MatrixXd Sigma_inv = inv_sig0.asDiagonal();
-#
-#   /* X0(nrmin x nrens) =  Sigma0^(+) * U0'* E  (14.51)  */
-#   MatrixXd X0 = Sigma_inv * U0.transpose() * E;
-#
-#   /* Compute SVD of X0->  U1*eig*V1   14.52 */
-#   auto svd = X0.bdcSvd(ComputeThinU);
-#   const auto &sig1 = svd.singularValues();
-#
-#   /* Lambda1 = 1/(I + Lambda^2)  in 14.56 */
-#   for (int i = 0; i < nrmin; i++)
-#     eig[i] = 1.0 / (1.0 + sig1[i] * sig1[i]);
-#
-#   /* Compute X1 = W = U0 * (U1=sig0^+ U1) = U0 * Sigma0^(+') * U1  (14.55) */
-#   W = U0 * Sigma_inv.transpose() * svd.matrixU();
-# }
-# =============================================================================
-
-
 def lowrankE(S, E, truncation):
-    """Compute inverse of S @ S.T + E @ E.T
+    """Compute inverse of S @ S.T + E @ E.T by projecting E @ E.T onto S.
 
+    See the following section in the 2009 book by Evensen:
+        14.3.1 Derivation of the pseudo inverse
 
-    Parameters
-    ----------
-    S : TYPE
-        DESCRIPTION.
-    E : TYPE
-        DESCRIPTION.
-    truncation : TYPE
-        DESCRIPTION.
+    Also see section 3.4 in the paper
 
     Returns
     -------
-    None.
+    eig, X1 : tuple
+        A vector and a matrix so that X1 @ np.diag(eig) @ X1.T = inv(S @ S.T + E @ E.T).
 
     Examples
     --------
@@ -346,68 +301,43 @@ def lowrankE(S, E, truncation):
 
     Using this function:
 
-    >>> eig, W = lowrankE(S, E, truncation=1.0)
-    >>> W @ np.diag(eig) @ W.T
+    >>> eig, X1 = lowrankE(S, E, truncation=1.0)
+    >>> X1 @ np.diag(eig) @ X1.T
     array([[ 0.5862069 , -0.31034483],
            [-0.31034483,  0.18390805]])
     """
 
     num_observations, ensemble_size = S.shape
 
-    U0, inv_sig0, _ = truncated_svd_inv_sigma(S, truncation)
+    U0, inv_sigma0, _ = truncated_svd_inv_sigma(S, truncation)
 
-    # /* X0(nrmin x nrens) =  Sigma0^(+) * U0'* E  (14.51)  */
-    X0 = (U0 * inv_sig0).T @ E  # Same as diag(inv_sig0) @ U0.T @ E
+    # Equation 14.51
+    X0 = (U0 * inv_sigma0).T @ E  # Same as diag(inv_sigma) @ U0.T @ E
 
-    U1, sig, VT1 = sp.linalg.svd(X0, full_matrices=False)
+    # Equation 14.52
+    U1, sigma1, VT1 = sp.linalg.svd(X0, full_matrices=False)
 
-    W = U0 @ np.diag(inv_sig0) @ U1
+    # Equation 14.55
+    X1 = (U0 * inv_sigma0) @ U1
 
-    eig = 1 / (1 + sig**2)
+    eig = 1 / (1 + sigma1**2)
 
-    return eig, W
-
-
-# =============================================================================
-# void lowrankCinv(
-#     const MatrixXd &S, const MatrixXd &R,
-#     MatrixXd &W,   /* Corresponding to X1 from Eq. 14.29 */
-#     VectorXd &eig, /* Corresponding to 1 / (1 + Lambda_1) (14.29) */
-#     const std::variant<double, int> &truncation) {
-#
-#   const int nrobs = S.rows();
-#   const int nrens = S.cols();
-#   const int nrmin = std::min(nrobs, nrens);
-#
-#   MatrixXd U0(nrobs, nrmin);
-#   MatrixXd Z(nrmin, nrmin);
-#
-#   VectorXd inv_sig0(nrmin);
-#   svdS(S, truncation, inv_sig0, U0);
-#
-#   MatrixXd Sigma_inv = inv_sig0.asDiagonal();
-#
-#   /* B = Xo = (N-1) * Sigma0^(+) * U0'* Cee * U0 * Sigma0^(+')  (14.26)*/
-#   MatrixXd B = (nrens - 1.0) * Sigma_inv * U0.transpose() * R * U0 *
-#                Sigma_inv.transpose();
-#
-#   auto svd = B.bdcSvd(ComputeThinU);
-#   Z = svd.matrixU();
-#   eig = svd.singularValues();
-#
-#   /* Lambda1 = (I + Lambda)^(-1) */
-#   for (int i = 0; i < nrmin; i++)
-#     eig[i] = 1.0 / (1 + eig[i]);
-#
-#   Z = Sigma_inv * Z;
-#
-#   W = U0 * Z; /* X1 = W = U0 * Z2 = U0 * Sigma0^(+') * Z    */
-# }
-# =============================================================================
+    # Equation 14.54 is X1 @ diag(eig) @ X1.T
+    return eig, X1
 
 
 def lowrankCinv(S, R, truncation):
-    """Invert S @ S.T + R
+    """Invert S @ S.T + R by projecting R onto S.
+
+    See the following section in the 2009 book by Evensen:
+        14.2.1 Derivation of the subspace pseudo inverse
+
+    Also see section 3.3 in the paper
+
+    Returns
+    -------
+    eig, X1 : tuple
+        A vector and a matrix so that X1 @ np.diag(eig) @ X1.T = inv(S @ S.T + E @ E.T).
 
     Examples
     --------
@@ -422,86 +352,54 @@ def lowrankCinv(S, R, truncation):
 
     Using this function:
 
-    >>> eig, W = lowrankCinv(S, R, truncation=1.0)
-    >>> W @ np.diag(eig) @ W.T
+    >>> eig, X1 = lowrankCinv(S, R, truncation=1.0)
+    >>> X1 @ np.diag(eig) @ X1.T
     array([[ 0.6       , -0.26666667],
            [-0.26666667,  0.15555556]])
+
+
     """
 
     num_observations, ensemble_size = S.shape
 
+    # Equations (14.19) / (14.20)
     U0, inv_sig0, _ = truncated_svd_inv_sigma(S, truncation)
 
-    # B = (ensemble_size - 1) * np.diag(inv_sig0) @ U0.T @ R @ U0 @ np.diag(inv_sig0)
+    # Equation (14.26)
     U0_inv_sigma = U0 * inv_sig0
-    B = (ensemble_size - 1) * np.linalg.multi_dot([U0_inv_sigma.T, R, U0_inv_sigma])
+    X0 = (ensemble_size - 1) * np.linalg.multi_dot([U0_inv_sigma.T, R, U0_inv_sigma])
 
-    U1, sig, _ = sp.linalg.svd(B, full_matrices=False)
+    U1, sig, _ = sp.linalg.svd(X0, full_matrices=False)
 
-    W = (U0 * inv_sig0) @ U1
+    # Equation (14.30)
+    X1 = (U0 * inv_sig0) @ U1
 
+    # Equation (14.29)
     eig = 1 / (1 + sig)
-    return eig, W
-
-
-# =============================================================================
-# void subspace_inversion(MatrixXd &W, const Inversion ies_inversion,
-#                         const MatrixXd &E,
-#                         std::optional<py::EigenDRef<MatrixXd>> R,
-#                         const MatrixXd &S, const MatrixXd &H,
-#                         const std::variant<double, int> &truncation,
-#                         double ies_steplength) {
-#   int ens_size = S.cols();
-#   int nrobs = S.rows();
-#   double nsc = 1.0 / sqrt(ens_size - 1.0);
-#   MatrixXd X1 = MatrixXd::Zero(
-#       nrobs, std::min(ens_size, nrobs)); // Used in subspace inversion
-#   VectorXd eig(ens_size);
-#
-#   switch (ies_inversion) {
-#   case Inversion::subspace_re:
-#     lowrankE(S, E * nsc, X1, eig, truncation);
-#     break;
-#
-#   case Inversion::subspace_exact_r:
-#     lowrankCinv(S, R.value() * nsc * nsc, X1, eig, truncation);
-#     break;
-#
-#   default:
-#     break;
-#   }
-#
-#   // X3 = X1 * diag(eig) * X1' * H (Similar to Eq. 14.31, Evensen (2007))
-#   Eigen::Map<VectorXd> eig_vector(eig.data(), eig.size());
-#   MatrixXd X3 = genX3(X1, H, eig_vector);
-#
-#   // (Line 9)
-#   W = ies_steplength * S.transpose() * X3 + (1.0 - ies_steplength) * W;
-# }
-# =============================================================================
+    return eig, X1
 
 
 def subspace_inversion(W, S, E, H, truncation, inversion, steplength, R=None):
-
     assert inversion in ("exact_r", "subspace_re")
 
     num_observations, ensemble_size = S.shape
     nsc = 1.0 / np.sqrt(ensemble_size - 1.0)
 
-    if inversion == "subspace_re":
-        eig, W2 = lowrankE(S, E * nsc, truncation)
-    elif inversion == "exact_r":
-        eig, W2 = lowrankCinv(S, R * nsc * nsc, truncation)
+    if inversion == "subspace_re":  # Section 3.4 in paper
+        eig, X1 = lowrankE(S, E * nsc, truncation)
+    elif inversion == "exact_r":  # # Section 3.4 in paper
+        eig, X1 = lowrankCinv(S, R * nsc * nsc, truncation)
     else:
-        raise Exception("test")
+        raise Exception(f"Invalid inversion {inversion}")
 
     # Implements parts of Eq. 14.31 in the book Data Assimilation,
     # The Ensemble Kalman Filter, 2nd Edition by Geir Evensen.
 
     # Compute W2 @ diag(lambda_inv) @ W2.T @ H
-    X3 = np.linalg.multi_dot([W2 * eig, W2.T, H])
+    X3 = np.linalg.multi_dot([X1 * eig, X1.T, H])
 
-    W = steplength * S.T @ X3 + (1 - steplength) * W
+    # Line 9 in algorithm 1
+    W = W - steplength * (W - S.T @ X3)
     return W
 
 
