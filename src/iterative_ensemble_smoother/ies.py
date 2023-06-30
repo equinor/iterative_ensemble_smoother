@@ -232,6 +232,8 @@ def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
 def lowrankE(S, E, truncation):
     """Compute inverse of S @ S.T + E @ E.T by projecting E @ E.T onto S.
 
+    This is not an exact inversion, but an approximation.
+
     See the following section in the 2009 book by Evensen:
         14.3.1 Derivation of the pseudo inverse
 
@@ -244,24 +246,24 @@ def lowrankE(S, E, truncation):
 
     Examples
     --------
-    >>> S = np.array([[1, 2, 3], [3, 4, 5]])
-    >>> E = np.array([[1, 1], [0, 1]])
+    >>> S = np.array([[1, 2, 3], [3, 4, 5], [4, 3, 1]])
+    >>> E = np.array([[1, 1, 1], [0, 1, 0], [0, 1, 1]])
 
     Naive computation:
 
     >>> np.linalg.inv(S @ S.T + E @ E.T)
-    array([[ 0.5862069 , -0.31034483],
-           [-0.31034483,  0.18390805]])
+    array([[ 0.38012959, -0.22030238,  0.03239741],
+           [-0.22030238,  0.18070554, -0.07559395],
+           [ 0.03239741, -0.07559395,  0.09935205]])
 
     Using this function:
 
     >>> eig, X1 = lowrankE(S, E, truncation=1.0)
     >>> X1 @ np.diag(eig) @ X1.T
-    array([[ 0.5862069 , -0.31034483],
-           [-0.31034483,  0.18390805]])
+    array([[ 0.38012959, -0.22030238,  0.03239741],
+           [-0.22030238,  0.18070554, -0.07559395],
+           [ 0.03239741, -0.07559395,  0.09935205]])
     """
-
-    num_observations, ensemble_size = S.shape
 
     U0, inv_sigma0, _ = truncated_svd_inv_sigma(S, truncation)
 
@@ -283,6 +285,8 @@ def lowrankE(S, E, truncation):
 def lowrankCinv(S, R, truncation):
     """Invert S @ S.T + R by projecting R onto S.
 
+    This is not an exact inversion, but an approximation.
+
     See the following section in the 2009 book by Evensen:
         14.2.1 Derivation of the subspace pseudo inverse
 
@@ -295,31 +299,31 @@ def lowrankCinv(S, R, truncation):
 
     Examples
     --------
-    >>> S = np.array([[1, 2], [3, 4]])
-    >>> R = np.array([[2, 1], [1, 2]])
+    >>> S = np.array([[1, 2, 9], [3, 4, 1], [3, 0, 1]])
+    >>> R = np.array([[10, 2, 0], [2, 10, 2], [0, 2, 10]])
 
     Naive computation:
 
     >>> np.linalg.inv(S @ S.T + R)
-    array([[ 0.6       , -0.26666667],
-           [-0.26666667,  0.15555556]])
+    array([[ 0.01231611, -0.00632911, -0.0035922 ],
+           [-0.00632911,  0.03797468, -0.01898734],
+           [-0.0035922 , -0.01898734,  0.06354772]])
 
     Using this function:
 
     >>> eig, X1 = lowrankCinv(S, R, truncation=1.0)
     >>> X1 @ np.diag(eig) @ X1.T
-    array([[ 0.6       , -0.26666667],
-           [-0.26666667,  0.15555556]])
+    array([[ 0.01231611, -0.00632911, -0.0035922 ],
+           [-0.00632911,  0.03797468, -0.01898734],
+           [-0.0035922 , -0.01898734,  0.06354772]])
     """
-
-    num_observations, ensemble_size = S.shape
 
     # Equations (14.19) / (14.20)
     U0, inv_sig0, _ = truncated_svd_inv_sigma(S, truncation)
 
     # Equation (14.26)
     U0_inv_sigma = U0 * inv_sig0
-    X0 = (ensemble_size - 1) * np.linalg.multi_dot([U0_inv_sigma.T, R, U0_inv_sigma])
+    X0 = np.linalg.multi_dot([U0_inv_sigma.T, R, U0_inv_sigma])
 
     U1, sig, _ = sp.linalg.svd(X0, full_matrices=False)
 
@@ -338,9 +342,9 @@ def subspace_inversion(W, S, E, H, truncation, inversion, steplength, R=None):
     nsc = 1.0 / np.sqrt(ensemble_size - 1.0)
 
     if inversion == "subspace_re":  # Section 3.4 in paper
-        eig, X1 = lowrankE(S, E * nsc, truncation)
-    elif inversion == "exact_r":  # # Section 3.4 in paper
-        eig, X1 = lowrankCinv(S, R * nsc * nsc, truncation)
+        eig, X1 = lowrankE(S, E * nsc, truncation)  # TODO: Is this a bug? nsc?
+    elif inversion == "exact_r":  # # Section 3.3 in paper
+        eig, X1 = lowrankCinv(S, R, truncation)
     else:
         raise Exception(f"Invalid inversion {inversion}")
 
