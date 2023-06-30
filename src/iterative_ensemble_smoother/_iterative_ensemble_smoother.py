@@ -13,9 +13,7 @@ from iterative_ensemble_smoother.utils import (
     response_projection,
 )
 
-from iterative_ensemble_smoother.ies import (
-    create_coefficient_matrix as create_coefficient_matrix,
-)
+from iterative_ensemble_smoother.ies import create_coefficient_matrix
 
 
 class SIES:

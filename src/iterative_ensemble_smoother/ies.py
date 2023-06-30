@@ -1,3 +1,5 @@
+# mypy: ignore-errors
+
 import numpy as np
 import scipy as sp
 
@@ -43,7 +45,6 @@ def truncated_svd_inv_sigma(S, truncation, full_matrices=False):
     """
     Compute truncated SVD of a matrix S, keeping a fraction `truncation` of the
     total energy.
-
 
     Examples
     --------
@@ -154,7 +155,6 @@ def exact_inversion(W, S, H, steplength):
 def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
     """Creates the coefficient matrix W_i defined in line 8 in Algorithm 1.
 
-
     Examples
     --------
     >>> Y = np.array([[1, 2], [3, 4]])
@@ -182,7 +182,6 @@ def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
     >>> create_coefficient_matrix(Y, R, E, D, "exact", 1.0, W0, 1.0)
     array([[1.07964602, 0.75516224],
            [2.43362832, 2.25958702]])
-
     """
 
     assert inversion in ("naive", "exact", "exact_r", "subspace_re")
@@ -311,8 +310,6 @@ def lowrankCinv(S, R, truncation):
     >>> X1 @ np.diag(eig) @ X1.T
     array([[ 0.6       , -0.26666667],
            [-0.26666667,  0.15555556]])
-
-
     """
 
     num_observations, ensemble_size = S.shape
