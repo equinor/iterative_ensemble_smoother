@@ -143,7 +143,7 @@ class SIES:
 
         self.ensemble_mask = ensemble_mask
 
-        W: npt.NDArray[np.double] = create_coefficient_matrix(
+        W: npt.NDArray[np.double] = create_coefficient_matrix(  # type: ignore
             _response_ensemble,
             R,
             E,
