@@ -20,7 +20,7 @@ def ensemble_smoother_update_step_row_scaling(
     observation_values,
     noise=None,
     truncation=0.98,
-    inversion=str,
+    inversion="exact",
 ):
     """This is an experimental feature."""
     ensemble_size = response_ensemble.shape[1]
