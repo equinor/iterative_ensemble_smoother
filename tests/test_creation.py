@@ -75,7 +75,7 @@ def test_that_bad_inputs_cause_nice_error_messages():
 def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
     # Creating response matrix with large outlier that will
     # lead to NaNs.
-    response_ensemble = np.array([[1, 1, 1e19], [1, 10, 100]])
+    response_ensemble = np.array([[1, 0], [1, 1e100]])
     obs_error = np.array([1, 2])
     obs_value = np.array([10, 20])
     smoother = ES()
@@ -87,7 +87,7 @@ def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
         smoother.fit(response_ensemble, obs_error, obs_value)
 
     # Running with an inversion type that does truncation does not produce NaNs.
-    param_ensemble = np.array([[1, 2, 3]])
+    param_ensemble = np.array([[1, 2]])
     smoother.fit(
         response_ensemble,
         obs_error,
@@ -96,3 +96,10 @@ def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
     )
     param_ensemble = smoother.update(param_ensemble)
     assert np.isnan(param_ensemble).sum() == 0
+
+
+if __name__ == "__main__":
+    import pytest
+
+    # --durations=10  <- May be used to show potentially slow tests
+    pytest.main(args=[__file__, "--doctest-modules", "-v", "-v"])
