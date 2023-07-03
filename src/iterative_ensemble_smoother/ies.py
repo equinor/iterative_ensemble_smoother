@@ -142,7 +142,7 @@ def exact_inversion(W, S, H, steplength):
     C.flat[:: ensemble_size + 1] += 1
 
     # Compute the correction term that multiplies the step length
-    U, s, VT = sp.linalg.svd(
+    V, s, _ = sp.linalg.svd(
         C,
         full_matrices=False,
     )
@@ -154,7 +154,7 @@ def exact_inversion(W, S, H, steplength):
         )
 
     # The dot product is equivalent to V @ np.diag(1/u) @ V.T @ S.T @ H
-    correction = W - np.linalg.multi_dot([(U.T / s), VT.T, S.T, H])
+    correction = W - np.linalg.multi_dot([(V / s), V.T, S.T, H])
     return W - steplength * correction
 
 
