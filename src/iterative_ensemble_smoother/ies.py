@@ -142,8 +142,12 @@ def exact_inversion(W, S, H, steplength):
     C.flat[:: ensemble_size + 1] += 1
 
     # Compute the correction term that multiplies the step length
-
-    V, s, _ = sp.linalg.svd(C)
+    try:
+        V, s, _ = sp.linalg.svd(C)
+    except ValueError:
+        raise ValueError(
+            "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."
+        )
 
     # Exact inversion requires (S.T @ S + I) to be positive symmetric definite
     EPSILON = np.finfo(float).eps
