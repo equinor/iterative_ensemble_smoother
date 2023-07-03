@@ -8,6 +8,10 @@ def calc_num_significant(singular_values, truncation):
     """Determine the number of singular values by enforcing that less than a
     fraction truncation of the total variance be accounted for.
 
+    Note: In e.g., scipy.linalg.pinv the following criteria is used:
+        atol + rtol * max(singular_values) <= truncation
+    Here we use cumsum(normalize(singular_values**2)) <= truncation
+
     Parameters
     ----------
     singular_values : np.ndarray
@@ -44,7 +48,7 @@ def calc_num_significant(singular_values, truncation):
 def truncated_svd_inv_sigma(S, truncation, full_matrices=False):
     """
     Compute truncated SVD of a matrix S, keeping a fraction `truncation` of the
-    total energy.
+    total energy (singular values squared).
 
     Examples
     --------
@@ -138,17 +142,19 @@ def exact_inversion(W, S, H, steplength):
     C.flat[:: ensemble_size + 1] += 1
 
     # Compute the correction term that multiplies the step length
-    # u, V = np.linalg.eig(C)
-    V, u, _ = np.linalg.svd(C)
+    U, s, VT = sp.linalg.svd(
+        C,
+        full_matrices=False,
+    )
 
     # Exact inversion requires (S.T @ S + I) to be positive symmetric definite
-    if not np.all(u > 0):
+    if not np.all(s > 0):
         raise ValueError(
             "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."
         )
 
     # The dot product is equivalent to V @ np.diag(1/u) @ V.T @ S.T @ H
-    correction = W - np.linalg.multi_dot([(V / u), V.T, S.T, H])
+    correction = W - np.linalg.multi_dot([(U.T / s), VT.T, S.T, H])
     return W - steplength * correction
 
 
@@ -220,7 +226,10 @@ def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
 
     # Naive computation, used for testing purposes only
     if inversion == "naive":
-        return W - steplength * (W - S.T @ np.linalg.inv(S @ S.T + E @ E.T) @ H)
+        # Compute K = S.T @ sp.linalg.inv(S @ S.T + E @ E.T, overwrite_a=True) @ H
+        to_invert = S @ S.T + E @ E.T
+        K = S.T @ sp.linalg.solve(to_invert, H, assume_a="sym", overwrite_a=True)
+        return W - steplength * (W - K)
     elif inversion == "exact":
         return exact_inversion(W, S, H, steplength)
     else:
@@ -342,7 +351,7 @@ def subspace_inversion(W, S, E, H, truncation, inversion, steplength, R=None):
     nsc = 1.0 / np.sqrt(ensemble_size - 1.0)
 
     if inversion == "subspace_re":  # Section 3.4 in paper
-        eig, X1 = lowrankE(S, E * nsc, truncation)  # TODO: Is this a bug? nsc?
+        eig, X1 = lowrankE(S, E * nsc, truncation)
     elif inversion == "exact_r":  # # Section 3.3 in paper
         eig, X1 = lowrankCinv(S, R, truncation)
     else:
@@ -352,10 +361,10 @@ def subspace_inversion(W, S, E, H, truncation, inversion, steplength, R=None):
     # The Ensemble Kalman Filter, 2nd Edition by Geir Evensen.
 
     # Compute W2 @ diag(lambda_inv) @ W2.T @ H
-    X3 = np.linalg.multi_dot([X1 * eig, X1.T, H])
+    X3 = np.linalg.multi_dot([S.T, X1 * eig, X1.T, H])
 
     # Line 9 in algorithm 1
-    W = W - steplength * (W - S.T @ X3)
+    W = W - steplength * (W - X3)
     return W
 
 
