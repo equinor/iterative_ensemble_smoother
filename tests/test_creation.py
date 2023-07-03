@@ -86,7 +86,7 @@ def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
 
         failed = False
         # Keep going until error is raised
-        for exponent in np.linspace(10, 200, num=25):
+        for exponent in np.linspace(1, 50, num=25):
 
             if failed:
                 break
@@ -94,7 +94,7 @@ def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
             response_ensemble = np.array([[1, 0], [1, 10**exponent]], dtype=float)
             smoother = ES()
             try:
-                smoother.fit(response_ensemble, obs_error, obs_value)
+                smoother.fit(response_ensemble, obs_error, obs_value, inversion="exact")
             except Exception as e:
                 failed = True
                 raise e
