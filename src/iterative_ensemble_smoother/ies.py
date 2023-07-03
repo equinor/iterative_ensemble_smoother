@@ -142,10 +142,8 @@ def exact_inversion(W, S, H, steplength):
     C.flat[:: ensemble_size + 1] += 1
 
     # Compute the correction term that multiplies the step length
-    V, s, _ = sp.linalg.svd(
-        C,
-        full_matrices=False,
-    )
+
+    V, s, _ = sp.linalg.svd(C)
 
     # Exact inversion requires (S.T @ S + I) to be positive symmetric definite
     if not np.all(s > 0):
