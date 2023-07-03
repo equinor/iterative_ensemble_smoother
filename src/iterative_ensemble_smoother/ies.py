@@ -146,7 +146,8 @@ def exact_inversion(W, S, H, steplength):
     V, s, _ = sp.linalg.svd(C)
 
     # Exact inversion requires (S.T @ S + I) to be positive symmetric definite
-    if not np.all(s > 0):
+    EPSILON = np.finfo(float).eps
+    if not np.all(s > np.sqrt(EPSILON)):
         raise ValueError(
             "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."
         )
