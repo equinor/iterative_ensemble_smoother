@@ -94,6 +94,7 @@ def normalize_alpha(alpha):
 def inversion_naive(*, C_DD, alpha, C_D, D, Y):
     """Naive inversion, used for testing only."""
     # Naive implementation of Equation (3) in Ensemble smoother with multiple...
+    C_D = np.diag(C_D) if C_D.ndim == 1 else C_D
     return sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)
 
 
@@ -106,103 +107,149 @@ def inversion_exact(*, C_DD, alpha, C_D, D, Y):
         K = sp.linalg.solve(C_DD + alpha * C_D, D - Y, **solver_kwargs)
     elif C_D.ndim == 1:
         # C_D is an array, so add it to the diagonal without forming diag(C_D)
-        C_DD.flat[:: num_outputs + 1] += alpha * C_D
+        C_DD.flat[:: C_DD.shape[1] + 1] += alpha * C_D
         K = sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
     return K
 
 
 def inversion_lstsq(*, C_DD, alpha, C_D, D, Y):
-    ans, *_ = sp.linalg.lstsq(
-        C_DD + alpha * C_D, D - Y, overwrite_a=True, overwrite_b=True
-    )
+    if C_D.ndim == 2:
+        lhs = C_DD + alpha * C_D
+    else:
+        lhs = C_DD
+        lhs.flat[:: lhs.shape[0] + 1] += alpha * C_D
+    ans, *_ = sp.linalg.lstsq(lhs, D - Y, overwrite_a=True, overwrite_b=True)
     return ans
 
 
 def inversion_rescaled(*, C_DD, alpha, C_D, D, Y):
-    # Cholesky factorize
-    C_D_L = sp.linalg.cholesky(C_D * alpha, lower=True)  # Lower triangular cholesky
-    C_D_L_inv, _ = sp.linalg.lapack.dtrtri(C_D_L, lower=1)  # Invert lower triangular
+    """See Appendix A.1 in Emerick et al (2012)"""
 
-    # Form C_tilde
-    # sp.linalg.blas.strmm(alpha=1, a=C_D_L_inv, b=C_DD, lower=1)
-    C_tilde = C_D_L_inv @ C_DD @ C_D_L_inv.T
-    C_tilde.flat[:: C_tilde.shape[0] + 1] += 1  # Add to diagonal
+    if C_D.ndim == 2:
 
-    # Compute SVD (we could do eigenvalues, since C_tilde is symmetric, but it
-    # turns out that computing the SVD is faster)
+        # Eqn (57). Cholesky factorize the covariance matrix C_D
+        C_D_L = sp.linalg.cholesky(C_D * alpha, lower=True)  # Lower triangular cholesky
+        C_D_L_inv, _ = sp.linalg.lapack.dtrtri(
+            C_D_L, lower=1
+        )  # Invert lower triangular
 
+        # Eqn (59). Form C_tilde
+        # sp.linalg.blas.strmm(alpha=1, a=C_D_L_inv, b=C_DD, lower=1)
+        C_tilde = C_D_L_inv @ C_DD @ C_D_L_inv.T
+        C_tilde.flat[:: C_tilde.shape[0] + 1] += 1  # Add to diagonal
+
+    # When C_D is a diagonal covariance matrix, there is no need to perform
+    # the cholesky factorization
+    elif C_D.ndim == 1:
+        C_D_L_inv = 1 / np.sqrt(C_D * alpha)
+        C_tilde = (C_D_L_inv * (C_DD * C_D_L_inv).T).T
+        C_tilde.flat[:: C_tilde.shape[0] + 1] += 1  # Add to diagonal
+
+    # Eqn (60). Compute SVD (we could do eigenvalues, since C_tilde is
+    # symmetric, but it turns out that computing the SVD is faster)
     # On a 1000 x 1000 example, 80% of the time is spent here
     U, s, _ = sp.linalg.svd(C_tilde, overwrite_a=True, full_matrices=False)
     # TODO: truncate SVD
 
-    term = C_D_L_inv.T @ U
+    # Eqn (61). Compute symmetric term once first, then multiply together and
+    # finally multiply with (D - Y)
+    term = C_D_L_inv.T @ U if C_D.ndim == 2 else (C_D_L_inv * U.T).T
     return np.linalg.multi_dot([term / s, term.T, (D - Y)])
 
 
-def test_inversions(k=10):
-    emsemble_members = k
+def inversion_subspace(*, alpha, C_D, D, Y):
+    """See Appendix A.2 in Emerick et al (2012)"""
 
-    F = np.random.randn(k, k)
-    C_DD = F.T @ F
+    # N_n is the number of observations
+    # N_e is the number of members in the ensemble
+    N_n, N_e = Y.shape
 
+    # Subtract the mean of every observation, see Eqn (67)
+    D_delta = Y - np.mean(Y, axis=1, keepdims=True)  # Subtract average
+
+    # Eqn (68)
+    # TODO: Approximately 50% of the time in the function is spent here
+    # consider using randomized svd for further speed gains
+    U, w, _ = sp.linalg.svd(D_delta, overwrite_a=True, full_matrices=False)
+
+    # Clip the singular value decomposition
+    N_r = min(N_n, N_e - 1)  # Number of values in SVD to keep
+    U_r, w_r = U[:, :N_r], w[:N_r]
+
+    # Eqn (70). First compute the symmetric term, then form X
+    U_r_w_inv = U_r / w_r
+    X = (N_e - 1) * np.linalg.multi_dot([U_r_w_inv.T, alpha * C_D, U_r_w_inv])
+
+    # Eqn (72)
+    Z, T, _ = sp.linalg.svd(X, overwrite_a=True, full_matrices=False)
+
+    # Eqn (74).
+    # C^+ = (N_e - 1) hat{C}^+
+    #     = (N_e - 1) (U / w @ Z) * (1 / (1 + T)) (U / w @ Z)^T
+    #     = (N_e - 1) (term) * (1 / (1 + T)) (term)^T
+    # and finally we multiiply by (D - Y)
+    term = U_r_w_inv @ Z
+    return (N_e - 1) * np.linalg.multi_dot([(term / (1 + T)), term.T, (D - Y)])
+
+
+def test_that_all_inversions_all_equal_with_many_ensemble_members(k=10):
+    emsemble_members = k + 1
+
+    # Create positive symmetric definite covariance C_D
     E = np.random.randn(k, k)
     C_D = E.T @ E
 
-    alpha = 2
+    # Set alpha to something other than 1 to test that it works
+    alpha = 3
 
+    # Create observations
     D = np.random.randn(k, emsemble_members)
     Y = np.random.randn(k, emsemble_members)
+
+    # Compute covariance
+    C_DD = empirical_cross_covariance(Y, Y)
 
     K1 = inversion_naive(C_DD=C_DD, alpha=alpha, C_D=C_D, D=D, Y=Y)
     K2 = inversion_exact(C_DD=C_DD, alpha=alpha, C_D=C_D, D=D, Y=Y)
     K3 = inversion_rescaled(C_DD=C_DD, alpha=alpha, C_D=C_D, D=D, Y=Y)
     K4 = inversion_lstsq(C_DD=C_DD, alpha=alpha, C_D=C_D, D=D, Y=Y)
 
+    K5 = inversion_subspace(alpha=alpha, C_D=C_D, D=D, Y=Y)
+
     assert np.allclose(K1, K2)
     assert np.allclose(K1, K3)
     assert np.allclose(K1, K4)
+    assert np.allclose(K1, K5)
 
 
-test_inversions(k=100)
+def test_that_inversion_methods_work_with_covariance_matrix_and_variance_vector(k=10):
+    emsemble_members = k + 1
 
-np.random.seed(21)
-k = 10
+    E = np.random.randn(k, k)
+    C_D = E.T @ E
+    C_D = np.diag(np.exp(np.random.randn(k)))  # Diagonal covariance matrix
 
-Y = np.random.randn(k, k * 5)
-N_n, N_e = Y.shape
-D_delta = Y - np.mean(Y, axis=1, keepdims=True)  # Subtract average
+    # Set alpha to something other than 1 to test that it works
+    alpha = 3
 
-E = np.random.randn(k, k)
-C_D = E.T @ E
-D = np.random.randn(k, k * 5)
+    # Create observations
+    D = np.random.randn(k, emsemble_members)
+    Y = np.random.randn(k, emsemble_members)
 
-alpha = 2
+    # Compute covariance
+    C_DD = empirical_cross_covariance(Y, Y)
 
-# -------------------------------------------
+    methods = [inversion_naive, inversion_exact, inversion_rescaled, inversion_lstsq]
 
-U, w, _ = sp.linalg.svd(D_delta, overwrite_a=True, full_matrices=True)
-clip = min(N_n, N_e - 1)
-U_r, w_r = U[:, :clip], w[:clip]
+    for method in methods:
+        print(method.__name__)
+        result_matrix = method(C_DD=C_DD, alpha=alpha, C_D=C_D, D=D, Y=Y)
+        result_vector = method(C_DD=C_DD, alpha=alpha, C_D=np.diag(C_D), D=D, Y=Y)
+        assert np.allclose(result_matrix, result_vector)
 
-U_r_w_inv = U_r / w_r
-X = (N_e - 1) * np.linalg.multi_dot([U_r_w_inv.T, alpha * C_D, U_r_w_inv])
 
-Z, T, _ = sp.linalg.svd(X, overwrite_a=True, full_matrices=True)
-
-term = U_r_w_inv @ Z
-
-C_inv = (term / (1 + T)) @ term.T
-K5 = (N_e - 1) * C_inv @ (D - Y)
-
-# -------------------------------------------
-
-C_hat = D_delta @ D_delta.T + (N_e - 1) * alpha * C_D
-assert np.allclose(np.linalg.inv(C_hat), C_inv)
-
-K1 = inversion_naive(
-    C_DD=empirical_cross_covariance(Y, Y), alpha=alpha, C_D=C_D, D=D, Y=Y
-)
-assert np.allclose(K1, K5)
+test_that_all_inversions_all_equal_with_many_ensemble_members(k=100)
+test_that_inversion_methods_work_with_covariance_matrix_and_variance_vector(k=100)
 
 
 1 / 0
