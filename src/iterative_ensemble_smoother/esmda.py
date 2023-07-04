@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Ensemble Smoother with Multiple Data Assimilation (ES-MDA)
+----------------------------------------------------------
+
+
 
 References
 ----------
@@ -13,6 +17,8 @@ Alexandre A. Emerick, Albert C. Reynolds.
 Ensemble smoother with multiple data assimilation.
 Computers & Geosciences, Volume 55, 2013, Pages 3-15, ISSN 0098-3004,
 https://doi.org/10.1016/j.cageo.2012.03.011.
+
+https://gitlab.com/antoinecollet5/pyesmda
 
 """
 
@@ -113,8 +119,11 @@ def inversion_exact(*, C_DD, alpha, C_D, D, Y):
 
 
 def inversion_lstsq(*, C_DD, alpha, C_D, D, Y):
+
+    # A covariance matrix was given
     if C_D.ndim == 2:
         lhs = C_DD + alpha * C_D
+    # A diagonal covariance matrix was given as a vector
     else:
         lhs = C_DD
         lhs.flat[:: lhs.shape[0] + 1] += alpha * C_D
@@ -192,6 +201,11 @@ def inversion_subspace(*, alpha, C_D, D, Y):
     return (N_e - 1) * np.linalg.multi_dot([(term / (1 + T)), term.T, (D - Y)])
 
 
+def inversion_rescaled_subspace(*, alpha, C_D, D, Y):
+    """See Appendix A.2 in Emerick et al (2012)"""
+    pass
+
+
 def test_that_all_inversions_all_equal_with_many_ensemble_members(k=10):
     emsemble_members = k + 1
 
@@ -214,6 +228,7 @@ def test_that_all_inversions_all_equal_with_many_ensemble_members(k=10):
     K3 = inversion_rescaled(C_DD=C_DD, alpha=alpha, C_D=C_D, D=D, Y=Y)
     K4 = inversion_lstsq(C_DD=C_DD, alpha=alpha, C_D=C_D, D=D, Y=Y)
 
+    # Subspace methods will give the same result as long as ensemble_members > num_outputs
     K5 = inversion_subspace(alpha=alpha, C_D=C_D, D=D, Y=Y)
 
     assert np.allclose(K1, K2)
@@ -223,7 +238,7 @@ def test_that_all_inversions_all_equal_with_many_ensemble_members(k=10):
 
 
 def test_that_inversion_methods_work_with_covariance_matrix_and_variance_vector(k=10):
-    emsemble_members = k + 1
+    emsemble_members = k - 1
 
     E = np.random.randn(k, k)
     C_D = E.T @ E
@@ -239,20 +254,17 @@ def test_that_inversion_methods_work_with_covariance_matrix_and_variance_vector(
     # Compute covariance
     C_DD = empirical_cross_covariance(Y, Y)
 
-    methods = [inversion_naive, inversion_exact, inversion_rescaled, inversion_lstsq]
+    exact_inversion_funcs = [
+        inversion_naive,
+        inversion_exact,
+        inversion_rescaled,
+        inversion_lstsq,
+    ]
 
-    for method in methods:
-        print(method.__name__)
-        result_matrix = method(C_DD=C_DD, alpha=alpha, C_D=C_D, D=D, Y=Y)
-        result_vector = method(C_DD=C_DD, alpha=alpha, C_D=np.diag(C_D), D=D, Y=Y)
+    for func in exact_inversion_funcs:
+        result_matrix = func(C_DD=C_DD, alpha=alpha, C_D=C_D, D=D, Y=Y)
+        result_vector = func(C_DD=C_DD, alpha=alpha, C_D=np.diag(C_D), D=D, Y=Y)
         assert np.allclose(result_matrix, result_vector)
-
-
-test_that_all_inversions_all_equal_with_many_ensemble_members(k=100)
-test_that_inversion_methods_work_with_covariance_matrix_and_variance_vector(k=100)
-
-
-1 / 0
 
 
 class ESMDA:
@@ -360,7 +372,7 @@ if __name__ == "__main__":
     np.random.seed(12)
 
     # Dimensionality
-    num_ensemble = 9
+    num_ensemble = 999
     num_outputs = 2
     num_iputs = 1
 
@@ -377,8 +389,6 @@ if __name__ == "__main__":
 
     # Measurement errors
     C_D = np.eye(num_outputs) * 10
-    C_D = np.ones(num_outputs) * 0
-    C_D[0] = 0
 
     # The true inputs and observationservations, a result of running with N(1, 1)
     X_true = np.random.randn(num_iputs, num_ensemble) + 3
