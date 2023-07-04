@@ -137,6 +137,8 @@ def inversion_rescaled(*, C_DD, alpha, C_D, D, Y):
     if C_D.ndim == 2:
 
         # Eqn (57). Cholesky factorize the covariance matrix C_D
+        # TODO: here we compute the cholesky factor in every call, but C_D
+        # never changes. it would be better to compute it once
         C_D_L = sp.linalg.cholesky(C_D * alpha, lower=True)  # Lower triangular cholesky
         C_D_L_inv, _ = sp.linalg.lapack.dtrtri(
             C_D_L, lower=1
@@ -243,6 +245,7 @@ def test_that_inversion_methods_work_with_covariance_matrix_and_variance_vector(
     E = np.random.randn(k, k)
     C_D = E.T @ E
     C_D = np.diag(np.exp(np.random.randn(k)))  # Diagonal covariance matrix
+    C_D_full = np.diag(C_D)
 
     # Set alpha to something other than 1 to test that it works
     alpha = 3
@@ -261,10 +264,21 @@ def test_that_inversion_methods_work_with_covariance_matrix_and_variance_vector(
         inversion_lstsq,
     ]
 
+    from time import perf_counter
+
     for func in exact_inversion_funcs:
+        start_time = perf_counter()
         result_matrix = func(C_DD=C_DD, alpha=alpha, C_D=C_D, D=D, Y=Y)
-        result_vector = func(C_DD=C_DD, alpha=alpha, C_D=np.diag(C_D), D=D, Y=Y)
+        elapsed_time = perf_counter() - start_time
+        print(f"Function: {func.__name__} on dense covariance: {elapsed_time} s")
+
+        start_time = perf_counter()
+        result_vector = func(C_DD=C_DD, alpha=alpha, C_D=C_D_full, D=D, Y=Y)
+        elapsed_time = perf_counter() - start_time
+        print(f"Function: {func.__name__} on diagonal covariance: {elapsed_time} s")
         assert np.allclose(result_matrix, result_vector)
+
+        print("-" * 32)
 
 
 class ESMDA:
@@ -359,6 +373,21 @@ class ESMDA:
             )
 
         # X_posterior = X_current + C_MD @ sp.linalg.inv(C_DD + C_D_alpha) @ (D - Y)
+        # TODO: Bring C_MD into the inversion algorithms, allowing the orer
+        # of C_MD @ K @ (D - Y) to be optimal ?
+        # In the typical case
+        # =============================================================================
+        #         n, m, N = 10000, 1000, 100
+        #         A = np.random.randn(m, n)
+        #         B = np.random.randn(n, n)
+        #         C = np.random.randn(n, N)
+        #
+        #         %timeit (A @ B) @ C
+        #         1.87 s ± 130 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+        #
+        #         %timeit A @ (B @ C)
+        #         334 ms ± 24.6 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+        # =============================================================================
         X_posterior = X_current + C_MD @ K
 
         self.iteration += 1
