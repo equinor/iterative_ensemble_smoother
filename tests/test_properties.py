@@ -456,7 +456,6 @@ def test_that_global_es_update_is_identical_to_local(ensemble_size, num_params, 
 
 
 def test_that_ies_runs_with_failed_realizations():
-
     ensemble_size = 50
     num_params = 100
     num_responses = 5
