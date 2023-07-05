@@ -73,6 +73,9 @@ def test_that_bad_inputs_cause_nice_error_messages():
 
 
 def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
+    # See: https://github.com/equinor/iterative_ensemble_smoother/issues/83
+    # This used to fail, but passes after rewriting from C++ to Python.
+
     # Creating response matrix with large outlier that will
     # lead to NaNs.
     response_ensemble = np.array([[1, 1, 1e19], [1, 10, 100]])
@@ -80,11 +83,8 @@ def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
     obs_value = np.array([10, 20])
     smoother = ES()
 
-    with pytest.raises(
-        ValueError,
-        match="Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation.",
-    ):
-        smoother.fit(response_ensemble, obs_error, obs_value, inversion="exact")
+    # This line used to fail
+    smoother.fit(response_ensemble, obs_error, obs_value, inversion="exact")
 
     # Running with an inversion type that does truncation does not produce NaNs.
     param_ensemble = np.array([[1, 2, 3]])
