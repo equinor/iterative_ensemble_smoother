@@ -76,9 +76,9 @@ def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
     # See: https://github.com/equinor/iterative_ensemble_smoother/issues/83
     # Creating response matrix with large outlier that will
     # lead to NaNs.
-    response_ensemble = np.array([[1, 1, 1e19], [1, 10, 100]])
-    obs_error = np.array([1, 2])
-    obs_value = np.array([10, 20])
+    response_ensemble = np.array([[1, 1, 1e19], [1, 10, 100]], dtype=float)
+    obs_error = np.array([1, 2], dtype=float)
+    obs_value = np.array([10, 20], dtype=float)
     smoother = ES()
 
     with pytest.raises(
@@ -88,7 +88,7 @@ def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
         smoother.fit(response_ensemble, obs_error, obs_value, inversion="exact")
 
     # Running with an inversion type that does truncation does not produce NaNs.
-    param_ensemble = np.array([[1, 2, 3]])
+    param_ensemble = np.array([[1, 2, 3]], dtype=float)
     smoother.fit(
         response_ensemble,
         obs_error,
