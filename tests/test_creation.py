@@ -75,6 +75,7 @@ def test_that_bad_inputs_cause_nice_error_messages():
 def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
     # See: https://github.com/equinor/iterative_ensemble_smoother/issues/83
     # This used to fail, but passes after rewriting from C++ to Python.
+    # If only passes on Linux, not Windows, for some reason. Flaky.
 
     # Creating response matrix with large outlier that will
     # lead to NaNs.
