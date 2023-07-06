@@ -96,6 +96,10 @@ def exact_inversion(W, S, H, steplength):
 
     This is equation (51) in the paper.
 
+    W has shape (num_ensemble, num_ensemble)
+    S has shape (num_outputs, num_ensemble)
+    H has shape (num_outputs, num_ensemble)
+
     Returns
     -------
     W : np.ndarray
@@ -126,38 +130,30 @@ def exact_inversion(W, S, H, steplength):
     # W_{i+1} = W_i - step * (W_i - (S.T @ S + I)^-1 @ S.T @ H)
     # Here we form
     # C = S.T @ S + I
-    # This is a square symmetric matrix, so taking the eigenvalue decomposition
-    # is the same as the SVD
-    # V @ np.diag(u) @ V.T = C
-    # And the inverse of C becomes
-    # C^-1 = (S.T @ S + I)^-1 = V.T @ diag(1/u) @ V
-
-    # TODO: Why not follow equation (52) in the paper here?
+    # This is a square symmetric matrix, instead of taking the SVD we
+    # call sp.linalg.solve(. This is equally fast.
 
     # Form the matrix C
     _, ensemble_size = S.shape
-    C = S.T @ S
+    C = S.T @ S  # TODO: Only form upper part of this matrix
     # Add the identity matrix in place
     # See: https://github.com/numpy/numpy/blob/db4f43983cb938f12c311e1f5b7165e270c393b4/numpy/lib/index_tricks.py#L786
     C.flat[:: ensemble_size + 1] += 1
 
-    # Compute the correction term that multiplies the step length
+    # Compute term = (S.T @ S + I)^-1 @ S.T @ H
     try:
-        V, s, _ = sp.linalg.svd(C, full_matrices=True, overwrite_a=True)
-    except ValueError:
+        term = sp.linalg.solve(
+            C,
+            S.T @ H,
+            overwrite_a=True,
+            assume_a="pos",
+        )
+    except sp.linalg.LinAlgError:
         raise ValueError(
             "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."
         )
 
-    # Exact inversion requires (S.T @ S + I) to be positive symmetric definite
-    if not np.all(s > 0):
-        raise ValueError(
-            "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."
-        )
-
-    # The dot product is equivalent to V @ np.diag(1/u) @ V.T @ S.T @ H
-    correction = W - np.linalg.multi_dot([(V / s), V.T, S.T, H])
-    return W - steplength * correction
+    return W - steplength * (W - term)
 
 
 def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
