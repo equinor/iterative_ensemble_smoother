@@ -131,7 +131,7 @@ def exact_inversion(W, S, H, steplength):
     # Here we form
     # C = S.T @ S + I
     # This is a square symmetric matrix, instead of taking the SVD we
-    # call sp.linalg.solve(. This is equally fast.
+    # call sp.linalg.solve. This is equally fast.
 
     # Form the matrix C
     _, ensemble_size = S.shape
@@ -142,13 +142,14 @@ def exact_inversion(W, S, H, steplength):
 
     # Compute term = (S.T @ S + I)^-1 @ S.T @ H
     try:
-        term = sp.linalg.solve(
-            C,
-            S.T @ H,
-            overwrite_a=True,
-            assume_a="pos",
-        )
-    except sp.linalg.LinAlgError:
+        # Here we set the right hand side as the product, instead of
+        # setting the right hand side as S.T, and then right-multiplying by H.
+        # option 1: solve(C, S.T @ H)
+        # option 2: solve(C, S.T) @ H
+        # the reason is that with typical dimensions (num_ensemble << num_outputs)
+        # the first option is faster.
+        term = np.linalg.solve(C, S.T @ H)
+    except np.linalg.LinAlgError:
         raise ValueError(
             "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."
         )
