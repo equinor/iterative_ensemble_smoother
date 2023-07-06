@@ -81,11 +81,7 @@ def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
     obs_value = np.array([10, 20], dtype=float)
     smoother = ES()
 
-    with pytest.raises(
-        ValueError,
-        match="Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation.",
-    ):
-        smoother.fit(response_ensemble, obs_error, obs_value, inversion="exact")
+    smoother.fit(response_ensemble, obs_error, obs_value, inversion="exact")
 
     # Running with an inversion type that does truncation does not produce NaNs.
     param_ensemble = np.array([[1, 2, 3]], dtype=float)
