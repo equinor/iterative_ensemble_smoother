@@ -150,8 +150,8 @@ def exact_inversion(W, S, H, steplength):
         )
 
     # Exact inversion requires (S.T @ S + I) to be positive symmetric definite
-    EPSILON = np.finfo(float).eps
-    if not np.all(s > np.sqrt(EPSILON)):
+    EPSILON = 1.1920929e-07  # np.finfo(np.single).eps
+    if not np.all(s > EPSILON):
         raise ValueError(
             "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."
         )
