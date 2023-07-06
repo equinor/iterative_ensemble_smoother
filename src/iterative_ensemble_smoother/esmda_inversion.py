@@ -77,7 +77,10 @@ def normalize_alpha(alpha):
 # INVERSION FUNCTIONS
 # =============================================================================
 def inversion_naive(*, alpha, C_D, D, Y):
-    """Naive inversion, used for testing only."""
+    """Naive inversion, used for testing only.
+
+    Computes inv(C_DD + alpha * C_D) @ (D - Y) naively.
+    """
     C_DD = empirical_cross_covariance(Y, Y)
 
     # Naive implementation of Equation (3) in Ensemble smoother with multiple...
@@ -87,11 +90,14 @@ def inversion_naive(*, alpha, C_D, D, Y):
 
 
 def inversion_exact(*, alpha, C_D, D, Y):
+    """Computes an exact inversion using `sp.linalg.solve`, which uses a
+    Cholesky factorization.
+    """
     C_DD = empirical_covariance_upper(Y)  # Only compute upper part
     solver_kwargs = {
         "overwrite_a": True,
         "overwrite_b": True,
-        "assume_a": "pos",
+        "assume_a": "pos",  # Assume positive definite matrix
         "lower": False,  # Only use the upper part while solving
     }
 
@@ -107,6 +113,7 @@ def inversion_exact(*, alpha, C_D, D, Y):
 
 
 def inversion_lstsq(*, alpha, C_D, D, Y):
+    """Computes inversion uses least squares."""
     C_DD = empirical_cross_covariance(Y, Y)
 
     # A covariance matrix was given
@@ -176,9 +183,8 @@ def inversion_subspace_woodbury(*, alpha, C_D, D, Y):
         center = np.linalg.multi_dot([D_delta.T, C_D_inv, D_delta])
         center.flat[:: center.shape[0] + 1] += 1.0
 
-        inverted = C_D_inv - np.linalg.multi_dot(
-            [C_D_inv, D_delta, sp.linalg.inv(center), D_delta.T, C_D_inv]
-        )
+        term = C_D_inv @ D_delta
+        inverted = C_D_inv - np.linalg.multi_dot([term, sp.linalg.inv(center), term.T])
 
         return inverted @ (D - Y)
 

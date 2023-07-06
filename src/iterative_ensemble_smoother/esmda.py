@@ -45,7 +45,7 @@ class ESMDA:
         if isinstance(alpha, np.ndarray) and alpha.ndim == 1:
             self.alpha = normalize_alpha(alpha)
         elif isinstance(alpha, int):
-            self.alpha = np.array([1 / alpha] * alpha)
+            self.alpha = normalize_alpha(np.array([alpha] * alpha))
         else:
             raise TypeError("Alpha must be integer or 1D array.")
 
@@ -85,8 +85,11 @@ class ESMDA:
         # Sample from a zero-centered multivariate normal with cov=C_D
         mv_normal_rvs = self.mv_normal.rvs(size=num_ensemble, random_state=self.rng).T
 
-        # Create perturbed observationservations, scaled by alpha
-        D = self.observations + self.alpha[self.iteration] * mv_normal_rvs
+        # Create perturbed observationservations, with C_D scaled by alpha
+        # If C_D = L L.T  by the cholesky factorization, then
+        # drawing from a zero cented normal is y := L @ z, where z ~ norm(0, 1)
+        # Scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
+        D = self.observations + np.sqrt(self.alpha[self.iteration]) * mv_normal_rvs
 
         # Update the ensemble
         C_MD = empirical_cross_covariance(X, Y)
@@ -114,6 +117,10 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import time
 
+    # =============================================================================
+    # RUN AN EXAMPLE
+    # =============================================================================
+
     np.random.seed(12)
 
     # Dimensionality
@@ -123,6 +130,7 @@ if __name__ == "__main__":
 
     def g(x):
         """Transform a single ensemble member."""
+        # return np.array([x, x]) + 5 + np.random.randn(2, 1) * 0.05
         return np.array([np.sin(x / 2), x]) + 5 + np.random.randn(2, 1) * 0.05
 
     def G(X):
@@ -133,14 +141,14 @@ if __name__ == "__main__":
     X_prior = np.random.randn(num_iputs, num_ensemble) * 1
 
     # Measurement errors
-    C_D = np.eye(num_outputs) * 10
+    C_D = np.eye(num_outputs) * 1
 
     # The true inputs and observationservations, a result of running with N(1, 1)
     X_true = np.random.randn(num_iputs, num_ensemble) + 3
     observations = G(X_true)
 
     # Create ESMDA instance
-    esmda = ESMDA(C_D, observations, alpha=5, seed=123)
+    esmda = ESMDA(C_D, observations, alpha=10, seed=123)
 
     X_current = np.copy(X_prior)
     for iteration in range(esmda.num_assimilations()):
@@ -163,7 +171,7 @@ if __name__ == "__main__":
         plt.legend()
         plt.show()
 
-        time.sleep(0.05)
+        time.sleep(0.0005)
 
 
 if __name__ == "__main__":
