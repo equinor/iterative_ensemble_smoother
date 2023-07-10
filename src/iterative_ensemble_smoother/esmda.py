@@ -33,7 +33,40 @@ from esmda_inversion import (
 
 
 class ESMDA:
-    def __init__(self, C_D, observations, alpha=None, seed=None, inversion="exact"):
+    _inversion_methods = {"exact": inversion_exact}
+
+    def __init__(self, C_D, observations, alpha=5, seed=None, inversion="exact"):
+        """Initialize Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
+
+        The implementation follows the 2012 paper by Emerick et al.
+
+        Parameters
+        ----------
+        C_D : np.ndarray
+            Covariance matrix of outputs of shape (num_outputs, num_ouputs).
+        observations : np.ndarray
+            2D array of shape (num_inputs, num_ensemble_members).
+        alpha : int or 1D np.ndarray, optional
+            If an integer `alpha` is given, an array with length `alpha` and
+            elements `alpha` is constructed. If an 1D array is given, it is
+            normalized so sum_i 1/alpha_i = 1 and used. The default is 5, which
+            corresponds to the array numpy.array([5, 5, 5, 5, 5]).
+        seed : integer, optional
+            A seed used for random number generation. The seed is passed to
+            numpy.random.default_rng(). The default is None.
+        inversion : str, optional
+            Which inversion method to use. The default is "exact".
+
+        Raises
+        ------
+        TypeError
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        """
         assert inversion in ("exact",)
 
         self.observations = observations
@@ -45,7 +78,8 @@ class ESMDA:
         if isinstance(alpha, np.ndarray) and alpha.ndim == 1:
             self.alpha = normalize_alpha(alpha)
         elif isinstance(alpha, int):
-            self.alpha = normalize_alpha(np.array([alpha] * alpha))
+            self.alpha = np.array([alpha] * alpha)
+            assert np.allclose(self.alpha, normalize_alpha(self.alpha))
         else:
             raise TypeError("Alpha must be integer or 1D array.")
 
@@ -73,13 +107,28 @@ class ESMDA:
         return len(self.alpha)
 
     def assimilate(self, X, Y):
+        """Assimilate data and return an updated ensemble.
+
+        Parameters
+        ----------
+        X : np.ndarray
+            2D array of shape (num_inputs, num_ensemble_members).
+        Y : np.ndarray
+            2D array of shape (num_ouputs, num_ensemble_members).
+
+        Returns
+        -------
+        X_posterior : np.ndarray
+            2D array of shape (num_inputs, num_ensemble_members).
+
+        """
         if self.iteration >= self.num_assimilations():
             raise Exception("No more assimilation steps to run.")
 
-        num_inputs, num_ensemble1 = X.shape
+        num_inputs, num_ensemble = X.shape
         num_outputs, num_emsemble2 = Y.shape
         assert (
-            num_ensemble1 == num_emsemble2
+            num_ensemble == num_emsemble2
         ), "Number of ensemble members in X and Y must match"
 
         # Sample from a zero-centered multivariate normal with cov=C_D
@@ -107,10 +156,61 @@ class ESMDA:
         # C_MD @ (inv(C_DD + alpha * C_D) @ (D - Y))
         # is faster than the alternative order
         # (C_MD @ inv(C_DD + alpha * C_D)) @ (D - Y)
-        X_posterior = X_current + C_MD @ K
+        X_posterior = X + C_MD @ K
 
         self.iteration += 1
         return X_posterior
+
+
+# =============================================================================
+# TESTS
+# =============================================================================
+import pytest
+
+
+class TestESMDA:
+    @pytest.mark.parametrize(
+        "num_ensemble",
+        [10, 100, 1000],
+    )
+    def test_that_alpha_as_integer_and_array_returns_same_result(self, num_ensemble):
+        seed = num_ensemble
+        np.random.seed(seed)
+
+        num_outputs = 2
+        num_iputs = 1
+
+        def g(x):
+            """Transform a single ensemble member."""
+            return np.array([np.sin(x / 2), x]) + 5
+
+        def G(X):
+            """Transform all ensemble members."""
+            return np.array([g(x_i) for x_i in X.T]).squeeze().T
+
+        # Prior is N(0, 1)
+        X_prior = np.random.randn(num_iputs, num_ensemble)
+
+        # Measurement errors
+        C_D = np.eye(num_outputs)
+
+        # The true inputs and observationservations, a result of running with N(1, 1)
+        X_true = np.random.randn(num_iputs, num_ensemble) + 1
+        observations = G(X_true)
+
+        # Create ESMDA instance and run it
+        esmda_integer = ESMDA(C_D, observations, alpha=5, seed=seed)
+        X_i_int = np.copy(X_prior)
+        for _ in range(esmda_integer.num_assimilations()):
+            X_i_int = esmda_integer.assimilate(X_i_int, G(X_i_int))
+
+        # Create another ESMDA instance and run it
+        esmda_array = ESMDA(C_D, observations, alpha=np.ones(5), seed=seed)
+        X_i_array = np.copy(X_prior)
+        for _ in range(esmda_array.num_assimilations()):
+            X_i_array = esmda_array.assimilate(X_i_array, G(X_i_array))
+
+        assert np.allclose(X_i_int, X_i_array)
 
 
 if __name__ == "__main__":

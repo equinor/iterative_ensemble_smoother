@@ -81,11 +81,9 @@ def inversion_naive(*, alpha, C_D, D, Y):
 
     Computes inv(C_DD + alpha * C_D) @ (D - Y) naively.
     """
+    # Naive implementation of Equation (3) in Emerick (2013)
     C_DD = empirical_cross_covariance(Y, Y)
-
-    # Naive implementation of Equation (3) in Ensemble smoother with multiple...
     C_D = np.diag(C_D) if C_D.ndim == 1 else C_D
-
     return sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)
 
 
@@ -146,25 +144,31 @@ def inversion_rescaled(*, alpha, C_D, D, Y):
         # Eqn (59). Form C_tilde
         # sp.linalg.blas.strmm(alpha=1, a=C_D_L_inv, b=C_DD, lower=1)
         C_tilde = C_D_L_inv @ C_DD @ C_D_L_inv.T
-        C_tilde.flat[:: C_tilde.shape[0] + 1] += 1  # Add to diagonal
+        C_tilde.flat[:: C_tilde.shape[0] + 1] += 1.0  # Add to diagonal
 
     # When C_D is a diagonal covariance matrix, there is no need to perform
     # the cholesky factorization
     elif C_D.ndim == 1:
         C_D_L_inv = 1 / np.sqrt(C_D * alpha)
         C_tilde = (C_D_L_inv * (C_DD * C_D_L_inv).T).T
-        C_tilde.flat[:: C_tilde.shape[0] + 1] += 1  # Add to diagonal
+        C_tilde.flat[:: C_tilde.shape[0] + 1] += 1.0  # Add to diagonal
 
     # Eqn (60). Compute SVD (we could do eigenvalues, since C_tilde is
     # symmetric, but it turns out that computing the SVD is faster)
     # On a 1000 x 1000 example, 80% of the time is spent here
     U, s, _ = sp.linalg.svd(C_tilde, overwrite_a=True, full_matrices=False)
-    # TODO: truncate SVD
+    # Truncate the SVD
+    # N_n is the number of observations
+    # N_e is the number of members in the ensemble
+    N_n, N_e = Y.shape
+    N_r = min(N_n, N_e - 1)  # Number of values in SVD to keep
+    N_r = U.shape[1]
+    U_r, s_r = U[:, :N_r], s[:N_r]
 
     # Eqn (61). Compute symmetric term once first, then multiply together and
     # finally multiply with (D - Y)
-    term = C_D_L_inv.T @ U if C_D.ndim == 2 else (C_D_L_inv * U.T).T
-    return np.linalg.multi_dot([term / s, term.T, (D - Y)])
+    term = C_D_L_inv.T @ U_r if C_D.ndim == 2 else (C_D_L_inv * U_r.T).T
+    return np.linalg.multi_dot([term / s_r, term.T, (D - Y)])
 
 
 def inversion_subspace_woodbury(*, alpha, C_D, D, Y):
@@ -273,7 +277,32 @@ def inversion_subspace(*, alpha, C_D, D, Y):
 
 def inversion_rescaled_subspace(*, alpha, C_D, D, Y):
     """See Appendix A.2 in Emerick et al (2012)"""
-    pass
+    C_D = np.diag(C_D) if C_D.ndim == 1 else C_D
+
+    N_n, N_e = Y.shape
+    D_delta = Y - np.mean(Y, axis=1, keepdims=True)  # Subtract average
+
+    # Eqn (76). Cholesky factorize the covariance matrix C_D
+    # TODO: here we compute the cholesky factor in every call, but C_D
+    # never changes. it would be better to compute it once
+    C_D_L = sp.linalg.cholesky(C_D * alpha, lower=True)  # Lower triangular cholesky
+    # Here C_D_L is C^{1/2} in equation (57)
+    # assert np.allclose(C_D_L @ C_D_L.T, C_D * alpha)
+    C_D_L_inv, _ = sp.linalg.lapack.dtrtri(C_D_L, lower=1)  # Invert lower triangular
+
+    # Use BLAS to compute product of lower triangular matrix C_D_L_inv and D_Delta
+    # This line is equal to C_D_L_inv @ D_delta
+    C_D_L_times_D_delta = sp.linalg.blas.dtrmm(alpha=1, a=C_D_L_inv, b=D_delta, lower=1)
+    U, w, _ = sp.linalg.svd(C_D_L_times_D_delta, overwrite_a=True, full_matrices=False)
+
+    N_r = min(N_n, N_e - 1)  # Number of values in SVD to keep
+    U_r, w_r = U[:, :N_r], w[:N_r]
+
+    # Eqn (78)
+    term = C_D_L_inv.T @ (U_r / w_r)
+    T_r = (N_e - 1) / w_r**2  # Equation (79)
+    diag = 1 / (1 + T_r)
+    return (N_e - 1) * np.linalg.multi_dot([(term * diag), term.T, (D - Y)])
 
 
 # =============================================================================
@@ -356,6 +385,7 @@ class TestEsmdaInversion:
             inversion_subspace_woodbury,
             # Approximate inversions (same result as long as ensemble_members > num_outputs)
             inversion_subspace,
+            inversion_rescaled_subspace,
         ],
     )
     @pytest.mark.parametrize(
@@ -365,7 +395,6 @@ class TestEsmdaInversion:
     def test_that_all_inversions_all_equal_with_many_ensemble_members(
         self, function, num_outputs, num_emsemble
     ):
-
         assert num_emsemble > num_outputs
         np.random.seed(num_outputs + num_emsemble)
 
@@ -396,12 +425,12 @@ class TestEsmdaInversion:
             inversion_lstsq,
             inversion_subspace_woodbury,
             inversion_subspace,
+            inversion_rescaled_subspace,
         ],
     )
     def test_that_inversion_methods_work_with_covariance_matrix_and_variance_vector(
         self, ratio_ensemble_members_over_outputs, num_outputs, function
     ):
-
         emsemble_members = int(num_outputs / ratio_ensemble_members_over_outputs)
         np.random.seed(num_outputs + emsemble_members)
 
@@ -421,9 +450,43 @@ class TestEsmdaInversion:
 
         assert np.allclose(result_diagonal, result_dense)
 
+    @pytest.mark.parametrize(
+        "function",
+        [
+            inversion_naive,
+            inversion_exact,
+            inversion_rescaled,
+            inversion_lstsq,
+            inversion_subspace_woodbury,
+            inversion_subspace,
+            inversion_rescaled_subspace,
+        ],
+    )
+    def test_that_inversion_methods_do_do_not_mutate_input_args(self, function):
+        num_outputs, emsemble_members = 100, 10
+
+        np.random.seed(42)
+
+        # Diagonal covariance matrix
+        C_D = np.diag(np.exp(np.random.randn(num_outputs)))
+
+        # Set alpha to something other than 1 to test that it works
+        alpha = np.exp(np.random.randn())
+
+        # Create observations
+        D = np.random.randn(num_outputs, emsemble_members)
+        Y = np.random.randn(num_outputs, emsemble_members)
+
+        args = [alpha, C_D, D, Y]
+        args_copy = [np.copy(arg) for arg in args]
+
+        function(alpha=alpha, C_D=C_D, D=D, Y=Y)
+
+        for arg, arg_copy in zip(args, args_copy):
+            assert np.allclose(arg, arg_copy)
+
 
 def test_timing(num_outputs=100, num_ensemble=25):
-
     k = num_outputs
     emsemble_members = num_ensemble
 
@@ -464,7 +527,11 @@ def test_timing(num_outputs=100, num_ensemble=25):
 
         print("-" * 32)
 
-    subspace_inversion_funcs = [inversion_subspace, inversion_subspace_woodbury]
+    subspace_inversion_funcs = [
+        inversion_subspace,
+        inversion_subspace_woodbury,
+        inversion_rescaled_subspace,
+    ]
 
     from time import perf_counter
 
@@ -493,6 +560,6 @@ if __name__ == "__main__":
             "--doctest-modules",
             "-v",
             "-v",
-            # "-k test_inversions_when_there_are_few_ensemble_members",
+            # "-k test_that_all_inversions_all_equal_with_many_ensemble_members",
         ]
     )
