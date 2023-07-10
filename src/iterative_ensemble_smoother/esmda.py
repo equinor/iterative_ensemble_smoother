@@ -67,7 +67,7 @@ class ESMDA:
         None.
 
         """
-        assert inversion in ("exact",)
+        assert inversion in self._inversion_methods.keys()
 
         self.observations = observations
         self.iteration = 0
@@ -125,6 +125,7 @@ class ESMDA:
         if self.iteration >= self.num_assimilations():
             raise Exception("No more assimilation steps to run.")
 
+        # Verify shapes
         num_inputs, num_ensemble = X.shape
         num_outputs, num_emsemble2 = Y.shape
         assert (
@@ -143,10 +144,9 @@ class ESMDA:
         # Update the ensemble
         C_MD = empirical_cross_covariance(X, Y)
 
-        if self.inversion == "exact":
-            K = inversion_exact(
-                alpha=self.alpha[self.iteration], C_D=self.C_D, D=D, Y=Y
-            )
+        # Choose inversion method, e.g. 'exact'
+        inversion_func = self._inversion_methods[self.inversion]
+        K = inversion_func(alpha=self.alpha[self.iteration], C_D=self.C_D, D=D, Y=Y)
 
         # X_posterior = X_current + C_MD @ K
         # K := sp.linalg.inv(C_DD + C_D_alpha) @ (D - Y)
