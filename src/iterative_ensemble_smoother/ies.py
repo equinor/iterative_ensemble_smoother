@@ -32,7 +32,12 @@ def calc_num_significant(singular_values, truncation):
     >>> calc_num_significant(singular_values, 0.8)
     2
     >>> calc_num_significant(singular_values, 0.01)
-    0
+    1
+
+    >>> singular_values = np.array([3, 2, 1, 0, 0, 0])
+    >>> i = calc_num_significant(singular_values, 1.0)
+    >>> singular_values[:i]
+    array([3, 2, 1])
 
     """
     assert np.all(np.diff(singular_values) <= 0), "Must be sorted decreasing"
@@ -42,7 +47,7 @@ def calc_num_significant(singular_values, truncation):
     total_sigma = sigma[-1]  # Sum of all squared singular values
 
     relative_energy = sigma / total_sigma
-    return np.searchsorted(relative_energy, truncation, side="right")
+    return np.searchsorted(relative_energy, truncation, side="left") + 1
 
 
 def truncated_svd_inv_sigma(S, truncation, full_matrices=False):
@@ -52,19 +57,21 @@ def truncated_svd_inv_sigma(S, truncation, full_matrices=False):
 
     Examples
     --------
-    >>> S = np.array([[1, 2], [3, 4]])
-    >>> truncated_svd_inv_sigma(S, 1)
-    (array([[-0.40455358, -0.9145143 ],
-           [-0.9145143 ,  0.40455358]]), array([0.1829831, 0.       ]), array([[-0.57604844, -0.81741556],
-           [ 0.81741556, -0.57604844]]))
+    >>> S = np.diag([100, 1, 0]) #  Create a singular matrix
+    >>> truncated_svd_inv_sigma(S, 1.0)
+    (array([[1., 0.],
+           [0., 1.],
+           [0., 0.]]), array([0.01, 1.  ]), array([[1., 0., 0.],
+           [0., 1., 0.]]))
 
-    On a singular matrix
+    Keep only 90 % of energy, removing one non-zero singular value:
 
-    >>> S = np.array([[1, 2], [2, 4]])
-    >>> truncated_svd_inv_sigma(S, 0.99)
-    (array([[-0.4472136 , -0.89442719],
-           [-0.89442719,  0.4472136 ]]), array([0., 0.]), array([[-0.4472136 , -0.89442719],
-           [-0.89442719,  0.4472136 ]]))
+    >>> S = np.diag([100, 1, 0])
+    >>> truncated_svd_inv_sigma(S, 0.9)
+    (array([[1.],
+           [0.],
+           [0.]]), array([0.01]), array([[1., 0., 0.]]))
+
     """
 
     U, singular_values, VT = sp.linalg.svd(
@@ -88,7 +95,11 @@ def truncated_svd_inv_sigma(S, truncation, full_matrices=False):
     inverted_singular_values = np.zeros_like(singular_values)
     inverted_singular_values[:num_significant] = 1 / singular_values[:num_significant]
 
-    return U, inverted_singular_values, VT
+    return (
+        U[:, :num_significant],
+        inverted_singular_values[:num_significant],
+        VT[:num_significant, :],
+    )
 
 
 def exact_inversion(W, S, H, steplength):
