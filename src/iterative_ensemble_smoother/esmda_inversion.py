@@ -6,7 +6,7 @@ import scipy as sp
 
 
 def empirical_covariance_upper(X):
-    """Compute the upper part of the empirical covariance.
+    """Compute the upper triangular part of the empirical covariance matrix.
 
     Examples
     --------
@@ -25,11 +25,11 @@ def empirical_covariance_upper(X):
            [0.981, 0.997, 0.392],
            [0.371, 0.392, 0.407]])
     """
-    num_variables, num_observationservations = X.shape
+    num_variables, num_observations = X.shape
     X = X - np.mean(X, axis=1, keepdims=True)
     # https://www.math.utah.edu/software/lapack/lapack-blas/dsyrk.html
     XXT = sp.linalg.blas.dsyrk(alpha=1, a=X)
-    XXT /= num_observationservations - 1
+    XXT /= num_observations - 1
     return XXT
 
 
@@ -53,15 +53,22 @@ def empirical_cross_covariance(X, Y):
     """
 
     assert X.shape[1] == Y.shape[1], "Ensemble size must be equal"
+
+    # https://en.wikipedia.org/wiki/Estimation_of_covariance_matrices
+    # Subtract means
     X = X - np.mean(X, axis=1, keepdims=True)
     Y = Y - np.mean(Y, axis=1, keepdims=True)
+
+    # Compute outer product and divide
     cov = X @ Y.T / (X.shape[1] - 1)
     assert cov.shape == (X.shape[0], Y.shape[0])
     return cov
 
 
 def normalize_alpha(alpha):
-    """Assure that sum_i (1/alpha_i) = 1
+    """Assure that sum_i (1/alpha_i) = 1.
+
+    This is Eqn (22) in the 2013 Emerick paper.
 
     Examples
     --------
@@ -71,6 +78,42 @@ def normalize_alpha(alpha):
     """
     factor = np.sum(1 / alpha)
     return alpha * factor
+
+
+def singular_values_to_keep(singular_values, threshold=1.0):
+    """Find the index of the singular values to keep when truncating.
+
+    Examples
+    --------
+    >>> singular_values = np.array([3, 2, 1, 0, 0, 0])
+    >>> i = singular_values_to_keep(singular_values, threshold=1.0)
+    >>> singular_values[:i]
+    array([3, 2, 1])
+
+    >>> singular_values = np.array([4, 3, 2, 1])
+    >>> i = singular_values_to_keep(singular_values, threshold=1.0)
+    >>> singular_values[:i]
+    array([4, 3, 2, 1])
+
+    >>> singular_values = np.array([4, 3, 2, 1])
+    >>> singular_values_to_keep(singular_values, threshold=0.95)
+    4
+    >>> singular_values_to_keep(singular_values, threshold=0.9)
+    3
+    >>> singular_values_to_keep(singular_values, threshold=0.7)
+    2
+
+    """
+    assert np.all(
+        np.diff(singular_values) <= 0
+    ), "Singular values must be sorted decreasing"
+    assert 0 < threshold <= 1, "Threshold must be in range (0, 1]"
+    singular_values = np.array(singular_values, dtype=float)
+
+    # Take cumulative sum and normalize
+    cumsum = np.cumsum(singular_values)
+    cumsum /= cumsum[-1]
+    return np.searchsorted(cumsum, v=threshold, side="left") + 1
 
 
 # =============================================================================
@@ -89,20 +132,21 @@ def inversion_naive(*, alpha, C_D, D, Y):
 
 def inversion_exact(*, alpha, C_D, D, Y):
     """Computes an exact inversion using `sp.linalg.solve`, which uses a
-    Cholesky factorization.
+    Cholesky factorization in the case of symmetric, positive definite matrices.
     """
     C_DD = empirical_covariance_upper(Y)  # Only compute upper part
     solver_kwargs = {
         "overwrite_a": True,
         "overwrite_b": True,
-        "assume_a": "pos",  # Assume positive definite matrix
+        "assume_a": "pos",  # Assume positive definite matrix (use cholesky)
         "lower": False,  # Only use the upper part while solving
     }
 
     # Compute K := sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)
     if C_D.ndim == 2:
         # C_D is a covariance matrix
-        K = sp.linalg.solve(C_DD + alpha * C_D, D - Y, **solver_kwargs)
+        C_DD += alpha * C_D  # Save memory by mutating
+        K = sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
     elif C_D.ndim == 1:
         # C_D is an array, so add it to the diagonal without forming diag(C_D)
         C_DD.flat[:: C_DD.shape[1] + 1] += alpha * C_D
@@ -129,19 +173,23 @@ def inversion_lstsq(*, alpha, C_D, D, Y):
 
 
 def inversion_rescaled(*, alpha, C_D, D, Y):
-    """See Appendix A.1 in Emerick et al (2012)"""
+    """Compute a rescaled inversion.
+
+    See Appendix A.1 in Emerick et al (2012)"""
     C_DD = empirical_cross_covariance(Y, Y)
 
     if C_D.ndim == 2:
         # Eqn (57). Cholesky factorize the covariance matrix C_D
         # TODO: here we compute the cholesky factor in every call, but C_D
         # never changes. it would be better to compute it once
-        C_D_L = sp.linalg.cholesky(C_D * alpha, lower=True)  # Lower triangular cholesky
+        C_D_L = sp.linalg.cholesky(C_D, lower=True)  # Lower triangular cholesky
         C_D_L_inv, _ = sp.linalg.lapack.dtrtri(
-            C_D_L, lower=1
-        )  # Invert lower triangular
+            C_D_L, lower=1, overwrite_c=1
+        )  # Invert lower triangular using BLAS routine
+        C_D_L_inv /= np.sqrt(alpha)
 
         # Eqn (59). Form C_tilde
+        # TODO: Use BLAS routine for triangular times dense matrix
         # sp.linalg.blas.strmm(alpha=1, a=C_D_L_inv, b=C_DD, lower=1)
         C_tilde = C_D_L_inv @ C_DD @ C_D_L_inv.T
         C_tilde.flat[:: C_tilde.shape[0] + 1] += 1.0  # Add to diagonal
@@ -153,17 +201,20 @@ def inversion_rescaled(*, alpha, C_D, D, Y):
         C_tilde = (C_D_L_inv * (C_DD * C_D_L_inv).T).T
         C_tilde.flat[:: C_tilde.shape[0] + 1] += 1.0  # Add to diagonal
 
-    # Eqn (60). Compute SVD (we could do eigenvalues, since C_tilde is
-    # symmetric, but it turns out that computing the SVD is faster)
-    # On a 1000 x 1000 example, 80% of the time is spent here
-    U, s, _ = sp.linalg.svd(C_tilde, overwrite_a=True, full_matrices=False)
-    # Truncate the SVD
+    # Eqn (60). Compute SVD, which is equivalent to taking eigendecomposition
+    # since C_tilde is PSD. Using eigh() is faster than svd().
+    # Note that svd() returns eigenvalues in decreasing order, while eigh()
+    # returns eigenvalues in increasing order.
+    # driver="evr" => fastest option
+    s, U = sp.linalg.eigh(C_tilde, driver="evr", overwrite_a=True)
+    # Truncate the SVD ( U_r @ np.diag(s_r) @ U_r.T == C_tilde )
     # N_n is the number of observations
     # N_e is the number of members in the ensemble
     N_n, N_e = Y.shape
     N_r = min(N_n, N_e - 1)  # Number of values in SVD to keep
     N_r = U.shape[1]
-    U_r, s_r = U[:, :N_r], s[:N_r]
+    U_r, s_r = U[:, -N_r:], s[-N_r:]
+    # U_r @ np.diag(s_r) @ U_r.T == C_tilde
 
     # Eqn (61). Compute symmetric term once first, then multiply together and
     # finally multiply with (D - Y)
@@ -172,35 +223,41 @@ def inversion_rescaled(*, alpha, C_D, D, Y):
 
 
 def inversion_subspace_woodbury(*, alpha, C_D, D, Y):
-    """See Appendix A.2 in Emerick et al (2012)"""
-
-    # C_D = np.diag(C_D) if C_D.ndim == 1 else C_D
+    """Use the Woodbury lemma to compute the inversion."""
 
     # Woodbury: (A + U @ U.T)^-1 = A^-1 - A^-1 @ U @ (1 + U.T @ A^-1 @ U )^-1 @ U.T @ A^-1
+
+    # Compute D_delta. N_n = number of outputs, N_e = number of ensemble members
     N_n, N_e = Y.shape
     D_delta = Y - np.mean(Y, axis=1, keepdims=True)  # Subtract average
     D_delta /= np.sqrt(N_e - 1)
 
+    # A full covariance matrix was given
     if C_D.ndim == 2:
+        # Invert C_D
         C_D_inv = np.linalg.inv(C_D) / alpha
 
+        # Compute the center part of the rhs in woodburry
         center = np.linalg.multi_dot([D_delta.T, C_D_inv, D_delta])
-        center.flat[:: center.shape[0] + 1] += 1.0
+        center.flat[:: center.shape[0] + 1] += 1.0  # Add to diagonal
 
+        # Compute the symmetric term of the rhs in woodbury
         term = C_D_inv @ D_delta
-        inverted = C_D_inv - np.linalg.multi_dot([term, sp.linalg.inv(center), term.T])
 
+        # Compute the woodbury inversion, then return
+        inverted = C_D_inv - np.linalg.multi_dot([term, sp.linalg.inv(center), term.T])
         return inverted @ (D - Y)
 
+    # A diagonal covariance matrix was given as a 1D array.
+    # Same computation as above, but exploit the diagonal structure
     else:
-        C_D_inv = 1 / (C_D * alpha)  # Diagonal matrix
+        C_D_inv = 1 / (C_D * alpha)  # Invert diagonal
         center = np.linalg.multi_dot([D_delta.T * C_D_inv, D_delta])
         center.flat[:: center.shape[0] + 1] += 1.0
         UT_D = D_delta.T * C_D_inv
         inverted = np.diag(C_D_inv) - np.linalg.multi_dot(
             [UT_D.T, sp.linalg.inv(center), UT_D]
         )
-
         return inverted @ (D - Y)
 
 
@@ -264,7 +321,13 @@ def inversion_subspace(*, alpha, C_D, D, Y):
     X = (N_e - 1) * np.linalg.multi_dot([U_r_w_inv.T, alpha * C_D, U_r_w_inv])
 
     # Eqn (72)
-    Z, T, _ = sp.linalg.svd(X, overwrite_a=True, full_matrices=False)
+    # Z, T, _ = sp.linalg.svd(X, overwrite_a=True, full_matrices=False)
+    # Compute SVD, which is equivalent to taking eigendecomposition
+    # since X is PSD. Using eigh() is faster than svd().
+    # Note that svd() returns eigenvalues in decreasing order, while eigh()
+    # returns eigenvalues in increasing order.
+    # driver="evr" => fastest option
+    T, Z = sp.linalg.eigh(X, driver="evr", overwrite_a=True)
 
     # Eqn (74).
     # C^+ = (N_e - 1) hat{C}^+
@@ -276,7 +339,13 @@ def inversion_subspace(*, alpha, C_D, D, Y):
 
 
 def inversion_rescaled_subspace(*, alpha, C_D, D, Y):
-    """See Appendix A.2 in Emerick et al (2012)"""
+    """See Appendix A.2 in Emerick et al (2012)
+
+    This is an approximate solution. The approximation is that when
+    U, w, V.T = svd(D_delta)
+    then we assume that U_r @ U_r.T = I.
+
+    """
     C_D = np.diag(C_D) if C_D.ndim == 1 else C_D
 
     N_n, N_e = Y.shape
@@ -313,6 +382,15 @@ import pytest
 
 
 class TestEsmdaInversion:
+    @pytest.mark.parametrize("length", list(range(1, 101, 5)))
+    def test_that_the_sum_of_normalize_alpha_is_one(self, length):
+        # Generate random array
+        rng = np.random.default_rng(length)
+        alpha = np.exp(rng.normal(size=length))
+
+        # Test the defining property of the function
+        assert np.isclose(np.sum(1 / normalize_alpha(alpha)), 1)
+
     @pytest.mark.parametrize(
         "function",
         [
@@ -323,7 +401,7 @@ class TestEsmdaInversion:
             inversion_subspace_woodbury,
         ],
     )
-    def test_inversion_on_a_simple_example(self, function):
+    def test_exact_inversion_on_a_simple_example(self, function):
         """Test on one of the simplest cases imaginable.
 
         If C_D = diag([1, 1, 1]) and Y = array([[2, 0],
@@ -493,7 +571,9 @@ def test_timing(num_outputs=100, num_ensemble=25):
     E = np.random.randn(k, k)
     C_D = E.T @ E
     C_D = np.diag(np.exp(np.random.randn(k)))  # Diagonal covariance matrix
-    C_D_full = np.diag(C_D)
+    C_D_diag = np.diag(C_D)
+    assert C_D_diag.ndim == 1
+    assert C_D.ndim == 2
 
     # Set alpha to something other than 1 to test that it works
     alpha = 3
@@ -520,7 +600,7 @@ def test_timing(num_outputs=100, num_ensemble=25):
         print(f"Function: {func.__name__} on dense covariance: {elapsed_time} s")
 
         start_time = perf_counter()
-        result_vector = func(alpha=alpha, C_D=C_D_full, D=D, Y=Y)
+        result_vector = func(alpha=alpha, C_D=C_D_diag, D=D, Y=Y)
         elapsed_time = round(perf_counter() - start_time, 4)
         print(f"Function: {func.__name__} on diagonal covariance: {elapsed_time} s")
         assert np.allclose(result_matrix, result_vector)
@@ -542,7 +622,7 @@ def test_timing(num_outputs=100, num_ensemble=25):
         print(f"Function: {func.__name__} on dense covariance: {elapsed_time} s")
 
         start_time = perf_counter()
-        result_vector = func(alpha=alpha, C_D=C_D_full, D=D, Y=Y)
+        result_vector = func(alpha=alpha, C_D=C_D_diag, D=D, Y=Y)
         elapsed_time = round(perf_counter() - start_time, 4)
         print(f"Function: {func.__name__} on diagonal covariance: {elapsed_time} s")
         assert np.allclose(result_matrix, result_vector)
@@ -560,6 +640,6 @@ if __name__ == "__main__":
             "--doctest-modules",
             "-v",
             "-v",
-            # "-k test_that_all_inversions_all_equal_with_many_ensemble_members",
+            # "-k simple",
         ]
     )
