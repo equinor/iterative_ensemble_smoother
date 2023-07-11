@@ -135,13 +135,15 @@ class ESMDA:
         # Sample from a zero-centered multivariate normal with cov=C_D
         mv_normal_rvs = self.mv_normal.rvs(size=num_ensemble, random_state=self.rng).T
 
+        # Line 2 (b) in the description of ES-MDA in the 2013 Emerick paper
         # Create perturbed observationservations, with C_D scaled by alpha
         # If C_D = L L.T  by the cholesky factorization, then
         # drawing from a zero cented normal is y := L @ z, where z ~ norm(0, 1)
         # Scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
         D = self.observations + np.sqrt(self.alpha[self.iteration]) * mv_normal_rvs
 
-        # Update the ensemble
+        # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
+        # Compute the cross covariance
         C_MD = empirical_cross_covariance(X, Y)
 
         # Choose inversion method, e.g. 'exact'
@@ -198,18 +200,19 @@ class TestESMDA:
         X_true = np.random.randn(num_iputs, num_ensemble) + 1
         observations = G(X_true)
 
-        # Create ESMDA instance and run it
+        # Create ESMDA instance from an integer `alpha` and run it
         esmda_integer = ESMDA(C_D, observations, alpha=5, seed=seed)
         X_i_int = np.copy(X_prior)
         for _ in range(esmda_integer.num_assimilations()):
             X_i_int = esmda_integer.assimilate(X_i_int, G(X_i_int))
 
-        # Create another ESMDA instance and run it
+        # Create another ESMDA instance from a vector `alpha` and run it
         esmda_array = ESMDA(C_D, observations, alpha=np.ones(5), seed=seed)
         X_i_array = np.copy(X_prior)
         for _ in range(esmda_array.num_assimilations()):
             X_i_array = esmda_array.assimilate(X_i_array, G(X_i_array))
 
+        # Exactly the same result with equal seeds
         assert np.allclose(X_i_int, X_i_array)
 
 
@@ -231,7 +234,7 @@ if __name__ == "__main__":
     def g(x):
         """Transform a single ensemble member."""
         # return np.array([x, x]) + 5 + np.random.randn(2, 1) * 0.05
-        return np.array([np.sin(x / 2), x]) + 5 + np.random.randn(2, 1) * 0.05
+        return np.array([np.sin(x / 2), x]) + 5 + np.random.randn(2, 1) * 0.1
 
     def G(X):
         """Transform all ensemble members."""
@@ -244,7 +247,7 @@ if __name__ == "__main__":
     C_D = np.eye(num_outputs) * 1
 
     # The true inputs and observationservations, a result of running with N(1, 1)
-    X_true = np.random.randn(num_iputs, num_ensemble) + 3
+    X_true = np.random.randn(num_iputs, num_ensemble) + 6
     observations = G(X_true)
 
     # Create ESMDA instance
@@ -255,7 +258,6 @@ if __name__ == "__main__":
         print(f"Iteration number: {iteration + 1}")
 
         X_posterior = esmda.assimilate(X_current, G(X_current))
-
         X_current = X_posterior
 
         # Plot results
@@ -271,7 +273,7 @@ if __name__ == "__main__":
         plt.legend()
         plt.show()
 
-        time.sleep(0.0005)
+        time.sleep(0.05)
 
 
 if __name__ == "__main__":
