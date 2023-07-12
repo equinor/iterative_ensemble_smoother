@@ -22,10 +22,16 @@ https://gitlab.com/antoinecollet5/pyesmda
 
 """
 
-import numpy as np
-import scipy as sp
+from typing import Optional, Union
 
-from esmda_inversion import (
+import numpy as np
+
+import numpy.typing as npt
+
+
+import scipy as sp  # type: ignore
+
+from esmda_inversion import (  # type: ignore
     normalize_alpha,
     empirical_cross_covariance,
     inversion_exact,
@@ -35,7 +41,14 @@ from esmda_inversion import (
 class ESMDA:
     _inversion_methods = {"exact": inversion_exact}
 
-    def __init__(self, C_D, observations, alpha=5, seed=None, inversion="exact"):
+    def __init__(
+        self,
+        C_D: npt.NDArray[np.double],
+        observations: npt.NDArray[np.double],
+        alpha: Union[int, npt.NDArray[np.double]] = 5,
+        seed: Optional[int] = None,
+        inversion: str = "exact",
+    ) -> None:
         """Initialize Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
 
         The implementation follows the 2012 paper by Emerick et al.
@@ -44,6 +57,7 @@ class ESMDA:
         ----------
         C_D : np.ndarray
             Covariance matrix of outputs of shape (num_outputs, num_ouputs).
+            If a 1D array is passed, it represents a diagonal covariance matrix.
         observations : np.ndarray
             2D array of shape (num_inputs, num_ensemble_members).
         alpha : int or 1D np.ndarray, optional
@@ -57,18 +71,42 @@ class ESMDA:
         inversion : str, optional
             Which inversion method to use. The default is "exact".
 
-        Raises
-        ------
-        TypeError
-            DESCRIPTION.
-
         Returns
         -------
         None.
 
         """
-        assert inversion in self._inversion_methods.keys()
+        # Validate inputs
+        if not (isinstance(C_D, np.ndarray) and C_D.ndim in (1, 2)):
+            raise TypeError("Argument `C_D` must be a NumPy array of dimension 1 or 2.")
+            if C_D.ndim == 2 and C_D.shape[0] != C_D.shape[1]:
+                raise ValueError("Argument `C_D` must be square if it's 2D.")
 
+        if not (isinstance(observations, np.ndarray) and observations.ndim == 2):
+            raise TypeError("Argument `observations` must be a NumPy array of 2.")
+
+        if not observations.shape[0] == C_D.shape[0]:
+            raise ValueError("Shapes of `observations` and `C_D` must match.")
+
+        if not (
+            (isinstance(alpha, np.ndarray) and alpha.ndim == 1)
+            or isinstance(alpha, int)
+        ):
+            raise TypeError("Argument `alpha` must be an integer or a 1D NumPy array.")
+
+        if not (isinstance(seed, int) or seed is None):
+            raise TypeError("Argument `seed` must be an integer.")
+
+        if not isinstance(inversion, str):
+            raise TypeError(
+                f"Argument `inversion` must be a string in {tuple(self._inversion_methods.keys())}"
+            )
+        if inversion not in self._inversion_methods.keys():
+            raise ValueError(
+                f"Argument `inversion` must be a string in {tuple(self._inversion_methods.keys())}"
+            )
+
+        # Store data
         self.observations = observations
         self.iteration = 0
         self.rng = np.random.default_rng(seed)
@@ -103,10 +141,12 @@ class ESMDA:
         self.C_D = C_D
         assert isinstance(self.C_D, np.ndarray) and self.C_D.ndim in (1, 2)
 
-    def num_assimilations(self):
+    def num_assimilations(self) -> int:
         return len(self.alpha)
 
-    def assimilate(self, X, Y):
+    def assimilate(
+        self, X: npt.NDArray[np.double], Y: npt.NDArray[np.double]
+    ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble.
 
         Parameters
