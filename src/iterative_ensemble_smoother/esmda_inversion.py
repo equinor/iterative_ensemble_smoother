@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+
+from typing import Optional, Union
+
 import numpy as np
-import scipy as sp
+
+import numpy.typing as npt
 
 
-def empirical_covariance_upper(X):
+import scipy as sp  # type: ignore
+
+
+def empirical_covariance_upper(X: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
     """Compute the upper triangular part of the empirical covariance matrix.
 
     Examples
@@ -33,7 +40,9 @@ def empirical_covariance_upper(X):
     return XXT
 
 
-def empirical_cross_covariance(X, Y):
+def empirical_cross_covariance(
+    X: npt.NDArray[np.double], Y: npt.NDArray[np.double]
+) -> npt.NDArray[np.double]:
     """Both X and Y have shape (parameters, ensemble_size).
 
     We use this function instead of np.cov to handle cross-correlation,
@@ -65,7 +74,7 @@ def empirical_cross_covariance(X, Y):
     return cov
 
 
-def normalize_alpha(alpha):
+def normalize_alpha(alpha: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
     """Assure that sum_i (1/alpha_i) = 1.
 
     This is Eqn (22) in the 2013 Emerick paper.
@@ -80,7 +89,9 @@ def normalize_alpha(alpha):
     return alpha * factor
 
 
-def singular_values_to_keep(singular_values, threshold=1.0):
+def singular_values_to_keep(
+    singular_values: npt.NDArray[np.double], threshold: float = 1.0
+) -> int:
     """Find the index of the singular values to keep when truncating.
 
     Examples
@@ -119,7 +130,13 @@ def singular_values_to_keep(singular_values, threshold=1.0):
 # =============================================================================
 # INVERSION FUNCTIONS
 # =============================================================================
-def inversion_naive(*, alpha, C_D, D, Y):
+def inversion_naive(
+    *,
+    alpha: float,
+    C_D: npt.NDArray[np.double],
+    D: npt.NDArray[np.double],
+    Y: npt.NDArray[np.double],
+) -> npt.NDArray[np.double]:
     """Naive inversion, used for testing only.
 
     Computes inv(C_DD + alpha * C_D) @ (D - Y) naively.
@@ -130,7 +147,13 @@ def inversion_naive(*, alpha, C_D, D, Y):
     return sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)
 
 
-def inversion_exact(*, alpha, C_D, D, Y):
+def inversion_exact(
+    *,
+    alpha: float,
+    C_D: npt.NDArray[np.double],
+    D: npt.NDArray[np.double],
+    Y: npt.NDArray[np.double],
+) -> npt.NDArray[np.double]:
     """Computes an exact inversion using `sp.linalg.solve`, which uses a
     Cholesky factorization in the case of symmetric, positive definite matrices.
     """
@@ -154,7 +177,13 @@ def inversion_exact(*, alpha, C_D, D, Y):
     return K
 
 
-def inversion_lstsq(*, alpha, C_D, D, Y):
+def inversion_lstsq(
+    *,
+    alpha: float,
+    C_D: npt.NDArray[np.double],
+    D: npt.NDArray[np.double],
+    Y: npt.NDArray[np.double],
+) -> npt.NDArray[np.double]:
     """Computes inversion uses least squares."""
     C_DD = empirical_cross_covariance(Y, Y)
 
@@ -172,7 +201,13 @@ def inversion_lstsq(*, alpha, C_D, D, Y):
     return ans
 
 
-def inversion_rescaled(*, alpha, C_D, D, Y):
+def inversion_rescaled(
+    *,
+    alpha: float,
+    C_D: npt.NDArray[np.double],
+    D: npt.NDArray[np.double],
+    Y: npt.NDArray[np.double],
+) -> npt.NDArray[np.double]:
     """Compute a rescaled inversion.
 
     See Appendix A.1 in Emerick et al (2012)"""
@@ -222,7 +257,13 @@ def inversion_rescaled(*, alpha, C_D, D, Y):
     return np.linalg.multi_dot([term / s_r, term.T, (D - Y)])
 
 
-def inversion_subspace_woodbury(*, alpha, C_D, D, Y):
+def inversion_subspace_woodbury(
+    *,
+    alpha: float,
+    C_D: npt.NDArray[np.double],
+    D: npt.NDArray[np.double],
+    Y: npt.NDArray[np.double],
+) -> npt.NDArray[np.double]:
     """Use the Woodbury lemma to compute the inversion."""
 
     # Woodbury: (A + U @ U.T)^-1 = A^-1 - A^-1 @ U @ (1 + U.T @ A^-1 @ U )^-1 @ U.T @ A^-1
@@ -261,7 +302,13 @@ def inversion_subspace_woodbury(*, alpha, C_D, D, Y):
         return inverted @ (D - Y)
 
 
-def inversion_subspace(*, alpha, C_D, D, Y):
+def inversion_subspace(
+    *,
+    alpha: float,
+    C_D: npt.NDArray[np.double],
+    D: npt.NDArray[np.double],
+    Y: npt.NDArray[np.double],
+) -> npt.NDArray[np.double]:
     """See Appendix A.2 in Emerick et al (2012)
 
     This is an approximate solution. The approximation is that when
@@ -338,7 +385,13 @@ def inversion_subspace(*, alpha, C_D, D, Y):
     return (N_e - 1) * np.linalg.multi_dot([(term / (1 + T)), term.T, (D - Y)])
 
 
-def inversion_rescaled_subspace(*, alpha, C_D, D, Y):
+def inversion_rescaled_subspace(
+    *,
+    alpha: float,
+    C_D: npt.NDArray[np.double],
+    D: npt.NDArray[np.double],
+    Y: npt.NDArray[np.double],
+) -> npt.NDArray[np.double]:
     """See Appendix A.2 in Emerick et al (2012)
 
     This is an approximate solution. The approximation is that when
