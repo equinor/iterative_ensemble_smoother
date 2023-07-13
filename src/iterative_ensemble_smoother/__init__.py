@@ -9,9 +9,11 @@ from iterative_ensemble_smoother._iterative_ensemble_smoother import (
     ES,
     SIES,
 )
+from iterative_ensemble_smoother.esmda import ESMDA
 
 __all__ = [
     "ES",
     "SIES",
+    "ESMDA",
     "InversionType",
 ]

@@ -1,7 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-
 from typing import Optional, Union
 
 import numpy as np
@@ -35,7 +31,7 @@ def empirical_covariance_upper(X: npt.NDArray[np.double]) -> npt.NDArray[np.doub
     num_variables, num_observations = X.shape
     X = X - np.mean(X, axis=1, keepdims=True)
     # https://www.math.utah.edu/software/lapack/lapack-blas/dsyrk.html
-    XXT = sp.linalg.blas.dsyrk(alpha=1, a=X)
+    XXT: npt.NDArray[np.double] = sp.linalg.blas.dsyrk(alpha=1, a=X)
     XXT /= num_observations - 1
     return XXT
 
@@ -86,7 +82,8 @@ def normalize_alpha(alpha: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
     1.0
     """
     factor = np.sum(1 / alpha)
-    return alpha * factor
+    rescaled: npt.NDArray[np.double] = alpha * factor
+    return rescaled
 
 
 def singular_values_to_keep(
@@ -124,7 +121,7 @@ def singular_values_to_keep(
     # Take cumulative sum and normalize
     cumsum = np.cumsum(singular_values)
     cumsum /= cumsum[-1]
-    return np.searchsorted(cumsum, v=threshold, side="left") + 1
+    return int(np.searchsorted(cumsum, v=threshold, side="left") + 1)
 
 
 # =============================================================================
@@ -144,7 +141,7 @@ def inversion_naive(
     # Naive implementation of Equation (3) in Emerick (2013)
     C_DD = empirical_cross_covariance(Y, Y)
     C_D = np.diag(C_D) if C_D.ndim == 1 else C_D
-    return sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)
+    return sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)  # type: ignore
 
 
 def inversion_exact(
@@ -174,7 +171,7 @@ def inversion_exact(
         # C_D is an array, so add it to the diagonal without forming diag(C_D)
         C_DD.flat[:: C_DD.shape[1] + 1] += alpha * C_D
         K = sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
-    return K
+    return K  # type: ignore
 
 
 def inversion_lstsq(
@@ -198,7 +195,7 @@ def inversion_lstsq(
     # K = lhs^-1 @ (D - Y)
     # lhs @ K = (D - Y)
     ans, *_ = sp.linalg.lstsq(lhs, D - Y, overwrite_a=True, overwrite_b=True)
-    return ans
+    return ans  # type: ignore
 
 
 def inversion_rescaled(
@@ -254,7 +251,7 @@ def inversion_rescaled(
     # Eqn (61). Compute symmetric term once first, then multiply together and
     # finally multiply with (D - Y)
     term = C_D_L_inv.T @ U_r if C_D.ndim == 2 else (C_D_L_inv * U_r.T).T
-    return np.linalg.multi_dot([term / s_r, term.T, (D - Y)])
+    return np.linalg.multi_dot([term / s_r, term.T, (D - Y)])  # type: ignore
 
 
 def inversion_subspace_woodbury(
@@ -287,7 +284,7 @@ def inversion_subspace_woodbury(
 
         # Compute the woodbury inversion, then return
         inverted = C_D_inv - np.linalg.multi_dot([term, sp.linalg.inv(center), term.T])
-        return inverted @ (D - Y)
+        return inverted @ (D - Y)  # type: ignore
 
     # A diagonal covariance matrix was given as a 1D array.
     # Same computation as above, but exploit the diagonal structure
@@ -299,7 +296,7 @@ def inversion_subspace_woodbury(
         inverted = np.diag(C_D_inv) - np.linalg.multi_dot(
             [UT_D.T, sp.linalg.inv(center), UT_D]
         )
-        return inverted @ (D - Y)
+        return inverted @ (D - Y)  # type: ignore
 
 
 def inversion_subspace(
@@ -382,7 +379,7 @@ def inversion_subspace(
     #     = (N_e - 1) (term) * (1 / (1 + T)) (term)^T
     # and finally we multiiply by (D - Y)
     term = U_r_w_inv @ Z
-    return (N_e - 1) * np.linalg.multi_dot([(term / (1 + T)), term.T, (D - Y)])
+    return (N_e - 1) * np.linalg.multi_dot([(term / (1 + T)), term.T, (D - Y)])  # type: ignore
 
 
 def inversion_rescaled_subspace(
@@ -424,263 +421,7 @@ def inversion_rescaled_subspace(
     term = C_D_L_inv.T @ (U_r / w_r)
     T_r = (N_e - 1) / w_r**2  # Equation (79)
     diag = 1 / (1 + T_r)
-    return (N_e - 1) * np.linalg.multi_dot([(term * diag), term.T, (D - Y)])
-
-
-# =============================================================================
-# TESTS
-# =============================================================================
-
-import pytest
-
-
-class TestEsmdaInversion:
-    @pytest.mark.parametrize("length", list(range(1, 101, 5)))
-    def test_that_the_sum_of_normalize_alpha_is_one(self, length):
-        # Generate random array
-        rng = np.random.default_rng(length)
-        alpha = np.exp(rng.normal(size=length))
-
-        # Test the defining property of the function
-        assert np.isclose(np.sum(1 / normalize_alpha(alpha)), 1)
-
-    @pytest.mark.parametrize(
-        "function",
-        [
-            inversion_naive,
-            inversion_exact,
-            inversion_rescaled,
-            inversion_lstsq,
-            inversion_subspace_woodbury,
-        ],
-    )
-    def test_exact_inversion_on_a_simple_example(self, function):
-        """Test on one of the simplest cases imaginable.
-
-        If C_D = diag([1, 1, 1]) and Y = array([[2, 0],
-                                                [0, 0],
-                                                [0, 0]])
-
-        then C_DD = diag([2, 0, 0])
-
-        and inv(C_DD + C_D) = diag([1/3, 1, 1])
-        """
-
-        # Create positive symmetric definite covariance C_D
-        C_D = np.identity(3)
-
-        # Create observations
-        D = np.ones((3, 2))
-        Y = np.array([[2, 0], [0, 0], [0, 0]])
-
-        # inv(diag([3, 1, 1])) @ (D - Y)
-        K0 = function(alpha=1, C_D=C_D, D=D, Y=Y)
-        assert np.allclose(K0, np.array([[-1 / 3, 1 / 3], [1.0, 1.0], [1.0, 1.0]]))
-
-        # Same thing, but with a diagonal covariance represented as an array
-        K0 = function(alpha=1, C_D=np.diag(C_D), D=D, Y=Y)
-        assert np.allclose(K0, np.array([[-1 / 3, 1 / 3], [1.0, 1.0], [1.0, 1.0]]))
-
-    def test_that_inverions_are_equal_with_few_ensemble_members(self, k=10):
-        emsemble_members = k - 1
-
-        # Create positive symmetric definite covariance C_D
-        E = np.random.randn(k, k)
-        C_D = E.T @ E
-
-        # Set alpha to something other than 1 to test that it works
-        alpha = 3
-
-        # Create observations
-        D = np.random.randn(k, emsemble_members)
-        Y = np.random.randn(k, emsemble_members)
-
-        # All non-subspace methods
-        K1 = inversion_naive(alpha=alpha, C_D=C_D, D=D, Y=Y)
-        K2 = inversion_exact(alpha=alpha, C_D=C_D, D=D, Y=Y)
-        K3 = inversion_rescaled(alpha=alpha, C_D=C_D, D=D, Y=Y)
-        K4 = inversion_lstsq(alpha=alpha, C_D=C_D, D=D, Y=Y)
-
-        assert np.allclose(K1, K2)
-        assert np.allclose(K1, K3)
-        assert np.allclose(K1, K4)
-
-    @pytest.mark.parametrize(
-        "function",
-        [
-            # Exact inversions
-            inversion_naive,
-            inversion_exact,
-            inversion_rescaled,
-            inversion_lstsq,
-            inversion_subspace_woodbury,
-            # Approximate inversions (same result as long as ensemble_members > num_outputs)
-            inversion_subspace,
-            inversion_rescaled_subspace,
-        ],
-    )
-    @pytest.mark.parametrize(
-        "num_outputs,num_emsemble",
-        [(10, 11), (10, 20), (10, 100), (100, 101), (100, 200), (100, 500)],
-    )
-    def test_that_all_inversions_all_equal_with_many_ensemble_members(
-        self, function, num_outputs, num_emsemble
-    ):
-        assert num_emsemble > num_outputs
-        np.random.seed(num_outputs + num_emsemble)
-
-        # Create positive symmetric definite covariance C_D
-        E = np.random.randn(num_outputs, num_outputs)
-        C_D = E.T @ E
-
-        # Set alpha to something other than 1 to test that it works
-        alpha = np.exp(np.random.randn())
-
-        # Create observations
-        D = np.random.randn(num_outputs, num_emsemble)
-        Y = np.random.randn(num_outputs, num_emsemble)
-
-        K1 = inversion_naive(alpha=alpha, C_D=C_D, D=D, Y=Y)
-        K2 = function(alpha=alpha, C_D=C_D, D=D, Y=Y)
-
-        assert np.allclose(K1, K2)
-
-    @pytest.mark.parametrize("ratio_ensemble_members_over_outputs", [0.5, 1, 2])
-    @pytest.mark.parametrize("num_outputs", [10, 50, 100])
-    @pytest.mark.parametrize(
-        "function",
-        [
-            inversion_naive,
-            inversion_exact,
-            inversion_rescaled,
-            inversion_lstsq,
-            inversion_subspace_woodbury,
-            inversion_subspace,
-            inversion_rescaled_subspace,
-        ],
-    )
-    def test_that_inversion_methods_work_with_covariance_matrix_and_variance_vector(
-        self, ratio_ensemble_members_over_outputs, num_outputs, function
-    ):
-        emsemble_members = int(num_outputs / ratio_ensemble_members_over_outputs)
-        np.random.seed(num_outputs + emsemble_members)
-
-        # Diagonal covariance matrix
-        C_D = np.diag(np.exp(np.random.randn(num_outputs)))
-        C_D_full = np.diag(C_D)
-
-        # Set alpha to something other than 1 to test that it works
-        alpha = np.exp(np.random.randn())
-
-        # Create observations
-        D = np.random.randn(num_outputs, emsemble_members)
-        Y = np.random.randn(num_outputs, emsemble_members)
-
-        result_diagonal = function(alpha=alpha, C_D=C_D, D=D, Y=Y)
-        result_dense = function(alpha=alpha, C_D=C_D_full, D=D, Y=Y)
-
-        assert np.allclose(result_diagonal, result_dense)
-
-    @pytest.mark.parametrize(
-        "function",
-        [
-            inversion_naive,
-            inversion_exact,
-            inversion_rescaled,
-            inversion_lstsq,
-            inversion_subspace_woodbury,
-            inversion_subspace,
-            inversion_rescaled_subspace,
-        ],
-    )
-    def test_that_inversion_methods_do_do_not_mutate_input_args(self, function):
-        num_outputs, emsemble_members = 100, 10
-
-        np.random.seed(42)
-
-        # Diagonal covariance matrix
-        C_D = np.diag(np.exp(np.random.randn(num_outputs)))
-
-        # Set alpha to something other than 1 to test that it works
-        alpha = np.exp(np.random.randn())
-
-        # Create observations
-        D = np.random.randn(num_outputs, emsemble_members)
-        Y = np.random.randn(num_outputs, emsemble_members)
-
-        args = [alpha, C_D, D, Y]
-        args_copy = [np.copy(arg) for arg in args]
-
-        function(alpha=alpha, C_D=C_D, D=D, Y=Y)
-
-        for arg, arg_copy in zip(args, args_copy):
-            assert np.allclose(arg, arg_copy)
-
-
-def test_timing(num_outputs=100, num_ensemble=25):
-    k = num_outputs
-    emsemble_members = num_ensemble
-
-    E = np.random.randn(k, k)
-    C_D = E.T @ E
-    C_D = np.diag(np.exp(np.random.randn(k)))  # Diagonal covariance matrix
-    C_D_diag = np.diag(C_D)
-    assert C_D_diag.ndim == 1
-    assert C_D.ndim == 2
-
-    # Set alpha to something other than 1 to test that it works
-    alpha = 3
-
-    # Create observations
-    D = np.random.randn(k, emsemble_members)
-    Y = np.random.randn(k, emsemble_members)
-
-    exact_inversion_funcs = [
-        inversion_naive,
-        inversion_exact,
-        inversion_rescaled,
-        inversion_lstsq,
-    ]
-
-    from time import perf_counter
-
-    print("-" * 32)
-
-    for func in exact_inversion_funcs:
-        start_time = perf_counter()
-        result_matrix = func(alpha=alpha, C_D=C_D, D=D, Y=Y)
-        elapsed_time = round(perf_counter() - start_time, 4)
-        print(f"Function: {func.__name__} on dense covariance: {elapsed_time} s")
-
-        start_time = perf_counter()
-        result_vector = func(alpha=alpha, C_D=C_D_diag, D=D, Y=Y)
-        elapsed_time = round(perf_counter() - start_time, 4)
-        print(f"Function: {func.__name__} on diagonal covariance: {elapsed_time} s")
-        assert np.allclose(result_matrix, result_vector)
-
-        print("-" * 32)
-
-    subspace_inversion_funcs = [
-        inversion_subspace,
-        inversion_subspace_woodbury,
-        inversion_rescaled_subspace,
-    ]
-
-    from time import perf_counter
-
-    for func in subspace_inversion_funcs:
-        start_time = perf_counter()
-        result_matrix = func(alpha=alpha, C_D=C_D, D=D, Y=Y)
-        elapsed_time = round(perf_counter() - start_time, 4)
-        print(f"Function: {func.__name__} on dense covariance: {elapsed_time} s")
-
-        start_time = perf_counter()
-        result_vector = func(alpha=alpha, C_D=C_D_diag, D=D, Y=Y)
-        elapsed_time = round(perf_counter() - start_time, 4)
-        print(f"Function: {func.__name__} on diagonal covariance: {elapsed_time} s")
-        assert np.allclose(result_matrix, result_vector)
-
-        print("-" * 32)
+    return (N_e - 1) * np.linalg.multi_dot([(term * diag), term.T, (D - Y)])  # type: ignore
 
 
 if __name__ == "__main__":
