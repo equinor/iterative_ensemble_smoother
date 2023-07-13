@@ -1,15 +1,14 @@
-import pytest
 import numpy as np
-
+import pytest
 
 from iterative_ensemble_smoother.esmda_inversion import (
-    inversion_naive,
     inversion_exact,
-    inversion_rescaled,
     inversion_lstsq,
-    inversion_subspace_woodbury,
-    inversion_subspace,
+    inversion_naive,
+    inversion_rescaled,
     inversion_rescaled_subspace,
+    inversion_subspace,
+    inversion_subspace_woodbury,
     normalize_alpha,
 )
 

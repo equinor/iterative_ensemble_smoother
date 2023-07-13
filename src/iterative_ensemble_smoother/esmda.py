@@ -21,20 +21,16 @@ https://gitlab.com/antoinecollet5/pyesmda
 """
 
 import numbers
-
 from typing import Optional, Union
 
 import numpy as np
-
 import numpy.typing as npt
-
-
 import scipy as sp  # type: ignore
 
 from iterative_ensemble_smoother.esmda_inversion import (
-    normalize_alpha,
     empirical_cross_covariance,
     inversion_exact,
+    normalize_alpha,
 )
 
 
@@ -228,8 +224,9 @@ class ESMDA:
 
 
 if __name__ == "__main__" and False:
-    import matplotlib.pyplot as plt  # type: ignore
     import time
+
+    import matplotlib.pyplot as plt  # type: ignore
 
     # =============================================================================
     # RUN AN EXAMPLE

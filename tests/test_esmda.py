@@ -21,8 +21,9 @@ https://gitlab.com/antoinecollet5/pyesmda
 """
 
 import numpy as np
-from iterative_ensemble_smoother.esmda import ESMDA
 import pytest
+
+from iterative_ensemble_smoother.esmda import ESMDA
 
 
 class TestESMDA:
