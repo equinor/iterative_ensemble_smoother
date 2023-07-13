@@ -22,6 +22,8 @@ https://gitlab.com/antoinecollet5/pyesmda
 
 """
 
+import numbers
+
 from typing import Optional, Union
 
 import numpy as np
@@ -90,7 +92,7 @@ class ESMDA:
 
         if not (
             (isinstance(alpha, np.ndarray) and alpha.ndim == 1)
-            or isinstance(alpha, int)
+            or isinstance(alpha, numbers.Integral)
         ):
             raise TypeError("Argument `alpha` must be an integer or a 1D NumPy array.")
 
@@ -115,7 +117,7 @@ class ESMDA:
         # Alpha can either be a number (of iterations) or a list of weights
         if isinstance(alpha, np.ndarray) and alpha.ndim == 1:
             self.alpha = normalize_alpha(alpha)
-        elif isinstance(alpha, int):
+        elif isinstance(alpha, numbers.Integral):
             self.alpha = np.array([alpha] * alpha)
             assert np.allclose(self.alpha, normalize_alpha(self.alpha))
         else:
@@ -145,7 +147,10 @@ class ESMDA:
         return len(self.alpha)
 
     def assimilate(
-        self, X: npt.NDArray[np.double], Y: npt.NDArray[np.double]
+        self,
+        X: npt.NDArray[np.double],
+        Y: npt.NDArray[np.double],
+        ensemble_mask: Optional[npt.NDArray[np.bool_]] = None,
     ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble.
 
@@ -155,6 +160,10 @@ class ESMDA:
             2D array of shape (num_inputs, num_ensemble_members).
         Y : np.ndarray
             2D array of shape (num_ouputs, num_ensemble_members).
+        ensemble_mask : np.ndarray
+            1D boolean array of length `num_ensemble_members`, describing which
+            ensemble members are active. Inactive realizations are ignored.
+            Defaults to all active.
 
         Returns
         -------
@@ -171,24 +180,37 @@ class ESMDA:
         assert (
             num_ensemble == num_emsemble2
         ), "Number of ensemble members in X and Y must match"
+        assert (ensemble_mask is None) or (
+            ensemble_mask.ndim == 1 and len(ensemble_mask) == num_ensemble
+        )
+
+        if ensemble_mask is None:
+            ensemble_mask = np.ones(num_ensemble, dtype=bool)
 
         # Sample from a zero-centered multivariate normal with cov=C_D
-        mv_normal_rvs = self.mv_normal.rvs(size=num_ensemble, random_state=self.rng).T
+        mv_normal_rvs = self.mv_normal.rvs(
+            size=ensemble_mask.sum(), random_state=self.rng
+        ).T
 
         # Line 2 (b) in the description of ES-MDA in the 2013 Emerick paper
         # Create perturbed observationservations, with C_D scaled by alpha
         # If C_D = L L.T  by the cholesky factorization, then
         # drawing from a zero cented normal is y := L @ z, where z ~ norm(0, 1)
         # Scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
-        D = self.observations + np.sqrt(self.alpha[self.iteration]) * mv_normal_rvs
+        D = (
+            self.observations[:, ensemble_mask]
+            + np.sqrt(self.alpha[self.iteration]) * mv_normal_rvs
+        )
 
         # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
         # Compute the cross covariance
-        C_MD = empirical_cross_covariance(X, Y)
+        C_MD = empirical_cross_covariance(X[:, ensemble_mask], Y[:, ensemble_mask])
 
         # Choose inversion method, e.g. 'exact'
         inversion_func = self._inversion_methods[self.inversion]
-        K = inversion_func(alpha=self.alpha[self.iteration], C_D=self.C_D, D=D, Y=Y)
+        K = inversion_func(
+            alpha=self.alpha[self.iteration], C_D=self.C_D, D=D, Y=Y[:, ensemble_mask]
+        )
 
         # X_posterior = X_current + C_MD @ K
         # K := sp.linalg.inv(C_DD + C_D_alpha) @ (D - Y)
@@ -198,7 +220,10 @@ class ESMDA:
         # C_MD @ (inv(C_DD + alpha * C_D) @ (D - Y))
         # is faster than the alternative order
         # (C_MD @ inv(C_DD + alpha * C_D)) @ (D - Y)
-        X_posterior = X + C_MD @ K
+        X_posterior = np.copy(X)
+        X_posterior[:, ensemble_mask] += C_MD @ K
+
+        # X_posterior = X + C_MD @ K
 
         self.iteration += 1
         return X_posterior
@@ -211,13 +236,64 @@ import pytest
 
 
 class TestESMDA:
+    @pytest.mark.parametrize("num_ensemble", [2**i for i in range(2, 11)])
+    def test_that_using_example_mask_only_updates_those_parameters(self, num_ensemble):
+        seed = num_ensemble
+        rng = np.random.default_rng(seed)
+        alpha = rng.choice(np.array([5, 10, 25, 50]))
+
+        num_outputs = 2
+        num_iputs = 1
+
+        def g(x):
+            """Transform a single ensemble member."""
+            return np.array([np.sin(x / 2), x])
+
+        def G(X):
+            """Transform all ensemble members."""
+            return np.array([g(x_i) for x_i in X.T]).squeeze().T
+
+        # Create an ensemble mask and set half the entries randomly to True
+        ensemble_mask = np.zeros(num_ensemble, dtype=bool)
+        ensemble_mask[
+            rng.choice(num_ensemble, size=num_ensemble // 2, replace=False)
+        ] = True
+
+        # Prior is N(0, 1)
+        X_prior = rng.normal(size=(num_iputs, num_ensemble))
+
+        # Measurement errors
+        C_D = np.eye(num_outputs)
+
+        # The true inputs and observationservations, a result of running with N(1, 1)
+        X_true = rng.normal(loc=1, size=(num_iputs, num_ensemble))
+        observations = G(X_true)
+
+        # Prepare ESMDA instance running with lower number of ensemble members
+        esmda_subset = ESMDA(
+            C_D, observations[:, ensemble_mask], alpha=alpha, seed=seed
+        )
+        X_i_subset = np.copy(X_prior[:, ensemble_mask])
+
+        # Prepare ESMDA instance running with all ensemble members
+        esmda_masked = ESMDA(C_D, observations, alpha=alpha, seed=seed)
+        X_i = np.copy(X_prior)
+
+        # Run both
+
+        for _ in range(esmda_subset.num_assimilations()):
+            X_i_subset = esmda_subset.assimilate(X_i_subset, G(X_i_subset))
+            X_i = esmda_masked.assimilate(X_i, G(X_i), ensemble_mask=ensemble_mask)
+
+            assert np.allclose(X_i_subset, X_i[:, ensemble_mask])
+
     @pytest.mark.parametrize(
         "num_ensemble",
         [10, 100, 1000],
     )
     def test_that_alpha_as_integer_and_array_returns_same_result(self, num_ensemble):
         seed = num_ensemble
-        np.random.seed(seed)
+        rng = np.random.default_rng(seed)
 
         num_outputs = 2
         num_iputs = 1
@@ -231,13 +307,13 @@ class TestESMDA:
             return np.array([g(x_i) for x_i in X.T]).squeeze().T
 
         # Prior is N(0, 1)
-        X_prior = np.random.randn(num_iputs, num_ensemble)
+        X_prior = rng.normal(size=(num_iputs, num_ensemble))
 
         # Measurement errors
         C_D = np.eye(num_outputs)
 
         # The true inputs and observationservations, a result of running with N(1, 1)
-        X_true = np.random.randn(num_iputs, num_ensemble) + 1
+        X_true = rng.normal(size=(num_iputs, num_ensemble)) + 1
         observations = G(X_true)
 
         # Create ESMDA instance from an integer `alpha` and run it
@@ -256,7 +332,7 @@ class TestESMDA:
         assert np.allclose(X_i_int, X_i_array)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__" and False:
     import matplotlib.pyplot as plt
     import time
 
@@ -326,6 +402,6 @@ if __name__ == "__main__":
             "--doctest-modules",
             "-v",
             "-v",
-            "-k test_that_inversion_methods_work_with_covariance_matrix_and_variance_vector",
+            # "-k test_that_inversion_methods_work_with_covariance_matrix_and_variance_vector",
         ]
     )
