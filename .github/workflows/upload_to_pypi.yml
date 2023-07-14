@@ -12,20 +12,16 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    env:
-      CIBW_BUILD_FRONTEND: "build"
-      CIBW_SKIP: "cp36-* cp37-* pp* *-win32 *-manylinux_i686 *-musllinux*"
-      MACOSX_DEPLOYMENT_TARGET: "10.15"
+        os: [ubuntu-latest]
     steps:
       - uses: actions/checkout@v3
 
-      - name: Build wheels
-        uses: pypa/cibuildwheel@v2.9.0
+      - name: Build sdist
+        run: pipx run build --wheel
 
       - uses: actions/upload-artifact@v3
         with:
-          path: ./wheelhouse/*.whl
+          path: ./dist/*.whl
 
   build_sdist:
     name: Build source distribution

@@ -1,4 +1,4 @@
-from iterative_ensemble_smoother import ES, SIES, InversionType
+from iterative_ensemble_smoother import ES, SIES
 import numpy as np
 import pytest
 import re
@@ -73,26 +73,34 @@ def test_that_bad_inputs_cause_nice_error_messages():
 
 
 def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
+    # See: https://github.com/equinor/iterative_ensemble_smoother/issues/83
     # Creating response matrix with large outlier that will
     # lead to NaNs.
-    response_ensemble = np.array([[1, 1, 1e19], [1, 10, 100]])
-    obs_error = np.array([1, 2])
-    obs_value = np.array([10, 20])
+    response_ensemble = np.array([[1, 1, 1e19], [1, 10, 100]], dtype=float)
+    obs_error = np.array([1, 2], dtype=float)
+    obs_value = np.array([10, 20], dtype=float)
     smoother = ES()
 
     with pytest.raises(
         ValueError,
         match="Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation.",
     ):
-        smoother.fit(response_ensemble, obs_error, obs_value)
+        smoother.fit(response_ensemble, obs_error, obs_value, inversion="exact")
 
     # Running with an inversion type that does truncation does not produce NaNs.
-    param_ensemble = np.array([[1, 2, 3]])
+    param_ensemble = np.array([[1, 2, 3]], dtype=float)
     smoother.fit(
         response_ensemble,
         obs_error,
         obs_value,
-        inversion=InversionType.EXACT_R,
+        inversion="exact_r",
     )
     param_ensemble = smoother.update(param_ensemble)
     assert np.isnan(param_ensemble).sum() == 0
+
+
+if __name__ == "__main__":
+    import pytest
+
+    # --durations=10  <- May be used to show potentially slow tests
+    pytest.main(args=[__file__, "--doctest-modules", "-v", "-v"])

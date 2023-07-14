@@ -329,16 +329,16 @@ var = 2.0
 @pytest.mark.parametrize(
     "inversion,errors",
     [
-        (ies.InversionType.EXACT, np.diag(np.array([var, var, var]))),
-        (ies.InversionType.EXACT, np.array([np.sqrt(var), np.sqrt(var), np.sqrt(var)])),
-        (ies.InversionType.EXACT_R, np.diag(np.array([var, var, var]))),
+        ("exact", np.diag(np.array([var, var, var]))),
+        ("exact", np.array([np.sqrt(var), np.sqrt(var), np.sqrt(var)])),
+        ("exact_r", np.diag(np.array([var, var, var]))),
         (
-            ies.InversionType.EXACT_R,
+            "exact_r",
             np.array([np.sqrt(var), np.sqrt(var), np.sqrt(var)]),
         ),
-        (ies.InversionType.SUBSPACE_RE, np.diag(np.array([var, var, var]))),
+        ("subspace_re", np.diag(np.array([var, var, var]))),
         (
-            ies.InversionType.SUBSPACE_RE,
+            "subspace_re",
             np.array([np.sqrt(var), np.sqrt(var), np.sqrt(var)]),
         ),
     ],
@@ -456,7 +456,6 @@ def test_that_global_es_update_is_identical_to_local(ensemble_size, num_params, 
 
 
 def test_that_ies_runs_with_failed_realizations():
-
     ensemble_size = 50
     num_params = 100
     num_responses = 5

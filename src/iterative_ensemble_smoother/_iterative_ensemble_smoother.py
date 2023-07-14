@@ -6,13 +6,14 @@ import numpy as np
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-from iterative_ensemble_smoother._ies import InversionType, create_coefficient_matrix
 from iterative_ensemble_smoother.utils import (
     _validate_inputs,
     _create_errors,
     steplength_exponential,
     response_projection,
 )
+
+from iterative_ensemble_smoother.ies import create_coefficient_matrix
 
 
 class SIES:
@@ -46,7 +47,7 @@ class SIES:
         truncation: float = 0.98,
         step_length: Optional[float] = None,
         ensemble_mask: Optional[npt.NDArray[np.bool_]] = None,
-        inversion: InversionType = InversionType.EXACT,
+        inversion: str = "exact",
         param_ensemble: Optional[npt.NDArray[np.double]] = None,
     ) -> None:
         """Perform one step of the iterative ensemble smoother algorithm
@@ -142,7 +143,7 @@ class SIES:
 
         self.ensemble_mask = ensemble_mask
 
-        W: npt.NDArray[np.double] = create_coefficient_matrix(
+        W: npt.NDArray[np.double] = create_coefficient_matrix(  # type: ignore
             _response_ensemble,
             R,
             E,
@@ -196,7 +197,7 @@ class ES:
         observation_values: npt.NDArray[np.double],
         *,
         truncation: float = 0.98,
-        inversion: InversionType = InversionType.EXACT,
+        inversion: str = "exact",
         param_ensemble: Optional[npt.NDArray[np.double]] = None,
     ) -> None:
         self.smoother = SIES(ensemble_size=response_ensemble.shape[1], seed=self.seed)

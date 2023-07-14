@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=63.4.2", "setuptools_scm[toml]>=7.1.0", "wheel", "pybind11", "conan<2"]
+requires = ["setuptools>=63.4.2", "setuptools_scm[toml]>=7.1.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -15,7 +15,7 @@ classifiers=[
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
 ]
-dependencies = ["numpy"]
+dependencies = ["numpy", "scipy"]
 dynamic=["version"] # setuptools_scm extracts Python package versions from git
 
 authors = [
