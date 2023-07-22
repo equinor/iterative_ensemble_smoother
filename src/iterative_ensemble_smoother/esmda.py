@@ -55,7 +55,7 @@ class ESMDA:
             Covariance matrix of outputs of shape (num_outputs, num_ouputs).
             If a 1D array is passed, it represents a diagonal covariance matrix.
         observations : np.ndarray
-            2D array of shape (num_inputs, num_ensemble_members).
+            1D array of shape (num_inputs,).
         alpha : int or 1D np.ndarray, optional
             If an integer `alpha` is given, an array with length `alpha` and
             elements `alpha` is constructed. If an 1D array is given, it is
@@ -78,8 +78,8 @@ class ESMDA:
             if C_D.ndim == 2 and C_D.shape[0] != C_D.shape[1]:
                 raise ValueError("Argument `C_D` must be square if it's 2D.")
 
-        if not (isinstance(observations, np.ndarray) and observations.ndim == 2):
-            raise TypeError("Argument `observations` must be a NumPy array of 2.")
+        if not (isinstance(observations, np.ndarray) and observations.ndim == 1):
+            raise TypeError("Argument `observations` must be a 1D NumPy array.")
 
         if not observations.shape[0] == C_D.shape[0]:
             raise ValueError("Shapes of `observations` and `C_D` must match.")
@@ -90,7 +90,9 @@ class ESMDA:
         ):
             raise TypeError("Argument `alpha` must be an integer or a 1D NumPy array.")
 
-        if not (isinstance(seed, int) or seed is None):
+        if not (
+            isinstance(seed, (int, np.random._generator.Generator)) or seed is None
+        ):
             raise TypeError("Argument `seed` must be an integer.")
 
         if not isinstance(inversion, str):
@@ -112,7 +114,7 @@ class ESMDA:
         if isinstance(alpha, np.ndarray) and alpha.ndim == 1:
             self.alpha = normalize_alpha(alpha)
         elif isinstance(alpha, numbers.Integral):
-            self.alpha = np.array([alpha] * alpha)
+            self.alpha = normalize_alpha(np.ones(alpha))
             assert np.allclose(self.alpha, normalize_alpha(self.alpha))
         else:
             raise TypeError("Alpha must be integer or 1D array.")
@@ -120,7 +122,7 @@ class ESMDA:
         # Only compute the covariance factorization once
         # If it's a full matrix, we gain speedup by only computing cholesky once
         # If it's a diagonal, we gain speedup by never having to compute cholesky
-        num_outputs, num_ensemble = observations.shape
+        num_outputs = C_D.shape[0]
 
         if isinstance(C_D, np.ndarray) and C_D.ndim == 2:
             L = sp.linalg.cholesky(C_D, lower=False)
@@ -178,27 +180,33 @@ class ESMDA:
             ensemble_mask.ndim == 1 and len(ensemble_mask) == num_ensemble
         )
 
+        # If no ensemble mask was given, we use the entire ensemble
         if ensemble_mask is None:
             ensemble_mask = np.ones(num_ensemble, dtype=bool)
+
+        # No ensemble members means no update
+        if ensemble_mask.sum() == 0:
+            return X
+
+        # self.alpha[self.iteration] = 1
 
         # Sample from a zero-centered multivariate normal with cov=C_D
         mv_normal_rvs = self.mv_normal.rvs(
             size=ensemble_mask.sum(), random_state=self.rng
-        ).T
+        )
 
         # Line 2 (b) in the description of ES-MDA in the 2013 Emerick paper
         # Create perturbed observationservations, with C_D scaled by alpha
         # If C_D = L L.T  by the cholesky factorization, then
         # drawing from a zero cented normal is y := L @ z, where z ~ norm(0, 1)
         # Scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
-        D = (
-            self.observations[:, ensemble_mask]
-            + np.sqrt(self.alpha[self.iteration]) * mv_normal_rvs
-        )
+        D = (self.observations + np.sqrt(self.alpha[self.iteration]) * mv_normal_rvs).T
+        assert D.shape == (num_outputs, ensemble_mask.sum())
 
         # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
         # Compute the cross covariance
         C_MD = empirical_cross_covariance(X[:, ensemble_mask], Y[:, ensemble_mask])
+        # C_DD = empirical_cross_covariance(Y[:, ensemble_mask], Y[:, ensemble_mask])
 
         # Choose inversion method, e.g. 'exact'
         inversion_func = self._inversion_methods[self.inversion]
@@ -211,13 +219,11 @@ class ESMDA:
 
         # In the typical case where num_outputs >> num_inputs >> ensemble members,
         # multiplying in the order below from the right to the left, i.e.,
-        # C_MD @ (inv(C_DD + alpha * C_D) @ (D - Y))
-        # is faster than the alternative order
-        # (C_MD @ inv(C_DD + alpha * C_D)) @ (D - Y)
+        #    C_MD @ (inv(C_DD + alpha * C_D) @ (D - Y))
+        # is faster than the alternative order:
+        #    (C_MD @ inv(C_DD + alpha * C_D)) @ (D - Y)
         X_posterior = np.copy(X)
         X_posterior[:, ensemble_mask] += C_MD @ K
-
-        # X_posterior = X + C_MD @ K
 
         self.iteration += 1
         return X_posterior
