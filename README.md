@@ -47,22 +47,6 @@ posterior = smoother.update(prior)
 
 ## Building from source
 
-Before building, ensure you have a C compiler and Python with pip installed.
-You may need to provide the Conan package manager with information about your C compiler, depending on your environment.
-
-```bash
-c++ --version # to get information about which c compiler is installed
-              # on your system.
-pip install conan
-
-# The following sets the compiler settings
-# assuming the output of `c++ --version` indicated
-# that the installed c compiler was gcc version 11.2
-# and writes it to the default profile.
-conan profile update "settings.compiler=gcc" default
-conan profile update "settings.compiler.version=11.2" default
-```
-
 To build **iterative_ensemble_smoother** from source:
 
 ```bash

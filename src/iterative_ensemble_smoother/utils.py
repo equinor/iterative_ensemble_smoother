@@ -6,8 +6,6 @@ import numpy as np
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-from ._ies import InversionType
-
 
 def steplength_exponential(
     iteration: int,
@@ -110,7 +108,7 @@ def _validate_inputs(
 
 def _create_errors(
     observation_errors: npt.NDArray[np.double],
-    inversion: InversionType,
+    inversion: str,
 ) -> Tuple[npt.NDArray[np.double], npt.NDArray[np.double]]:
     if observation_errors.ndim == 2:
         R = observation_errors
@@ -119,7 +117,7 @@ def _create_errors(
         # R = np.diag(1 / observation_errors) @ R @ np.diag(1 / observation_errors)
         R = R * np.outer(1 / observation_errors, 1 / observation_errors)
 
-    elif observation_errors.ndim == 1 and inversion == InversionType.EXACT_R:
+    elif observation_errors.ndim == 1 and inversion == "exact_r":
         R = np.identity(len(observation_errors))
 
     else:

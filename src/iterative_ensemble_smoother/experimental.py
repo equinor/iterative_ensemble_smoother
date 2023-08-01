@@ -10,7 +10,7 @@ from iterative_ensemble_smoother.utils import (
     _create_errors,
 )
 
-from ._ies import InversionType, create_coefficient_matrix
+from iterative_ensemble_smoother.ies import create_coefficient_matrix
 
 
 def ensemble_smoother_update_step_row_scaling(
@@ -20,7 +20,7 @@ def ensemble_smoother_update_step_row_scaling(
     observation_values,
     noise=None,
     truncation=0.98,
-    inversion=InversionType.EXACT,
+    inversion="exact",
 ):
     """This is an experimental feature."""
     ensemble_size = response_ensemble.shape[1]
