@@ -2,7 +2,7 @@
 Ensemble Smoother with Multiple Data Assimilation (ES-MDA)
 ----------------------------------------------------------
 
-
+Imlementation of the 2013 paper "Ensemble smoother with multiple data assimilation"
 
 References
 ----------
@@ -30,13 +30,15 @@ import numpy.typing as npt
 import scipy as sp  # type: ignore
 
 from iterative_ensemble_smoother.esmda_inversion import (
-    inversion_exact,
+    inversion_exact_cholesky,
     normalize_alpha,
 )
 
 
 class ESMDA:
-    _inversion_methods = {"exact": inversion_exact}
+    # Available inversion methods. The inversion methods all compute
+    # C_MD @ (C_DD + alpha * C_D)^(-1)  @ (D - Y)
+    _inversion_methods = {"exact": inversion_exact_cholesky}
 
     def __init__(
         self,
@@ -48,7 +50,7 @@ class ESMDA:
     ) -> None:
         """Initialize Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
 
-        The implementation follows the 2012 paper by Emerick et al.
+        The implementation follows the 2013 paper by Emerick et al.
 
         Parameters
         ----------
@@ -67,10 +69,6 @@ class ESMDA:
             is passed to numpy.random.default_rng(). The default is None.
         inversion : str, optional
             Which inversion method to use. The default is "exact".
-
-        Returns
-        -------
-        None.
 
         """
         # Validate inputs
@@ -111,7 +109,7 @@ class ESMDA:
         self.rng = np.random.default_rng(seed)
         self.inversion = inversion
 
-        # Alpha can either be a number (of iterations) or a list of weights
+        # Alpha can either be an integer (num iterations) or a list of weights
         if isinstance(alpha, np.ndarray) and alpha.ndim == 1:
             self.alpha = normalize_alpha(alpha)
         elif isinstance(alpha, numbers.Integral):
@@ -148,8 +146,11 @@ class ESMDA:
         X: npt.NDArray[np.double],
         Y: npt.NDArray[np.double],
         ensemble_mask: Optional[npt.NDArray[np.bool_]] = None,
+        overwrite=False,
     ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble.
+
+        WARNING: This method may overwrite X and Y.
 
         Parameters
         ----------
@@ -161,6 +162,9 @@ class ESMDA:
             1D boolean array of length `num_ensemble_members`, describing which
             ensemble members are active. Inactive realizations are ignored.
             Defaults to all active.
+        overwrite : bool
+            If True, then arguments X and Y may be overwritten.
+            If False, then the method will not permute inputs in any way.
 
         Returns
         -------
@@ -180,6 +184,14 @@ class ESMDA:
         assert (ensemble_mask is None) or (
             ensemble_mask.ndim == 1 and len(ensemble_mask) == num_ensemble
         )
+        if not np.issubdtype(X.dtype, np.floating):
+            raise TypeError("Argument `X` must be contain floats")
+        if not np.issubdtype(Y.dtype, np.floating):
+            raise TypeError("Argument `Y` must be contain floats")
+
+        # Do not overwrite input arguments
+        if not overwrite:
+            X, Y = np.copy(X), np.copy(Y)
 
         # If no ensemble mask was given, we use the entire ensemble
         if ensemble_mask is None:
@@ -189,27 +201,27 @@ class ESMDA:
         if ensemble_mask.sum() == 0:
             return X
 
-        # Sample from a zero-centered multivariate normal with cov=C_D
-        mv_normal_rvs = self.mv_normal.rvs(
-            size=ensemble_mask.sum(), random_state=self.rng
-        )
-
         # Line 2 (b) in the description of ES-MDA in the 2013 Emerick paper
-        # Create perturbed observationservations, with C_D scaled by alpha
-        # If C_D = L L.T  by the cholesky factorization, then
-        # drawing from a zero cented normal is y := L @ z, where z ~ norm(0, 1)
-        # Scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
-        D = (self.observations + np.sqrt(self.alpha[self.iteration]) * mv_normal_rvs).T
+
+        # Draw samples from zero-centered multivariate normal with cov=alpha * C_D,
+        # and add them to the observations. Notice that
+        # if C_D = L L.T by the cholesky factorization, then drawing y from
+        # a zero cented normal means that y := L @ z, where z ~ norm(0, 1)
+        # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
+        D = (
+            self.observations
+            + np.sqrt(self.alpha[self.iteration])
+            * self.mv_normal.rvs(size=ensemble_mask.sum(), random_state=self.rng)
+        ).T
         assert D.shape == (num_outputs, ensemble_mask.sum())
 
         # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
-        # Compute the cross covariance
-        # C_MD = empirical_cross_covariance(X[:, ensemble_mask], Y[:, ensemble_mask])
-        # C_DD = empirical_cross_covariance(Y[:, ensemble_mask], Y[:, ensemble_mask])
-
-        # Choose inversion method, e.g. 'exact'
+        # Choose inversion method, e.g. 'exact'. The inversion method computes
+        # C_MD @ sp.linalg.inv(C_DD + C_D_alpha) @ (D - Y)
         inversion_func = self._inversion_methods[self.inversion]
-        K = inversion_func(
+
+        # Update and return
+        X[:, ensemble_mask] += inversion_func(
             alpha=self.alpha[self.iteration],
             C_D=self.C_D,
             D=D,
@@ -217,96 +229,17 @@ class ESMDA:
             X=X[:, ensemble_mask],
         )
 
-        # X_posterior = X_current + C_MD @ K
-        # K := C_MD @ sp.linalg.inv(C_DD + C_D_alpha) @ (D - Y)
-
-        # In the typical case where num_outputs >> num_inputs >> ensemble members,
-        # multiplying in the order below from the right to the left, i.e.,
-        #    C_MD @ (inv(C_DD + alpha * C_D) @ (D - Y))
-        # is faster than the alternative order:
-        #    (C_MD @ inv(C_DD + alpha * C_D)) @ (D - Y)
-        X_posterior = np.copy(X)
-        X_posterior[:, ensemble_mask] += K
-        # TODO: C_MD is an outer product, and
-        # np.outer((A.T @ v), v).T is faster than
-        # np.outer(v, v) @ A
-        # so we can speed this up by not forming C_MD explicitly
-
         self.iteration += 1
-        return X_posterior
-
-
-if __name__ == "__main__" and False:
-    import time
-
-    import matplotlib.pyplot as plt  # type: ignore
-
-    # =============================================================================
-    # RUN AN EXAMPLE
-    # =============================================================================
-
-    np.random.seed(12)
-
-    # Dimensionality
-    num_ensemble = 999
-    num_outputs = 2
-    num_iputs = 1
-
-    def g(x):
-        """Transform a single ensemble member."""
-        # return np.array([x, x]) + 5 + np.random.randn(2, 1) * 0.05
-        return np.array([np.sin(x / 2), x]) + 5 + np.random.randn(2, 1) * 0.1
-
-    def G(X):
-        """Transform all ensemble members."""
-        return np.array([g(x_i) for x_i in X.T]).squeeze().T
-
-    # Prior is N(0, 1)
-    X_prior = np.random.randn(num_iputs, num_ensemble) * 1
-
-    # Measurement errors
-    C_D = np.eye(num_outputs) * 1
-
-    # The true inputs and observationservations, a result of running with N(1, 1)
-    X_true = np.random.randn(num_iputs, num_ensemble) + 6
-    observations = G(X_true)
-
-    # Create ESMDA instance
-    esmda = ESMDA(C_D, observations, alpha=10, seed=123)
-
-    X_current = np.copy(X_prior)
-    for iteration in range(esmda.num_assimilations()):
-        print(f"Iteration number: {iteration + 1}")
-
-        X_posterior = esmda.assimilate(X_current, G(X_current))
-        X_current = X_posterior
-
-        # Plot results
-        plt.hist(X_prior.ravel(), alpha=0.5, label="prior")
-        plt.hist(X_true.ravel(), alpha=0.5, label="true inputs")
-        plt.hist(X_current.ravel(), alpha=0.5, label="posterior")
-        plt.legend()
-        plt.show()
-
-        plt.scatter(*G(X_prior), alpha=0.5, label="G(prior)")
-        plt.scatter(*G(X_true), alpha=0.5, label="G(true inputs)")
-        plt.scatter(*G(X_current), alpha=0.5, label="G(posterior)")
-        plt.legend()
-        plt.show()
-
-        time.sleep(0.05)
+        return X
 
 
 if __name__ == "__main__":
     import pytest
 
-    # --durations=10  <- May be used to show potentially slow tests
     pytest.main(
         args=[
             __file__,
             "--doctest-modules",
             "-v",
-            "-v",
-            # "-k test_that_inversion_methods_work_with_covariance_matrix_and_variance_vector",
         ]
     )

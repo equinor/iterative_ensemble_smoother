@@ -26,10 +26,9 @@ def empirical_covariance_upper(X: npt.NDArray[np.double]) -> npt.NDArray[np.doub
            [0.371, 0.392, 0.407]])
     """
     num_variables, num_observations = X.shape
-    X = X - np.mean(X, axis=1, keepdims=True)
+    X = (X - np.mean(X, axis=1, keepdims=True)) / np.sqrt(num_observations - 1)
     # https://www.math.utah.edu/software/lapack/lapack-blas/dsyrk.html
     XXT: npt.NDArray[np.double] = sp.linalg.blas.dsyrk(alpha=1, a=X)
-    XXT /= num_observations - 1
     return XXT
 
 
@@ -93,47 +92,65 @@ def normalize_alpha(alpha: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
 
 
 def singular_values_to_keep(
-    singular_values: npt.NDArray[np.double], threshold: float = 1.0
+    singular_values: npt.NDArray[np.double], truncation: float = 1.0
 ) -> int:
     """Find the index of the singular values to keep when truncating.
 
     Examples
     --------
     >>> singular_values = np.array([3, 2, 1, 0, 0, 0])
-    >>> i = singular_values_to_keep(singular_values, threshold=1.0)
+    >>> i = singular_values_to_keep(singular_values, truncation=1.0)
     >>> singular_values[:i]
     array([3, 2, 1])
 
     >>> singular_values = np.array([4, 3, 2, 1])
-    >>> i = singular_values_to_keep(singular_values, threshold=1.0)
+    >>> i = singular_values_to_keep(singular_values, truncation=1.0)
     >>> singular_values[:i]
     array([4, 3, 2, 1])
 
     >>> singular_values = np.array([4, 3, 2, 1])
-    >>> singular_values_to_keep(singular_values, threshold=0.95)
+    >>> singular_values_to_keep(singular_values, truncation=0.95)
     4
-    >>> singular_values_to_keep(singular_values, threshold=0.9)
+    >>> singular_values_to_keep(singular_values, truncation=0.9)
     3
-    >>> singular_values_to_keep(singular_values, threshold=0.7)
+    >>> singular_values_to_keep(singular_values, truncation=0.7)
     2
 
     """
     assert np.all(
         np.diff(singular_values) <= 0
     ), "Singular values must be sorted decreasing"
-    assert 0 < threshold <= 1, "Threshold must be in range (0, 1]"
+    assert 0 < truncation <= 1, "Threshold must be in range (0, 1]"
     singular_values = np.array(singular_values, dtype=float)
 
     # Take cumulative sum and normalize
     cumsum = np.cumsum(singular_values)
     cumsum /= cumsum[-1]
-    return int(np.searchsorted(cumsum, v=threshold, side="left") + 1)
+    return int(np.searchsorted(cumsum, v=truncation, side="left") + 1)
 
 
 # =============================================================================
 # INVERSION FUNCTIONS
 # =============================================================================
-def inversion_naive(
+# Every inversion function has the form
+# inversion_<exact/approximate>_<name>
+
+
+class Inversion:
+    def __init__(self, C_D, C_D_L=None):
+        self.C_D = C_D
+        self._C_D_L = C_D_L
+
+    @property
+    def C_D_L(self):
+        if self._C_D_L is None:
+            self._C_D_L = sp.linalg.cholesky(
+                self.C_D, lower=True
+            )  # Lower triangular cholesky
+        return self._C_D_L
+
+
+def inversion_exact_naive(
     *,
     alpha: float,
     C_D: npt.NDArray[np.double],
@@ -143,7 +160,7 @@ def inversion_naive(
 ) -> npt.NDArray[np.double]:
     """Naive inversion, used for testing only.
 
-    Computes inv(C_DD + alpha * C_D) @ (D - Y) naively.
+    Computes C_MD@ inv(C_DD + alpha * C_D) @ (D - Y) naively.
     """
     # Naive implementation of Equation (3) in Emerick (2013)
     C_MD = empirical_cross_covariance(X, Y)
@@ -152,7 +169,7 @@ def inversion_naive(
     return C_MD @ sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)  # type: ignore
 
 
-def inversion_exact(
+def inversion_exact_cholesky(
     *,
     alpha: float,
     C_D: npt.NDArray[np.double],
@@ -200,7 +217,6 @@ def inversion_lstsq(
 ) -> npt.NDArray[np.double]:
     """Computes inversion uses least squares."""
     C_DD = empirical_cross_covariance(Y, Y)
-    C_MD = empirical_cross_covariance(X, Y)
 
     # A covariance matrix was given
     if C_D.ndim == 2:
@@ -212,23 +228,29 @@ def inversion_lstsq(
 
     # K = lhs^-1 @ (D - Y)
     # lhs @ K = (D - Y)
-    ans, *_ = sp.linalg.lstsq(lhs, D - Y, overwrite_a=True, overwrite_b=True)
-    return C_MD @ ans  # type: ignore
+    ans, *_ = sp.linalg.lstsq(
+        lhs, D - Y, overwrite_a=True, overwrite_b=True, lapack_driver="gelsy"
+    )
+
+    # Compute C_MD
+    X_shift = (X - np.mean(X, axis=1, keepdims=True)) / (X.shape[1] - 1)
+    Y_shift = Y - np.mean(Y, axis=1, keepdims=True)
+    return np.linalg.multi_dot([X_shift, Y_shift.T, ans])  # type: ignore
 
 
-def inversion_rescaled(
+def inversion_exact_rescaled(
     *,
     alpha: float,
     C_D: npt.NDArray[np.double],
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
     X: npt.NDArray[np.double],
+    truncation=1.0,
 ) -> npt.NDArray[np.double]:
     """Compute a rescaled inversion.
 
     See Appendix A.1 in Emerick et al (2012)"""
     C_DD = empirical_cross_covariance(Y, Y)
-    C_MD = empirical_cross_covariance(X, Y)
 
     if C_D.ndim == 2:
         # Eqn (57). Cholesky factorize the covariance matrix C_D
@@ -263,15 +285,22 @@ def inversion_rescaled(
     # N_n is the number of observations
     # N_e is the number of members in the ensemble
     N_n, N_e = Y.shape
-    N_r = min(N_n, N_e - 1)  # Number of values in SVD to keep
-    N_r = U.shape[1]
+
+    idx = singular_values_to_keep(s[::-1], truncation=truncation)
+    N_r = min(N_n, N_e - 1, idx)  # Number of values in SVD to keep
+    # N_r = U.shape[1]
     U_r, s_r = U[:, -N_r:], s[-N_r:]
     # U_r @ np.diag(s_r) @ U_r.T == C_tilde
 
     # Eqn (61). Compute symmetric term once first, then multiply together and
     # finally multiply with (D - Y)
     term = C_D_L_inv.T @ U_r if C_D.ndim == 2 else (C_D_L_inv * U_r.T).T
-    return np.linalg.multi_dot([C_MD, term / s_r, term.T, (D - Y)])  # type: ignore
+
+    # Compute the first factors, which make up C_MD
+    X_shift = (X - np.mean(X, axis=1, keepdims=True)) / (N_e - 1)
+    Y_shift = Y - np.mean(Y, axis=1, keepdims=True)
+
+    return np.linalg.multi_dot([X_shift, Y_shift.T, term / s_r, term.T, (D - Y)])  # type: ignore
 
 
 def inversion_subspace_woodbury(
@@ -328,6 +357,7 @@ def inversion_subspace(
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
     X: npt.NDArray[np.double],
+    truncation=1.0,
 ) -> npt.NDArray[np.double]:
     """See Appendix A.2 in Emerick et al (2012)
 
@@ -362,7 +392,6 @@ def inversion_subspace(
 
     # TODO: Incorporate this
     C_D = np.diag(C_D) if C_D.ndim == 1 else C_D
-    C_MD = empirical_cross_covariance(X, Y)
 
     # N_n is the number of observations
     # N_e is the number of members in the ensemble
@@ -377,16 +406,16 @@ def inversion_subspace(
     U, w, _ = sp.linalg.svd(D_delta, overwrite_a=True, full_matrices=False)
 
     # Clip the singular value decomposition
-    # w_cumsum = np.cumsum(w)
-    # w_cumsum /= w_cumsum[-1]
-    # idx_to_keep = np.searchsorted(w_cumsum, 0.999, side="left") + 1
-
-    N_r = min(N_n, N_e - 1)  # Number of values in SVD to keep
+    idx = singular_values_to_keep(w, truncation=truncation)
+    N_r = min(N_n, N_e - 1, idx)  # Number of values in SVD to keep
     U_r, w_r = U[:, :N_r], w[:N_r]
 
     # Eqn (70). First compute the symmetric term, then form X
     U_r_w_inv = U_r / w_r
-    X = (N_e - 1) * np.linalg.multi_dot([U_r_w_inv.T, alpha * C_D, U_r_w_inv])
+    if C_D.ndim == 1:
+        X1 = (N_e - 1) * np.linalg.multi_dot([U_r_w_inv.T * C_D * alpha, U_r_w_inv])
+    else:
+        X1 = (N_e - 1) * np.linalg.multi_dot([U_r_w_inv.T, alpha * C_D, U_r_w_inv])
 
     # Eqn (72)
     # Z, T, _ = sp.linalg.svd(X, overwrite_a=True, full_matrices=False)
@@ -395,7 +424,7 @@ def inversion_subspace(
     # Note that svd() returns eigenvalues in decreasing order, while eigh()
     # returns eigenvalues in increasing order.
     # driver="evr" => fastest option
-    T, Z = sp.linalg.eigh(X, driver="evr", overwrite_a=True)
+    T, Z = sp.linalg.eigh(X1, driver="evr", overwrite_a=True)
 
     # Eqn (74).
     # C^+ = (N_e - 1) hat{C}^+
@@ -403,7 +432,10 @@ def inversion_subspace(
     #     = (N_e - 1) (term) * (1 / (1 + T)) (term)^T
     # and finally we multiiply by (D - Y)
     term = U_r_w_inv @ Z
-    return (N_e - 1) * np.linalg.multi_dot([C_MD, (term / (1 + T)), term.T, (D - Y)])  # type: ignore
+
+    # Compute C_MD = center(X) @ center(Y).T / (num_ensemble - 1)
+    X_shift = X - np.mean(X, axis=1, keepdims=True)
+    return np.linalg.multi_dot([X_shift, D_delta.T, (term / (1 + T)), term.T, (D - Y)])  # type: ignore
 
 
 def inversion_rescaled_subspace(
@@ -448,6 +480,20 @@ def inversion_rescaled_subspace(
     T_r = (N_e - 1) / w_r**2  # Equation (79)
     diag = 1 / (1 + T_r)
     return (N_e - 1) * np.linalg.multi_dot([C_MD, (term * diag), term.T, (D - Y)])  # type: ignore
+
+
+INVERSION_EXACT = [
+    inversion_exact_naive,
+    inversion_exact_cholesky,
+    inversion_exact_rescaled,
+    inversion_lstsq,
+    inversion_subspace_woodbury,
+]
+
+INVERSION_APPROX = [
+    inversion_subspace,
+    inversion_rescaled_subspace,
+]
 
 
 if __name__ == "__main__":

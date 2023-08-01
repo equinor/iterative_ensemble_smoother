@@ -303,7 +303,7 @@ class TestESMDA:
         assert np.isclose(X_i_single.mean(), X_i_multiple.mean(), rtol=0.05)
         assert np.isclose(X_i_single.var(), X_i_multiple.var(), rtol=0.1)
 
-    @pytest.mark.limit_memory("580 MB")
+    @pytest.mark.limit_memory("485 MB")
     def test_ESMDA_memory_usage(self):
         # TODO: Currently this is a regression test. Work to improve memory usage.
 
@@ -315,27 +315,22 @@ class TestESMDA:
         num_outputs = 5000
         num_inputs = 1000
         num_ensemble = 100
-        G = rng.normal(size=(num_outputs, num_inputs))  # 40 MB
 
         # Prior is N(0, 1)
-        X_prior = rng.normal(size=(num_inputs, num_ensemble))  # 0.8 MB
+        X_prior = rng.normal(size=(num_inputs, num_ensemble))
+        Y_prior = rng.normal(size=(num_outputs, num_ensemble))
 
         # Measurement errors
-        C_D = np.exp(rng.normal(size=num_outputs))  # 0.04 MB
+        C_D = np.exp(rng.normal(size=num_outputs))
 
-        # The true inputs and observations, a result of running with N(1, 1)
-        X_true = rng.normal(size=num_inputs, loc=1)  # 0.008 MB
-        observations = G @ X_true  # 0.04 MB
+        # Observations
+        observations = rng.normal(size=num_outputs, loc=1)
 
         # Create ESMDA instance from an integer `alpha` and run it
-        esmda_integer = ESMDA(C_D, observations, alpha=5, seed=rng, inversion="exact")
-        X_i = np.copy(X_prior)  # 0.8 MB
+        esmda_integer = ESMDA(C_D, observations, alpha=1, seed=rng, inversion="exact")
+
         for _ in range(esmda_integer.num_assimilations()):
-            # Covariance of outputs requires a (num_outputs, num_outputs)
-            # array, which uses 200 + 4 MB memory
-            # Cross covariance requires a (num_outputs, num_inputs)
-            # array, which uses 40 + 0.8 MB memory
-            X_i = esmda_integer.assimilate(X_i, G @ X_i)
+            esmda_integer.assimilate(X_prior, Y_prior)
 
 
 if __name__ == "__main__":

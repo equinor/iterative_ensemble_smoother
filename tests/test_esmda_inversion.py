@@ -2,10 +2,10 @@ import numpy as np
 import pytest
 
 from iterative_ensemble_smoother.esmda_inversion import (
-    inversion_exact,
+    inversion_exact_cholesky,
     inversion_lstsq,
-    inversion_naive,
-    inversion_rescaled,
+    inversion_exact_naive,
+    inversion_exact_rescaled,
     inversion_rescaled_subspace,
     inversion_subspace,
     inversion_subspace_woodbury,
@@ -26,9 +26,9 @@ class TestEsmdaInversion:
     @pytest.mark.parametrize(
         "function",
         [
-            inversion_naive,
-            inversion_exact,
-            inversion_rescaled,
+            inversion_exact_naive,
+            inversion_exact_cholesky,
+            inversion_exact_rescaled,
             inversion_lstsq,
             inversion_subspace_woodbury,
         ],
@@ -50,8 +50,8 @@ class TestEsmdaInversion:
 
         # Create observations
         D = np.ones((3, 2))
-        Y = np.array([[2, 0], [0, 0], [0, 0]])
-        X = np.zeros((3, 2))
+        Y = np.array([[2, 0], [0, 0], [0, 0]], dtype=float)
+        X = np.zeros((3, 2), dtype=float)
         np.fill_diagonal(X, 1.0)
 
         # inv(diag([3, 1, 1])) @ (D - Y)
@@ -78,9 +78,9 @@ class TestEsmdaInversion:
         X = np.random.randn(k, emsemble_members)
 
         # All non-subspace methods
-        K1 = inversion_naive(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X)
-        K2 = inversion_exact(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X)
-        K3 = inversion_rescaled(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X)
+        K1 = inversion_exact_naive(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X)
+        K2 = inversion_exact_cholesky(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X)
+        K3 = inversion_exact_rescaled(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X)
         K4 = inversion_lstsq(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X)
 
         assert np.allclose(K1, K2)
@@ -91,9 +91,9 @@ class TestEsmdaInversion:
         "function",
         [
             # Exact inversions
-            inversion_naive,
-            inversion_exact,
-            inversion_rescaled,
+            inversion_exact_naive,
+            inversion_exact_cholesky,
+            inversion_exact_rescaled,
             inversion_lstsq,
             inversion_subspace_woodbury,
             # Approximate inversions (same result as long as ensemble_members > num_outputs)
@@ -124,7 +124,7 @@ class TestEsmdaInversion:
         Y = np.random.randn(num_outputs, num_emsemble)
         X = np.random.randn(num_inputs, num_emsemble)
 
-        K1 = inversion_naive(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X)
+        K1 = inversion_exact_naive(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X)
         K2 = function(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X)
 
         assert np.allclose(K1, K2)
@@ -134,9 +134,9 @@ class TestEsmdaInversion:
     @pytest.mark.parametrize(
         "function",
         [
-            inversion_naive,
-            inversion_exact,
-            inversion_rescaled,
+            inversion_exact_naive,
+            inversion_exact_cholesky,
+            inversion_exact_rescaled,
             inversion_lstsq,
             inversion_subspace_woodbury,
             inversion_subspace,
@@ -170,9 +170,9 @@ class TestEsmdaInversion:
     @pytest.mark.parametrize(
         "function",
         [
-            inversion_naive,
-            inversion_exact,
-            inversion_rescaled,
+            inversion_exact_naive,
+            inversion_exact_cholesky,
+            inversion_exact_rescaled,
             inversion_lstsq,
             inversion_subspace_woodbury,
             inversion_subspace,
@@ -224,9 +224,9 @@ def test_timing(num_outputs=100, num_inputs=50, num_ensemble=25):
     X = np.random.randn(num_inputs, emsemble_members)
 
     exact_inversion_funcs = [
-        inversion_naive,
-        inversion_exact,
-        inversion_rescaled,
+        inversion_exact_naive,
+        inversion_exact_cholesky,
+        inversion_exact_rescaled,
         inversion_lstsq,
     ]
 
@@ -278,6 +278,6 @@ if __name__ == "__main__":
         args=[
             __file__,
             "-v",
-            "-k test_that_inversion_methods_do_do_not_mutate_input_args",
+            # "-k test_that_inversion_methods_do_do_not_mutate_input_args",
         ]
     )
