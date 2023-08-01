@@ -24,6 +24,7 @@ import numpy as np
 import pytest
 
 from iterative_ensemble_smoother.esmda import ESMDA
+from iterative_ensemble_smoother.esmda_inversion import empirical_cross_covariance
 
 
 class TestESMDA:
@@ -171,6 +172,83 @@ class TestESMDA:
         assert np.isclose(X_i.mean(), MEAN, rtol=0.1, atol=0.2)
         assert np.isclose(X_i.var(ddof=1), COV, rtol=0.1, atol=0.1)
 
+    @pytest.mark.parametrize("seed", list(range(100)))
+    def test_that_result_corresponds_with_theory_for_gauss_linear_case(self, seed):
+        # Here we test on a Guass-linear case.
+        # The section "2.3.3 Bayes’ theorem for Gaussian variables" in the book
+        # Pattern Recognition and Machine Learning by Bishop (2006) states that if
+        # p(x)   = N(x | mu, C_M)
+        # p(y|x) = N(y | A x + b, C_D)
+        # then
+        # p(x | y) has
+        # covariance COV = inv(inv(C_M) + A^T @ inv(C_D) @ A)
+        # mean      MEAN = COV (A^T * inv(C_D) * (y - b) + inv(C_M) * mu)
+        #                = mu + C_M A^T (A C_M A^T + C_D)^-1 A (x - mu)
+
+        # Generate data
+        rng = np.random.default_rng(seed)
+        num_ensemble = 10_000
+        num_inputs, num_outputs = 5, 4
+
+        # Inputs
+        mu = rng.normal(size=num_inputs)
+        C_M_factor = rng.normal(size=(num_inputs, num_inputs))
+        C_M = C_M_factor.T @ C_M_factor + np.eye(num_inputs)
+
+        # Transformation
+        A = rng.normal(size=(num_outputs, num_inputs))
+        b = rng.normal(size=num_outputs)
+
+        def G(x):
+            if x.ndim == 1:
+                return A @ x + b
+            else:
+                return (b.reshape(-1, 1) + (A @ x)).squeeze()
+
+        assert np.allclose(
+            G(np.arange(num_inputs)), G(np.arange(num_inputs).reshape(-1, 1)).squeeze()
+        )
+
+        # Output covariance
+        C_D_factor = rng.normal(size=(num_outputs, num_outputs))
+        C_D = C_D_factor.T @ C_D_factor + np.eye(num_outputs)
+
+        # Analytical solution given by Bishop
+        X_true = mu + 10
+        inv = np.linalg.inv
+        COV = inv(inv(C_M) + A.T @ inv(C_D) @ A)
+        MEAN = COV @ ((A.T @ inv(C_D)) @ (G(X_true) - b) + inv(C_M) @ mu)
+        MEAN2 = mu + C_M @ A.T @ inv(A @ C_M @ A.T + C_D) @ A @ (X_true - mu)
+        assert np.allclose(MEAN, MEAN2)  # Both ways to compute mean is equivalent
+
+        # Prior is p(x) ~ N(mu, C_M)
+        X_prior = rng.multivariate_normal(mean=mu, cov=C_M, size=num_ensemble).T
+        assert G(X_prior).shape == (num_outputs, num_ensemble)
+
+        # Create ESMDA instance
+        esmda = ESMDA(C_D, G(X_true), alpha=1, seed=rng)
+        X_i = np.copy(X_prior)
+        for _ in range(esmda.num_assimilations()):
+            X_i = esmda.assimilate(X_i, G(X_i))
+
+        # Check that analytical solution is close to ESMDA posterior
+        relative_error_mean = np.linalg.norm(X_i.mean(axis=1) - MEAN) / np.linalg.norm(
+            MEAN
+        )
+        print("relative_error_mean", relative_error_mean)
+
+        assert relative_error_mean < 0.05
+
+        # TODO: The errors in the covariance matrix estimation is always pretty high
+        # why is this?
+        covariance = empirical_cross_covariance(X_i, X_i)
+        relative_error_covariance = np.linalg.norm((covariance - COV)) / np.linalg.norm(
+            COV
+        )
+        print("relative_error_covariance", relative_error_covariance)
+
+        assert relative_error_covariance < 1.2
+
     # Likelihood information
     @pytest.mark.parametrize("X_true", [5, 10])
     @pytest.mark.parametrize("C_D", [1, 3])
@@ -225,6 +303,40 @@ class TestESMDA:
         assert np.isclose(X_i_single.mean(), X_i_multiple.mean(), rtol=0.05)
         assert np.isclose(X_i_single.var(), X_i_multiple.var(), rtol=0.1)
 
+    @pytest.mark.limit_memory("580 MB")
+    def test_ESMDA_memory_usage(self):
+        # TODO: Currently this is a regression test. Work to improve memory usage.
+
+        # Number of MB in an array is
+        # array.nbytes / 10**6
+
+        rng = np.random.default_rng(42)
+
+        num_outputs = 5000
+        num_inputs = 1000
+        num_ensemble = 100
+        G = rng.normal(size=(num_outputs, num_inputs))  # 40 MB
+
+        # Prior is N(0, 1)
+        X_prior = rng.normal(size=(num_inputs, num_ensemble))  # 0.8 MB
+
+        # Measurement errors
+        C_D = np.exp(rng.normal(size=num_outputs))  # 0.04 MB
+
+        # The true inputs and observations, a result of running with N(1, 1)
+        X_true = rng.normal(size=num_inputs, loc=1)  # 0.008 MB
+        observations = G @ X_true  # 0.04 MB
+
+        # Create ESMDA instance from an integer `alpha` and run it
+        esmda_integer = ESMDA(C_D, observations, alpha=5, seed=rng, inversion="exact")
+        X_i = np.copy(X_prior)  # 0.8 MB
+        for _ in range(esmda_integer.num_assimilations()):
+            # Covariance of outputs requires a (num_outputs, num_outputs)
+            # array, which uses 200 + 4 MB memory
+            # Cross covariance requires a (num_outputs, num_inputs)
+            # array, which uses 40 + 0.8 MB memory
+            X_i = esmda_integer.assimilate(X_i, G @ X_i)
+
 
 if __name__ == "__main__":
     import pytest
@@ -234,8 +346,8 @@ if __name__ == "__main__":
             __file__,
             "-v",
             # "--durations=10",
-            # "-k test_that_single_and_multiple_assimilations_achieve_same_result_for_1D_gauss_linear_case",
-            "--maxfail=1",
+            "-k test_that_result_corresponds_with_theory_for_gauss_linear_case",
+            # "--maxfail=1",
         ]
     )
 

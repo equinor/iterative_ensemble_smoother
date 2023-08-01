@@ -52,8 +52,17 @@ def empirical_cross_covariance(
     >>> empirical_cross_covariance(X, Y)
     array([[-1.035     , -1.15833333,  0.66      ,  1.56333333],
            [ 0.465     ,  0.36166667, -1.08      , -1.09666667]])
-    """
 
+    Verify against numpy.cov
+
+    >>> np.cov(X, rowvar=True, ddof=1)
+    array([[ 2.50333333, -0.99666667],
+           [-0.99666667,  1.74333333]])
+    >>> empirical_cross_covariance(X, X)
+    array([[ 2.50333333, -0.99666667],
+           [-0.99666667,  1.74333333]])
+
+    """
     assert X.shape[1] == Y.shape[1], "Ensemble size must be equal"
 
     # https://en.wikipedia.org/wiki/Estimation_of_covariance_matrices
@@ -130,15 +139,17 @@ def inversion_naive(
     C_D: npt.NDArray[np.double],
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
+    X: npt.NDArray[np.double],
 ) -> npt.NDArray[np.double]:
     """Naive inversion, used for testing only.
 
     Computes inv(C_DD + alpha * C_D) @ (D - Y) naively.
     """
     # Naive implementation of Equation (3) in Emerick (2013)
+    C_MD = empirical_cross_covariance(X, Y)
     C_DD = empirical_cross_covariance(Y, Y)
     C_D = np.diag(C_D) if C_D.ndim == 1 else C_D
-    return sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)  # type: ignore
+    return C_MD @ sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)  # type: ignore
 
 
 def inversion_exact(
@@ -147,11 +158,13 @@ def inversion_exact(
     C_D: npt.NDArray[np.double],
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
+    X: npt.NDArray[np.double],
 ) -> npt.NDArray[np.double]:
     """Computes an exact inversion using `sp.linalg.solve`, which uses a
     Cholesky factorization in the case of symmetric, positive definite matrices.
     """
     C_DD = empirical_covariance_upper(Y)  # Only compute upper part
+
     solver_kwargs = {
         "overwrite_a": True,
         "overwrite_b": True,
@@ -168,7 +181,13 @@ def inversion_exact(
         # C_D is an array, so add it to the diagonal without forming diag(C_D)
         C_DD.flat[:: C_DD.shape[1] + 1] += alpha * C_D
         K = sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
-    return K  # type: ignore
+
+    # Form C_MD = center(X) @ center(Y).T / (num_ensemble - 1)
+    X = X - np.mean(X, axis=1, keepdims=True)
+    Y = Y - np.mean(Y, axis=1, keepdims=True)
+    _, num_ensemble = X.shape
+
+    return np.linalg.multi_dot([X / (num_ensemble - 1), Y.T, K])  # type: ignore
 
 
 def inversion_lstsq(
@@ -177,9 +196,11 @@ def inversion_lstsq(
     C_D: npt.NDArray[np.double],
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
+    X: npt.NDArray[np.double],
 ) -> npt.NDArray[np.double]:
     """Computes inversion uses least squares."""
     C_DD = empirical_cross_covariance(Y, Y)
+    C_MD = empirical_cross_covariance(X, Y)
 
     # A covariance matrix was given
     if C_D.ndim == 2:
@@ -192,7 +213,7 @@ def inversion_lstsq(
     # K = lhs^-1 @ (D - Y)
     # lhs @ K = (D - Y)
     ans, *_ = sp.linalg.lstsq(lhs, D - Y, overwrite_a=True, overwrite_b=True)
-    return ans  # type: ignore
+    return C_MD @ ans  # type: ignore
 
 
 def inversion_rescaled(
@@ -201,11 +222,13 @@ def inversion_rescaled(
     C_D: npt.NDArray[np.double],
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
+    X: npt.NDArray[np.double],
 ) -> npt.NDArray[np.double]:
     """Compute a rescaled inversion.
 
     See Appendix A.1 in Emerick et al (2012)"""
     C_DD = empirical_cross_covariance(Y, Y)
+    C_MD = empirical_cross_covariance(X, Y)
 
     if C_D.ndim == 2:
         # Eqn (57). Cholesky factorize the covariance matrix C_D
@@ -248,7 +271,7 @@ def inversion_rescaled(
     # Eqn (61). Compute symmetric term once first, then multiply together and
     # finally multiply with (D - Y)
     term = C_D_L_inv.T @ U_r if C_D.ndim == 2 else (C_D_L_inv * U_r.T).T
-    return np.linalg.multi_dot([term / s_r, term.T, (D - Y)])  # type: ignore
+    return np.linalg.multi_dot([C_MD, term / s_r, term.T, (D - Y)])  # type: ignore
 
 
 def inversion_subspace_woodbury(
@@ -257,8 +280,10 @@ def inversion_subspace_woodbury(
     C_D: npt.NDArray[np.double],
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
+    X: npt.NDArray[np.double],
 ) -> npt.NDArray[np.double]:
     """Use the Woodbury lemma to compute the inversion."""
+    C_MD = empirical_cross_covariance(X, Y)
 
     # Woodbury: (A + U @ U.T)^-1 = A^-1 - A^-1 @ U @ (1 + U.T @ A^-1 @ U )^-1 @ U.T @ A^-1
 
@@ -281,7 +306,7 @@ def inversion_subspace_woodbury(
 
         # Compute the woodbury inversion, then return
         inverted = C_D_inv - np.linalg.multi_dot([term, sp.linalg.inv(center), term.T])
-        return inverted @ (D - Y)  # type: ignore
+        return np.linalg.multi_dot([C_MD, inverted, (D - Y)])  # type: ignore
 
     # A diagonal covariance matrix was given as a 1D array.
     # Same computation as above, but exploit the diagonal structure
@@ -293,7 +318,7 @@ def inversion_subspace_woodbury(
         inverted = np.diag(C_D_inv) - np.linalg.multi_dot(
             [UT_D.T, sp.linalg.inv(center), UT_D]
         )
-        return inverted @ (D - Y)  # type: ignore
+        return np.linalg.multi_dot([C_MD, inverted, (D - Y)])  # type: ignore
 
 
 def inversion_subspace(
@@ -302,6 +327,7 @@ def inversion_subspace(
     C_D: npt.NDArray[np.double],
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
+    X: npt.NDArray[np.double],
 ) -> npt.NDArray[np.double]:
     """See Appendix A.2 in Emerick et al (2012)
 
@@ -336,6 +362,7 @@ def inversion_subspace(
 
     # TODO: Incorporate this
     C_D = np.diag(C_D) if C_D.ndim == 1 else C_D
+    C_MD = empirical_cross_covariance(X, Y)
 
     # N_n is the number of observations
     # N_e is the number of members in the ensemble
@@ -376,7 +403,7 @@ def inversion_subspace(
     #     = (N_e - 1) (term) * (1 / (1 + T)) (term)^T
     # and finally we multiiply by (D - Y)
     term = U_r_w_inv @ Z
-    return (N_e - 1) * np.linalg.multi_dot([(term / (1 + T)), term.T, (D - Y)])  # type: ignore
+    return (N_e - 1) * np.linalg.multi_dot([C_MD, (term / (1 + T)), term.T, (D - Y)])  # type: ignore
 
 
 def inversion_rescaled_subspace(
@@ -385,6 +412,7 @@ def inversion_rescaled_subspace(
     C_D: npt.NDArray[np.double],
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
+    X: npt.NDArray[np.double],
 ) -> npt.NDArray[np.double]:
     """See Appendix A.2 in Emerick et al (2012)
 
@@ -394,6 +422,7 @@ def inversion_rescaled_subspace(
 
     """
     C_D = np.diag(C_D) if C_D.ndim == 1 else C_D
+    C_MD = empirical_cross_covariance(X, Y)
 
     N_n, N_e = Y.shape
     D_delta = Y - np.mean(Y, axis=1, keepdims=True)  # Subtract average
@@ -418,7 +447,7 @@ def inversion_rescaled_subspace(
     term = C_D_L_inv.T @ (U_r / w_r)
     T_r = (N_e - 1) / w_r**2  # Equation (79)
     diag = 1 / (1 + T_r)
-    return (N_e - 1) * np.linalg.multi_dot([(term * diag), term.T, (D - Y)])  # type: ignore
+    return (N_e - 1) * np.linalg.multi_dot([C_MD, (term * diag), term.T, (D - Y)])  # type: ignore
 
 
 if __name__ == "__main__":

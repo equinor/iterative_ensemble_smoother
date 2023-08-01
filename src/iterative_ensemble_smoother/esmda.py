@@ -18,6 +18,8 @@ https://doi.org/10.1016/j.cageo.2012.03.011.
 
 https://gitlab.com/antoinecollet5/pyesmda
 
+https://helper.ipam.ucla.edu/publications/oilws3/oilws3_14147.pdf
+
 """
 
 import numbers
@@ -28,7 +30,6 @@ import numpy.typing as npt
 import scipy as sp  # type: ignore
 
 from iterative_ensemble_smoother.esmda_inversion import (
-    empirical_cross_covariance,
     inversion_exact,
     normalize_alpha,
 )
@@ -52,18 +53,18 @@ class ESMDA:
         Parameters
         ----------
         C_D : np.ndarray
-            Covariance matrix of outputs of shape (num_outputs, num_ouputs).
+            Covariance matrix of outputs of shape (num_outputs, num_outputs).
             If a 1D array is passed, it represents a diagonal covariance matrix.
         observations : np.ndarray
-            1D array of shape (num_inputs,).
+            1D array of shape (num_inputs,) representing real-world observations.
         alpha : int or 1D np.ndarray, optional
             If an integer `alpha` is given, an array with length `alpha` and
             elements `alpha` is constructed. If an 1D array is given, it is
             normalized so sum_i 1/alpha_i = 1 and used. The default is 5, which
-            corresponds to the array numpy.array([5, 5, 5, 5, 5]).
+            corresponds to np.array([5, 5, 5, 5, 5]).
         seed : integer, optional
-            A seed used for random number generation. The seed is passed to
-            numpy.random.default_rng(). The default is None.
+            A seed or Generator used for random number generation. The argument
+            is passed to numpy.random.default_rng(). The default is None.
         inversion : str, optional
             Which inversion method to use. The default is "exact".
 
@@ -188,8 +189,6 @@ class ESMDA:
         if ensemble_mask.sum() == 0:
             return X
 
-        # self.alpha[self.iteration] = 1
-
         # Sample from a zero-centered multivariate normal with cov=C_D
         mv_normal_rvs = self.mv_normal.rvs(
             size=ensemble_mask.sum(), random_state=self.rng
@@ -205,17 +204,21 @@ class ESMDA:
 
         # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
         # Compute the cross covariance
-        C_MD = empirical_cross_covariance(X[:, ensemble_mask], Y[:, ensemble_mask])
+        # C_MD = empirical_cross_covariance(X[:, ensemble_mask], Y[:, ensemble_mask])
         # C_DD = empirical_cross_covariance(Y[:, ensemble_mask], Y[:, ensemble_mask])
 
         # Choose inversion method, e.g. 'exact'
         inversion_func = self._inversion_methods[self.inversion]
         K = inversion_func(
-            alpha=self.alpha[self.iteration], C_D=self.C_D, D=D, Y=Y[:, ensemble_mask]
+            alpha=self.alpha[self.iteration],
+            C_D=self.C_D,
+            D=D,
+            Y=Y[:, ensemble_mask],
+            X=X[:, ensemble_mask],
         )
 
         # X_posterior = X_current + C_MD @ K
-        # K := sp.linalg.inv(C_DD + C_D_alpha) @ (D - Y)
+        # K := C_MD @ sp.linalg.inv(C_DD + C_D_alpha) @ (D - Y)
 
         # In the typical case where num_outputs >> num_inputs >> ensemble members,
         # multiplying in the order below from the right to the left, i.e.,
@@ -223,7 +226,11 @@ class ESMDA:
         # is faster than the alternative order:
         #    (C_MD @ inv(C_DD + alpha * C_D)) @ (D - Y)
         X_posterior = np.copy(X)
-        X_posterior[:, ensemble_mask] += C_MD @ K
+        X_posterior[:, ensemble_mask] += K
+        # TODO: C_MD is an outer product, and
+        # np.outer((A.T @ v), v).T is faster than
+        # np.outer(v, v) @ A
+        # so we can speed this up by not forming C_MD explicitly
 
         self.iteration += 1
         return X_posterior
