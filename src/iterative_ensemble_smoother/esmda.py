@@ -211,18 +211,15 @@ class ESMDA:
         # if C_D = L L.T by the cholesky factorization, then drawing y from
         # a zero cented normal means that y := L @ z, where z ~ norm(0, 1)
         # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
+        size = (num_outputs, ensemble_mask.sum())
         if self.C_D.ndim == 2:
             D = self.observations.reshape(-1, 1) + np.sqrt(
                 self.alpha[self.iteration]
-            ) * self.C_D_L @ self.rng.normal(size=(num_outputs, ensemble_mask.sum()))
+            ) * self.C_D_L @ self.rng.normal(size=size)
         else:
             D = self.observations.reshape(-1, 1) + np.sqrt(
                 self.alpha[self.iteration]
-            ) * self.rng.normal(
-                size=(num_outputs, ensemble_mask.sum())
-            ) * self.C_D_L.reshape(
-                -1, 1
-            )
+            ) * self.rng.normal(size=size) * self.C_D_L.reshape(-1, 1)
         assert D.shape == (num_outputs, ensemble_mask.sum())
 
         # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper

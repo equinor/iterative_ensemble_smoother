@@ -209,8 +209,7 @@ class TestEsmdaInversion:
             [np.linalg.norm(approx_i - exact) for approx_i in approximations]
         )
 
-        # We allow for some numerical leeway, but the principle is that as
-        # we increase `truncation`, the difference between the approximation
+        # As we increase `truncation`, the difference between the approximation
         # and the true answer should decrease
         assert np.all(np.diff(norms) <= 0)
 
