@@ -28,6 +28,40 @@ from iterative_ensemble_smoother.esmda_inversion import empirical_cross_covarian
 
 
 class TestESMDA:
+    @pytest.mark.parametrize("seed", list(range(10)))
+    @pytest.mark.parametrize("inversion", ["exact", "subspace"])
+    def test_that_diagonal_covariance_gives_same_answer_as_dense(self, seed, inversion):
+        rng = np.random.default_rng(seed)
+
+        num_outputs = rng.choice([5, 10, 15, 25])
+        num_inputs = rng.choice([5, 10, 15, 25])
+        num_ensemble = rng.choice([5, 10, 15, 25])
+        alpha = rng.choice([1, 3, 5])
+
+        # Prior is N(0, 1)
+        X_prior = rng.normal(size=(num_inputs, num_ensemble))
+        Y_prior = rng.normal(size=(num_outputs, num_ensemble))
+
+        # Measurement errors
+        C_D = np.exp(rng.normal(size=num_outputs))
+
+        # Observations
+        observations = rng.normal(size=num_outputs, loc=1)
+
+        esmda = ESMDA(C_D, observations, alpha=alpha, seed=seed, inversion=inversion)
+        X_posterior1 = np.copy(X_prior)
+        for _ in range(esmda.num_assimilations()):
+            X_posterior1 = esmda.assimilate(X_posterior1, Y_prior)
+
+        esmda = ESMDA(
+            np.diag(C_D), observations, alpha=alpha, seed=seed, inversion=inversion
+        )
+        X_posterior2 = np.copy(X_prior)
+        for _ in range(esmda.num_assimilations()):
+            X_posterior2 = esmda.assimilate(X_posterior2, Y_prior)
+
+        assert np.allclose(X_posterior1, X_posterior2)
+
     @pytest.mark.parametrize("num_ensemble", [2**i for i in range(2, 10)])
     def test_that_using_example_mask_only_updates_those_parameters(self, num_ensemble):
         seed = num_ensemble
@@ -345,79 +379,6 @@ if __name__ == "__main__":
         args=[
             __file__,
             "-v",
-            # "--durations=10",
-            #  "-k test_that_result_corresponds_with_theory_for_gauss_linear_case",
-            # "--maxfail=1",
+            "-k test_that_diagonal_covariance_gives_same_answer_as_dense",
         ]
     )
-
-    1 / 0
-
-    import matplotlib.pyplot as plt
-
-    # Here we test on a Guass-linear case.
-    # The section "2.3.3 Bayes’ theorem for Gaussian variables" in the book
-    # Pattern Recognition and Machine Learning by Bishop (2006) states that if
-    # p(x)   = N(x | mu, S)
-    # p(y|x) = N(y | a * x + b, C_D)
-    # then
-    # p(x | y) has
-    # covariance COV = inv(inv(C_D) + a * inv(S) * a)
-    # mean      MEAN = COV (a * inv(S) * (y - v) + inv(C_D) * mu)
-    num_ensemble = 10_000
-
-    # Prior
-    mu, S = 0, 2
-
-    # Observations
-    X_true, C_D = 10, 10
-
-    # Linear transformation
-    a, b = 1, 1
-
-    seed = num_ensemble
-    rng = np.random.default_rng(seed)
-
-    num_outputs = 1
-    num_inputs = 1
-
-    def g(x):
-        """Transform a single ensemble member: a*x + b"""
-        return a * x + b
-
-    def G(X):
-        """Transform all ensemble members."""
-        return np.array([g(x_i) for x_i in X.T]).T
-
-    # Prior is N(0, 1)
-    X_prior = rng.normal(size=(num_inputs, num_ensemble), loc=mu, scale=np.sqrt(S))
-
-    # Measurement errors
-    C_D = np.diag([C_D])
-
-    # The true inputs and observations, a result of running with X_true
-    observations = G(np.atleast_1d(X_true))
-
-    # Create ESMDA instance from an integer `alpha` and run it
-    esmda = ESMDA(C_D, observations, alpha=1, seed=rng)
-    X_i = np.copy(X_prior)
-    print(esmda.alpha)
-    for _ in range(esmda.num_assimilations()):
-        X_i = esmda.assimilate(X_i, G(X_i))
-        print("X_i stats, mean:", X_i.mean(), "var ", X_i.var())
-
-        # Plot results
-        plt.hist(X_prior.ravel(), alpha=0.5, label="prior")
-        # plt.hist(X_true.ravel(), alpha=0.5, label="true inputs")
-        plt.hist(X_i.ravel(), alpha=0.5, label="X_i")
-        plt.legend()
-        plt.show()
-
-    # Analytical solution
-    COV = 1 / (1 / C_D + a**2 / S)
-    MEAN = COV * ((a / C_D) * (g(X_true) - b) + (1 / S) * mu)
-
-    print("means", X_i.mean(), MEAN.mean())
-    print("covs", X_i.var(ddof=1), COV.mean())
-    assert np.allclose(X_i.mean(), MEAN.mean(), rtol=1e-2)
-    assert np.allclose(X_i.var(ddof=1), COV.mean(), rtol=1e-2)

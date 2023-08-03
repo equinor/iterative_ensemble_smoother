@@ -149,9 +149,7 @@ class ESMDA:
         overwrite: bool = False,
         truncation: float = 1.0,
     ) -> npt.NDArray[np.double]:
-        """Assimilate data and return an updated ensemble.
-
-        WARNING: This method may overwrite X and Y.
+        """Assimilate data and return an updated ensemble X_posterior.
 
         Parameters
         ----------
@@ -166,6 +164,10 @@ class ESMDA:
         overwrite : bool
             If True, then arguments X and Y may be overwritten.
             If False, then the method will not permute inputs in any way.
+        truncation : float
+            How large a fraction of the singular values to keep in the inversion
+            routine. Must be a float in the range (0, 1]. A lower number means
+            a more approximate answer and a slightly faster computation.
 
         Returns
         -------
