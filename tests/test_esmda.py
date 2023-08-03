@@ -332,10 +332,10 @@ class TestESMDAMemory:
         X_prior, Y_prior, C_D, observations = setup
 
         # Create ESMDA instance from an integer `alpha` and run it
-        esmda_integer = ESMDA(C_D, observations, alpha=1, seed=1, inversion="subspace")
+        esmda = ESMDA(C_D, observations, alpha=1, seed=1, inversion="subspace")
 
-        for _ in range(esmda_integer.num_assimilations()):
-            esmda_integer.assimilate(X_prior, Y_prior)
+        for _ in range(esmda.num_assimilations()):
+            esmda.assimilate(X_prior, Y_prior)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ from iterative_ensemble_smoother.esmda_inversion import (
     inversion_exact_rescaled,
     inversion_rescaled_subspace,
     inversion_subspace,
-    inversion_subspace_woodbury,
+    inversion_exact_subspace_woodbury,
     normalize_alpha,
 )
 
@@ -19,14 +19,14 @@ EXACT_INVERSIONS = [
     inversion_exact_cholesky,
     inversion_exact_rescaled,
     inversion_exact_lstsq,
-    inversion_subspace_woodbury,
+    inversion_exact_subspace_woodbury,
+    inversion_rescaled_subspace,
 ]
 
 # Even when `truncation` is 1.0, these functions approximate the solution
 # when ensemble_members <= num_outputs
 APPROX_INVERSIONS = [
     inversion_subspace,
-    inversion_rescaled_subspace,
 ]
 
 # The functions that make use of the truncation parameter
@@ -80,30 +80,63 @@ class TestEsmdaInversion:
         K0 = function(alpha=1, C_D=np.diag(C_D), D=D, Y=Y, X=X)
         assert np.allclose(K0, np.array([[-1 / 3, 1 / 3], [1 / 3, -1 / 3], [0, 0]]))
 
-    @pytest.mark.parametrize("function", EXACT_INVERSIONS)
+    @pytest.mark.parametrize(
+        "function", EXACT_INVERSIONS + [inversion_rescaled_subspace]
+    )
+    @pytest.mark.parametrize("ensemble_members", [5, 10, 25, 50])
+    @pytest.mark.parametrize("num_outputs", [5, 10, 25, 50])
+    @pytest.mark.parametrize("num_inputs", [5, 10, 25, 50])
     def test_that_exact_inverions_are_equal_with_few_ensemble_members(
-        self, function, k=10
+        self, function, ensemble_members, num_outputs, num_inputs
     ):
         """With few ensemble members, every exact inversion method should be equal."""
-
-        emsemble_members = k // 2
+        np.random.seed(ensemble_members * 100 + num_outputs * 10 + num_inputs)
 
         # Create positive symmetric definite covariance C_D
-        E = np.random.randn(k, k)
+        E = np.random.randn(num_outputs, num_outputs)
         C_D = E.T @ E
 
         # Set alpha to something other than 1 to test that it works
         alpha = 3
 
         # Create observations
-        D = np.random.randn(k, emsemble_members)
-        Y = np.random.randn(k, emsemble_members)
-        X = np.random.randn(k, emsemble_members)
+        D = np.random.randn(num_outputs, ensemble_members)
+        Y = np.random.randn(num_outputs, ensemble_members)
+        X = np.random.randn(num_inputs, ensemble_members)
 
         # All non-subspace methods
         K1 = inversion_exact_naive(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X)
-        K2 = function(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X)
+        K2 = function(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X, truncation=1.0)
         assert np.allclose(K1, K2)
+
+    @pytest.mark.parametrize("function", APPROX_INVERSIONS)
+    @pytest.mark.parametrize("num_outputs", [10])
+    def test_that_approximate_inversions_do_not_compute_exact_answer_with_few_ensemble_members(
+        self, function, num_outputs
+    ):
+        """With few ensemble members, the approximate methods should not return
+        the exact answer, even when truncation=1.0."""
+        np.random.seed(num_outputs)
+
+        num_inputs = num_outputs
+        ensemble_members = num_outputs // 2
+
+        # Create positive symmetric definite covariance C_D
+        E = np.random.randn(num_outputs, num_outputs)
+        C_D = E.T @ E
+
+        # Set alpha to something other than 1 to test that it works
+        alpha = 3
+
+        # Create observations
+        D = np.random.randn(num_outputs, ensemble_members)
+        Y = np.random.randn(num_outputs, ensemble_members)
+        X = np.random.randn(num_inputs, ensemble_members)
+
+        # All non-subspace methods
+        K1 = inversion_exact_naive(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X)
+        K2 = function(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X, truncation=1.0)
+        assert not np.allclose(K1, K2)
 
     @pytest.mark.parametrize(
         "function",
@@ -164,6 +197,8 @@ class TestEsmdaInversion:
 
         # Exact answer
         exact = inversion_exact_naive(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X)
+
+        # Approximate answers
         truncations = np.linspace(1e-8, 1, num=64)
         approximations = [
             function(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X, truncation=trunaction)
@@ -192,9 +227,9 @@ class TestEsmdaInversion:
         self, ratio_ensemble_members_over_outputs, num_outputs, function
     ):
         """The result should be the same whether C_D is diagonal or not."""
-        emsemble_members = int(num_outputs / ratio_ensemble_members_over_outputs)
+        ensemble_members = int(num_outputs / ratio_ensemble_members_over_outputs)
         num_inputs = num_outputs
-        np.random.seed(num_outputs + emsemble_members)
+        np.random.seed(num_outputs + ensemble_members)
 
         # Diagonal covariance matrix
         C_D_2D = np.diag(np.exp(np.random.randn(num_outputs)))
@@ -204,9 +239,9 @@ class TestEsmdaInversion:
         alpha = np.exp(np.random.randn())
 
         # Create observations
-        D = np.random.randn(num_outputs, emsemble_members)
-        Y = np.random.randn(num_outputs, emsemble_members)
-        X = np.random.randn(num_inputs, emsemble_members)
+        D = np.random.randn(num_outputs, ensemble_members)
+        Y = np.random.randn(num_outputs, ensemble_members)
+        X = np.random.randn(num_inputs, ensemble_members)
 
         assert C_D_2D.ndim == 2
         assert C_D_diag.ndim == 1
@@ -222,7 +257,7 @@ class TestEsmdaInversion:
     )
     def test_that_inversion_methods_do_do_not_mutate_input_args(self, function):
         """Inversion functions should not mutate input arguments."""
-        num_outputs, num_inputs, emsemble_members = 100, 50, 10
+        num_outputs, num_inputs, ensemble_members = 100, 50, 10
 
         np.random.seed(42)
 
@@ -233,9 +268,9 @@ class TestEsmdaInversion:
         alpha = np.exp(np.random.randn())
 
         # Create observations
-        D = np.random.randn(num_outputs, emsemble_members)
-        Y = np.random.randn(num_outputs, emsemble_members)
-        X = np.random.randn(num_inputs, emsemble_members)
+        D = np.random.randn(num_outputs, ensemble_members)
+        Y = np.random.randn(num_outputs, ensemble_members)
+        X = np.random.randn(num_inputs, ensemble_members)
 
         args = [alpha, C_D, D, Y, X]
         args_copy = [np.copy(arg) for arg in args]
@@ -246,13 +281,10 @@ class TestEsmdaInversion:
             assert np.allclose(arg, arg_copy)
 
 
-def test_timing(num_outputs=100, num_inputs=50, num_ensemble=25):
-    k = num_outputs
-    emsemble_members = num_ensemble
-
-    E = np.random.randn(k, k)
+def test_timing(num_outputs=100, num_inputs=50, ensemble_members=25):
+    E = np.random.randn(num_outputs, num_outputs)
     C_D = E.T @ E
-    C_D = np.diag(np.exp(np.random.randn(k)))  # Diagonal covariance matrix
+    C_D = np.diag(np.exp(np.random.randn(num_outputs)))  # Diagonal covariance matrix
     C_D_diag = np.diag(C_D)
     assert C_D_diag.ndim == 1
     assert C_D.ndim == 2
@@ -261,9 +293,9 @@ def test_timing(num_outputs=100, num_inputs=50, num_ensemble=25):
     alpha = 3
 
     # Create observations
-    D = np.random.randn(k, emsemble_members)
-    Y = np.random.randn(k, emsemble_members)
-    X = np.random.randn(num_inputs, emsemble_members)
+    D = np.random.randn(num_outputs, ensemble_members)
+    Y = np.random.randn(num_outputs, ensemble_members)
+    X = np.random.randn(num_inputs, ensemble_members)
 
     exact_inversion_funcs = [
         inversion_exact_naive,
@@ -292,7 +324,7 @@ def test_timing(num_outputs=100, num_inputs=50, num_ensemble=25):
 
     subspace_inversion_funcs = [
         inversion_subspace,
-        inversion_subspace_woodbury,
+        inversion_exact_subspace_woodbury,
         inversion_rescaled_subspace,
     ]
 
@@ -320,6 +352,6 @@ if __name__ == "__main__":
         args=[
             __file__,
             "-v",
-            #  "-k test_that_approximations_get_better_when_truncation_is_increased",
+            "-k test_that_exact_inverions_are_equal_with_few_ensemble_members",
         ]
     )

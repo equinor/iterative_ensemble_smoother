@@ -1,5 +1,3 @@
-from typing import Optional, Union
-
 import numpy as np
 import numpy.typing as npt
 import scipy as sp  # type: ignore
@@ -28,7 +26,7 @@ def empirical_covariance_upper(X: npt.NDArray[np.double]) -> npt.NDArray[np.doub
     num_variables, num_observations = X.shape
     X = (X - np.mean(X, axis=1, keepdims=True)) / np.sqrt(num_observations - 1)
     # https://www.math.utah.edu/software/lapack/lapack-blas/dsyrk.html
-    XXT: npt.NDArray[np.double] = sp.linalg.blas.dsyrk(alpha=1, a=X)
+    XXT: npt.NDArray[np.double] = sp.linalg.blas.dsyrk(alpha=1.0, a=X)
     return XXT
 
 
@@ -132,22 +130,23 @@ def singular_values_to_keep(
 # =============================================================================
 # INVERSION FUNCTIONS
 # =============================================================================
+# All of these functions compute (exactly, or approximately), the product
+#
+#  C_MD @ inv(C_DD + alpha * C_D) @ (D - Y)
+#
+# where C_MD = empirical_cross_covariance(X, Y) = center(X) @ center(Y).T / (X.shape[1] - 1)
+#       C_DD = empirical_cross_covariance(Y, Y) = center(Y) @ center(Y).T / (Y.shape[1] - 1)
+#
+# The methods can be classified as
+#   - exact : with truncation=1.0, these methods compute the exact solution
+#   - exact : with truncation<1.0, these methods may approximate the solution
+#   - approximate: if ensemble_members <= num_outputs, then the solution is
+#                  always approximated, regardless of the truncation
+#   - approximate: if ensemble_members > num_outputs, then the solution is
+#                  exact when truncation is 1.0
+
 # Every inversion function has the form
 # inversion_<exact/approximate>_<name>
-
-
-class Inversion:
-    def __init__(self, C_D, C_D_L=None):
-        self.C_D = C_D
-        self._C_D_L = C_D_L
-
-    @property
-    def C_D_L(self):
-        if self._C_D_L is None:
-            self._C_D_L = sp.linalg.cholesky(
-                self.C_D, lower=True
-            )  # Lower triangular cholesky
-        return self._C_D_L
 
 
 def inversion_exact_naive(
@@ -161,7 +160,7 @@ def inversion_exact_naive(
 ) -> npt.NDArray[np.double]:
     """Naive inversion, used for testing only.
 
-    Computes C_MD@ inv(C_DD + alpha * C_D) @ (D - Y) naively.
+    Computes C_MD @ inv(C_DD + alpha * C_D) @ (D - Y) naively.
     """
     # Naive implementation of Equation (3) in Emerick (2013)
     C_MD = empirical_cross_covariance(X, Y)
@@ -181,9 +180,17 @@ def inversion_exact_cholesky(
 ) -> npt.NDArray[np.double]:
     """Computes an exact inversion using `sp.linalg.solve`, which uses a
     Cholesky factorization in the case of symmetric, positive definite matrices.
+
+    The goal is to compute: C_MD @ inv(C_DD + alpha * C_D) @ (D - Y)
+
+    First we solve (C_DD + alpha * C_D) @ K = (D - Y) for K, so that
+    K = inv(C_DD + alpha * C_D) @ (D - Y), then we compute
+    C_MD @ K, but we don't explicitly form C_MD, since it might be more
+    efficient to perform the matrix products in another order.
     """
     C_DD = empirical_covariance_upper(Y)  # Only compute upper part
 
+    # Arguments for sp.linalg.solve
     solver_kwargs = {
         "overwrite_a": True,
         "overwrite_b": True,
@@ -218,7 +225,9 @@ def inversion_exact_lstsq(
     X: npt.NDArray[np.double],
     truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
-    """Computes inversion uses least squares."""
+    """Computes inversion using least squares. While this method can deal with
+    rank-deficient C_D, it should not be used since it's very slow.
+    """
     C_DD = empirical_cross_covariance(Y, Y)
 
     # A covariance matrix was given
@@ -235,7 +244,7 @@ def inversion_exact_lstsq(
         lhs, D - Y, overwrite_a=True, overwrite_b=True, lapack_driver="gelsy"
     )
 
-    # Compute C_MD
+    # Compute C_MD := center(X) @ center(Y).T / (X.shape[1] - 1)
     X_shift = (X - np.mean(X, axis=1, keepdims=True)) / (X.shape[1] - 1)
     Y_shift = Y - np.mean(Y, axis=1, keepdims=True)
     return np.linalg.multi_dot([X_shift, Y_shift.T, ans])  # type: ignore
@@ -252,7 +261,7 @@ def inversion_exact_rescaled(
 ) -> npt.NDArray[np.double]:
     """Compute a rescaled inversion.
 
-    See Appendix A.1 in Emerick et al (2012)"""
+    See Appendix A.1 in Emerick et al (2012) for details regarding this approach."""
     C_DD = empirical_cross_covariance(Y, Y)
 
     if C_D.ndim == 2:
@@ -291,7 +300,6 @@ def inversion_exact_rescaled(
 
     idx = singular_values_to_keep(s[::-1], truncation=truncation)
     N_r = min(N_n, N_e - 1, idx)  # Number of values in SVD to keep
-    # N_r = U.shape[1]
     U_r, s_r = U[:, -N_r:], s[-N_r:]
     # U_r @ np.diag(s_r) @ U_r.T == C_tilde
 
@@ -306,7 +314,7 @@ def inversion_exact_rescaled(
     return np.linalg.multi_dot([X_shift, Y_shift.T, term / s_r, term.T, (D - Y)])  # type: ignore
 
 
-def inversion_subspace_woodbury(
+def inversion_exact_subspace_woodbury(
     *,
     alpha: float,
     C_D: npt.NDArray[np.double],
@@ -315,7 +323,20 @@ def inversion_subspace_woodbury(
     X: npt.NDArray[np.double],
     truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
-    """Use the Woodbury lemma to compute the inversion."""
+    """Use the Woodbury lemma to compute the inversion.
+
+    This approach uses the Woodbury lemma to compute:
+        C_MD @ inv(C_DD + alpha * C_D) @ (D - Y)
+
+    Since C_DD = U @ U.T, where U := center(Y) / sqrt(N_e - 1), we can use:
+
+    (A + U @ U.T)^-1 = A^-1 - A^-1 @ U @ (1 + U.T @ A^-1 @ U )^-1 @ U.T @ A^-1
+
+    to compute inv(C_DD + alpha * C_D).
+
+
+
+    """
 
     # Woodbury: (A + U @ U.T)^-1 = A^-1 - A^-1 @ U @ (1 + U.T @ A^-1 @ U )^-1 @ U.T @ A^-1
 
@@ -330,6 +351,7 @@ def inversion_subspace_woodbury(
     # A full covariance matrix was given
     if C_D.ndim == 2:
         # Invert C_D
+        # TODO: This inverse could be cached
         C_D_inv = np.linalg.inv(C_D) / alpha
 
         # Compute the center part of the rhs in woodburry
@@ -369,7 +391,7 @@ def inversion_subspace(
 
     This is an approximate solution. The approximation is that when
     U, w, V.T = svd(D_delta)
-    then we assume that U_r @ U_r.T = I.
+    then we assume that U @ U.T = I.
     This is not true in general, for instance:
 
     >>> Y = np.array([[2, 0],
@@ -452,53 +474,52 @@ def inversion_rescaled_subspace(
 ) -> npt.NDArray[np.double]:
     """See Appendix A.2 in Emerick et al (2012)
 
-    This is an approximate solution. The approximation is that when
-    U, w, V.T = svd(D_delta)
-    then we assume that U_r @ U_r.T = I.
+    Subspace inversion with rescaling.
 
     """
-    C_D = np.diag(C_D) if C_D.ndim == 1 else C_D
-    C_MD = empirical_cross_covariance(X, Y)
+    # TODO: I don't understand why this approach is not approximate, when
+    # `inversion_subspace` is approximate
 
     N_n, N_e = Y.shape
     D_delta = Y - np.mean(Y, axis=1, keepdims=True)  # Subtract average
 
-    # Eqn (76). Cholesky factorize the covariance matrix C_D
-    # TODO: here we compute the cholesky factor in every call, but C_D
-    # never changes. it would be better to compute it once
-    C_D_L = sp.linalg.cholesky(C_D * alpha, lower=True)  # Lower triangular cholesky
-    # Here C_D_L is C^{1/2} in equation (57)
-    # assert np.allclose(C_D_L @ C_D_L.T, C_D * alpha)
-    C_D_L_inv, _ = sp.linalg.lapack.dtrtri(C_D_L, lower=1)  # Invert lower triangular
+    if C_D.ndim == 2:
+        # Eqn (76). Cholesky factorize the covariance matrix C_D
+        # TODO: here we compute the cholesky factor in every call, but C_D
+        # never changes. it would be better to compute it once
+        C_D_L = sp.linalg.cholesky(C_D * alpha, lower=True)  # Lower triangular cholesky
+        # Here C_D_L is C^{1/2} in equation (57)
+        # assert np.allclose(C_D_L @ C_D_L.T, C_D * alpha)
+        C_D_L_inv, _ = sp.linalg.lapack.dtrtri(
+            C_D_L, lower=1
+        )  # Invert lower triangular
 
-    # Use BLAS to compute product of lower triangular matrix C_D_L_inv and D_Delta
-    # This line is equal to C_D_L_inv @ D_delta
-    C_D_L_times_D_delta = sp.linalg.blas.dtrmm(alpha=1, a=C_D_L_inv, b=D_delta, lower=1)
-    U, w, _ = sp.linalg.svd(C_D_L_times_D_delta, overwrite_a=True, full_matrices=False)
+        # Use BLAS to compute product of lower triangular matrix C_D_L_inv and D_Delta
+        # This line is equal to C_D_L_inv @ D_delta
+        C_D_L_times_D_delta = sp.linalg.blas.dtrmm(
+            alpha=1.0, a=C_D_L_inv, b=D_delta, lower=1
+        )
+
+    else:
+        # Same as above, but C_D is a vector
+        C_D_L_inv = 1 / np.sqrt(alpha * C_D)  # Invert the Cholesky factor a diagonal
+        C_D_L_times_D_delta = (D_delta.T * C_D_L_inv).T
+
+    U, w, VT = sp.linalg.svd(C_D_L_times_D_delta, overwrite_a=True, full_matrices=False)
     idx = singular_values_to_keep(w, truncation=truncation)
 
+    # assert np.allclose(VT @ VT.T, np.eye(VT.shape[0]))
     N_r = min(N_n, N_e - 1, idx)  # Number of values in SVD to keep
     U_r, w_r = U[:, :N_r], w[:N_r]
 
-    # Eqn (78)
-    term = C_D_L_inv.T @ (U_r / w_r)
+    # Eqn (78) - taking into account that C_D_L_inv could be an array
+    term = C_D_L_inv.T @ (U_r / w_r) if C_D.ndim == 2 else ((U_r / w_r).T * C_D_L_inv).T
     T_r = (N_e - 1) / w_r**2  # Equation (79)
     diag = 1 / (1 + T_r)
-    return (N_e - 1) * np.linalg.multi_dot([C_MD, (term * diag), term.T, (D - Y)])  # type: ignore
 
-
-INVERSION_EXACT = [
-    inversion_exact_naive,
-    inversion_exact_cholesky,
-    inversion_exact_rescaled,
-    inversion_exact_lstsq,
-    inversion_subspace_woodbury,
-]
-
-INVERSION_APPROX = [
-    inversion_subspace,
-    inversion_rescaled_subspace,
-]
+    # Compute C_MD
+    X_shift = X - np.mean(X, axis=1, keepdims=True)
+    return np.linalg.multi_dot([X_shift, D_delta.T, (term * diag), term.T, (D - Y)])  # type: ignore
 
 
 if __name__ == "__main__":
