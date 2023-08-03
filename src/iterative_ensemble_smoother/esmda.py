@@ -31,6 +31,7 @@ import scipy as sp  # type: ignore
 
 from iterative_ensemble_smoother.esmda_inversion import (
     inversion_exact_cholesky,
+    inversion_subspace,
     normalize_alpha,
 )
 
@@ -38,7 +39,10 @@ from iterative_ensemble_smoother.esmda_inversion import (
 class ESMDA:
     # Available inversion methods. The inversion methods all compute
     # C_MD @ (C_DD + alpha * C_D)^(-1)  @ (D - Y)
-    _inversion_methods = {"exact": inversion_exact_cholesky}
+    _inversion_methods = {
+        "exact": inversion_exact_cholesky,
+        "subspace": inversion_subspace,
+    }
 
     def __init__(
         self,
@@ -124,17 +128,13 @@ class ESMDA:
         num_outputs = C_D.shape[0]
 
         if isinstance(C_D, np.ndarray) and C_D.ndim == 2:
-            L = sp.linalg.cholesky(C_D, lower=False)
-            cov = sp.stats.Covariance.from_cholesky(L)
+            self.C_D_L = sp.linalg.cholesky(C_D, lower=False)
         elif isinstance(C_D, np.ndarray) and C_D.ndim == 1:
             assert len(C_D) == num_outputs
-            cov = sp.stats.Covariance.from_diagonal(C_D)
-        elif isinstance(C_D, float):
-            C_D = np.array([C_D] * num_outputs)  # Convert to array
-            cov = sp.stats.Covariance.from_diagonal(C_D)
+            self.C_D_L = np.sqrt(C_D)
+        else:
+            raise TypeError("Argument `C_D` must be 1D or 2D array")
 
-        mean = np.zeros(num_outputs)
-        self.mv_normal = sp.stats.multivariate_normal(mean=mean, cov=cov)
         self.C_D = C_D
         assert isinstance(self.C_D, np.ndarray) and self.C_D.ndim in (1, 2)
 
@@ -146,7 +146,8 @@ class ESMDA:
         X: npt.NDArray[np.double],
         Y: npt.NDArray[np.double],
         ensemble_mask: Optional[npt.NDArray[np.bool_]] = None,
-        overwrite=False,
+        overwrite: bool = False,
+        truncation: float = 1.0,
     ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble.
 
@@ -189,6 +190,8 @@ class ESMDA:
         if not np.issubdtype(Y.dtype, np.floating):
             raise TypeError("Argument `Y` must be contain floats")
 
+        assert 0 < truncation <= 1.0
+
         # Do not overwrite input arguments
         if not overwrite:
             X, Y = np.copy(X), np.copy(Y)
@@ -208,11 +211,18 @@ class ESMDA:
         # if C_D = L L.T by the cholesky factorization, then drawing y from
         # a zero cented normal means that y := L @ z, where z ~ norm(0, 1)
         # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
-        D = (
-            self.observations
-            + np.sqrt(self.alpha[self.iteration])
-            * self.mv_normal.rvs(size=ensemble_mask.sum(), random_state=self.rng)
-        ).T
+        if self.C_D.ndim == 2:
+            D = self.observations.reshape(-1, 1) + np.sqrt(
+                self.alpha[self.iteration]
+            ) * self.C_D_L @ self.rng.normal(size=(num_outputs, ensemble_mask.sum()))
+        else:
+            D = self.observations.reshape(-1, 1) + np.sqrt(
+                self.alpha[self.iteration]
+            ) * self.rng.normal(
+                size=(num_outputs, ensemble_mask.sum())
+            ) * self.C_D_L.reshape(
+                -1, 1
+            )
         assert D.shape == (num_outputs, ensemble_mask.sum())
 
         # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
@@ -227,6 +237,7 @@ class ESMDA:
             D=D,
             Y=Y[:, ensemble_mask],
             X=X[:, ensemble_mask],
+            truncation=truncation,
         )
 
         self.iteration += 1

@@ -303,17 +303,14 @@ class TestESMDA:
         assert np.isclose(X_i_single.mean(), X_i_multiple.mean(), rtol=0.05)
         assert np.isclose(X_i_single.var(), X_i_multiple.var(), rtol=0.1)
 
-    @pytest.mark.limit_memory("485 MB")
-    def test_ESMDA_memory_usage(self):
-        # TODO: Currently this is a regression test. Work to improve memory usage.
 
-        # Number of MB in an array is
-        # array.nbytes / 10**6
-
+class TestESMDAMemory:
+    @pytest.fixture
+    def setup(self):
         rng = np.random.default_rng(42)
 
-        num_outputs = 5000
-        num_inputs = 1000
+        num_outputs = 10_000
+        num_inputs = 1_000
         num_ensemble = 100
 
         # Prior is N(0, 1)
@@ -326,8 +323,16 @@ class TestESMDA:
         # Observations
         observations = rng.normal(size=num_outputs, loc=1)
 
+        return X_prior, Y_prior, C_D, observations
+
+    @pytest.mark.limit_memory("138 MB")
+    def test_ESMDA_memory_usage_subspace_inversion(self, setup):
+        # TODO: Currently this is a regression test. Work to improve memory usage.
+
+        X_prior, Y_prior, C_D, observations = setup
+
         # Create ESMDA instance from an integer `alpha` and run it
-        esmda_integer = ESMDA(C_D, observations, alpha=1, seed=rng, inversion="exact")
+        esmda_integer = ESMDA(C_D, observations, alpha=1, seed=1, inversion="subspace")
 
         for _ in range(esmda_integer.num_assimilations()):
             esmda_integer.assimilate(X_prior, Y_prior)
@@ -341,7 +346,7 @@ if __name__ == "__main__":
             __file__,
             "-v",
             # "--durations=10",
-            "-k test_that_result_corresponds_with_theory_for_gauss_linear_case",
+            #  "-k test_that_result_corresponds_with_theory_for_gauss_linear_case",
             # "--maxfail=1",
         ]
     )

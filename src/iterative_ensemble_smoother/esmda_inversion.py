@@ -157,6 +157,7 @@ def inversion_exact_naive(
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
     X: npt.NDArray[np.double],
+    truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
     """Naive inversion, used for testing only.
 
@@ -176,6 +177,7 @@ def inversion_exact_cholesky(
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
     X: npt.NDArray[np.double],
+    truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
     """Computes an exact inversion using `sp.linalg.solve`, which uses a
     Cholesky factorization in the case of symmetric, positive definite matrices.
@@ -207,13 +209,14 @@ def inversion_exact_cholesky(
     return np.linalg.multi_dot([X / (num_ensemble - 1), Y.T, K])  # type: ignore
 
 
-def inversion_lstsq(
+def inversion_exact_lstsq(
     *,
     alpha: float,
     C_D: npt.NDArray[np.double],
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
     X: npt.NDArray[np.double],
+    truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
     """Computes inversion uses least squares."""
     C_DD = empirical_cross_covariance(Y, Y)
@@ -245,7 +248,7 @@ def inversion_exact_rescaled(
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
     X: npt.NDArray[np.double],
-    truncation=1.0,
+    truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
     """Compute a rescaled inversion.
 
@@ -310,9 +313,9 @@ def inversion_subspace_woodbury(
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
     X: npt.NDArray[np.double],
+    truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
     """Use the Woodbury lemma to compute the inversion."""
-    C_MD = empirical_cross_covariance(X, Y)
 
     # Woodbury: (A + U @ U.T)^-1 = A^-1 - A^-1 @ U @ (1 + U.T @ A^-1 @ U )^-1 @ U.T @ A^-1
 
@@ -320,6 +323,9 @@ def inversion_subspace_woodbury(
     N_n, N_e = Y.shape
     D_delta = Y - np.mean(Y, axis=1, keepdims=True)  # Subtract average
     D_delta /= np.sqrt(N_e - 1)
+
+    # Compute the first factors, which make up C_MD
+    X_shift = (X - np.mean(X, axis=1, keepdims=True)) / np.sqrt(N_e - 1)
 
     # A full covariance matrix was given
     if C_D.ndim == 2:
@@ -335,7 +341,7 @@ def inversion_subspace_woodbury(
 
         # Compute the woodbury inversion, then return
         inverted = C_D_inv - np.linalg.multi_dot([term, sp.linalg.inv(center), term.T])
-        return np.linalg.multi_dot([C_MD, inverted, (D - Y)])  # type: ignore
+        return np.linalg.multi_dot([X_shift, D_delta.T, inverted, (D - Y)])  # type: ignore
 
     # A diagonal covariance matrix was given as a 1D array.
     # Same computation as above, but exploit the diagonal structure
@@ -347,7 +353,7 @@ def inversion_subspace_woodbury(
         inverted = np.diag(C_D_inv) - np.linalg.multi_dot(
             [UT_D.T, sp.linalg.inv(center), UT_D]
         )
-        return np.linalg.multi_dot([C_MD, inverted, (D - Y)])  # type: ignore
+        return np.linalg.multi_dot([X_shift, D_delta.T, inverted, (D - Y)])  # type: ignore
 
 
 def inversion_subspace(
@@ -357,7 +363,7 @@ def inversion_subspace(
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
     X: npt.NDArray[np.double],
-    truncation=1.0,
+    truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
     """See Appendix A.2 in Emerick et al (2012)
 
@@ -389,9 +395,6 @@ def inversion_subspace(
            [0., 0., 0.]])
 
     """
-
-    # TODO: Incorporate this
-    C_D = np.diag(C_D) if C_D.ndim == 1 else C_D
 
     # N_n is the number of observations
     # N_e is the number of members in the ensemble
@@ -445,6 +448,7 @@ def inversion_rescaled_subspace(
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
     X: npt.NDArray[np.double],
+    truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
     """See Appendix A.2 in Emerick et al (2012)
 
@@ -471,8 +475,9 @@ def inversion_rescaled_subspace(
     # This line is equal to C_D_L_inv @ D_delta
     C_D_L_times_D_delta = sp.linalg.blas.dtrmm(alpha=1, a=C_D_L_inv, b=D_delta, lower=1)
     U, w, _ = sp.linalg.svd(C_D_L_times_D_delta, overwrite_a=True, full_matrices=False)
+    idx = singular_values_to_keep(w, truncation=truncation)
 
-    N_r = min(N_n, N_e - 1)  # Number of values in SVD to keep
+    N_r = min(N_n, N_e - 1, idx)  # Number of values in SVD to keep
     U_r, w_r = U[:, :N_r], w[:N_r]
 
     # Eqn (78)
@@ -486,7 +491,7 @@ INVERSION_EXACT = [
     inversion_exact_naive,
     inversion_exact_cholesky,
     inversion_exact_rescaled,
-    inversion_lstsq,
+    inversion_exact_lstsq,
     inversion_subspace_woodbury,
 ]
 
