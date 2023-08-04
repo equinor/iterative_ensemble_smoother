@@ -45,7 +45,8 @@ doc = [
     "matplotlib",
     "jupytext",
     "pandas",
-    "p_tqdm"
+    "p_tqdm",
+    "ipykernel"
 ]
 dev = [
     "pytest",
