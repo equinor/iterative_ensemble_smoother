@@ -46,7 +46,8 @@ doc = [
     "jupytext",
     "pandas",
     "p_tqdm",
-    "ipykernel"
+    "ipykernel",
+    "ipywidgets"
 ]
 dev = [
     "pytest",
