@@ -515,6 +515,7 @@ def test_that_diagonal_and_dense_covariance_return_the_same_result(inversion, se
 
     # 1D array of standard deviations
     smoother_diag = ies.SIES(ensemble_size=ensemble_size, seed=1)
+    assert observation_errors_diag_std.ndim == 1
     smoother_diag.fit(
         response_ensemble=response_ensemble,
         observation_errors=observation_errors_diag_std,
@@ -526,6 +527,7 @@ def test_that_diagonal_and_dense_covariance_return_the_same_result(inversion, se
 
     # 2D array of covariances (covariance matrix)
     smoother_covar = ies.SIES(ensemble_size=ensemble_size, seed=1)
+    assert observation_errors_cov_mat.ndim == 2
     smoother_covar.fit(
         response_ensemble=response_ensemble,
         observation_errors=observation_errors_cov_mat,
@@ -535,7 +537,8 @@ def test_that_diagonal_and_dense_covariance_return_the_same_result(inversion, se
     )
     X_post_covar = smoother_covar.update(param_ensemble)
 
-    assert np.allclose(X_post_diag, X_post_covar)
+    assert np.allclose(X_post_diag, X_post_covar)  # Same result
+    assert not np.allclose(param_ensemble, X_post_covar)  # Update happened
 
 
 @pytest.mark.limit_memory("70 MB")
