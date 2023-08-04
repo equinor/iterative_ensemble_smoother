@@ -1,4 +1,4 @@
-name: Lint
+name: Build docs
 
 on: [pull_request]
 
@@ -12,8 +12,11 @@ jobs:
         with:
           python-version: 3.8
 
+      - name: install pandoc
+        run: sudo apt-get update && sudo apt-get install -y pandoc
+
       - name: Install tox
         run: pip install tox
 
-      - name: Check style
-        run: tox -e style
+      - name: Build docs
+        run: tox -e docs
