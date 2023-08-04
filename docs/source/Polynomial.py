@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.14.4
+#       jupytext_version: 1.14.5
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -56,8 +56,7 @@ noise_scale = 0.01
 x_observations = [0, 2, 4, 6, 8]
 observations = [
     (
-        poly(a_t, b_t, c_t, x)
-        + rng.normal(loc=0, scale=noise_scale * poly(a_t, b_t, c_t, x)),
+        rng.normal(loc=1, scale=noise_scale) * poly(a_t, b_t, c_t, x),
         noise_scale * poly(a_t, b_t, c_t, x),
         x,
     )
@@ -86,7 +85,7 @@ R = np.diag(d.sd.values**2)
 E = rng.multivariate_normal(mean=np.zeros(len(R)), cov=R, size=ensemble_size).T
 assert E.shape == (num_obs, ensemble_size)
 
-D = np.ones((num_obs, ensemble_size)) * d.value.values.reshape(-1, 1) + E
+D = d.value.values.reshape(-1, 1) + E
 
 # %% [markdown]
 # ## Define Gaussian priors
@@ -96,9 +95,7 @@ coeff_a = rng.normal(0, 1, size=ensemble_size)
 coeff_b = rng.normal(0, 1, size=ensemble_size)
 coeff_c = rng.normal(0, 1, size=ensemble_size)
 
-X = np.concatenate(
-    (coeff_a.reshape(-1, 1), coeff_b.reshape(-1, 1), coeff_c.reshape(-1, 1)), axis=1
-).T
+X = np.vstack([coeff_a, coeff_b, coeff_c])
 
 # %% [markdown]
 # ## Run forward model in parallel
@@ -132,21 +129,19 @@ assert Y.shape == (
 # %%
 X_ES_ert = X.copy()
 Y_ES_ert = Y.copy()
-smoother_es = ies.ES()
-smoother_es.fit(Y_ES_ert, d.sd.values, d.value.values, noise=E)
+smoother_es = ies.ES(seed=42)
+smoother_es.fit(Y_ES_ert, d.sd.values, d.value.values)
 X_ES_ert = smoother_es.update(X_ES_ert)
 
 X_IES_ert = X.copy()
 Y_IES_ert = Y.copy()
-smoother_ies = ies.SIES(ensemble_size=ensemble_size)
+smoother_ies = ies.SIES(ensemble_size=ensemble_size, seed=42)
 n_ies_iter = 7
 for i in range(n_ies_iter):
-    smoother_ies.fit(Y_IES_ert, d.sd.values, d.value.values, noise=E)
+    smoother_ies.fit(Y_IES_ert, d.sd.values, d.value.values)
     X_IES_ert = smoother_ies.update(X_IES_ert)
 
-    _coeff_a = X_IES_ert[0, :]
-    _coeff_b = X_IES_ert[1, :]
-    _coeff_c = X_IES_ert[2, :]
+    _coeff_a, _coeff_b, _coeff_c = X_IES_ert
 
     _fwd_runs = p_map(
         poly,
@@ -170,7 +165,7 @@ for i in range(n_ies_iter):
 def plot_posterior(ax, posterior, method):
     for i, param in enumerate(["a", "b", "c"]):
         ax[i].set_title(param)
-        ax[i].hist(posterior[i, :], label=f"{method} posterior", alpha=0.5)
+        ax[i].hist(posterior[i, :], label=f"{method} posterior", alpha=0.5, bins="fd")
         ax[i].legend()
 
     fig.tight_layout()
@@ -181,12 +176,11 @@ fig, ax = plt.subplots(nrows=3)
 fig.set_size_inches(8, 8)
 
 for i in range(3):
-    ax[i].hist(X[i, :], label="prior")
+    ax[i].hist(X[i, :], label="prior", bins="fd")
+
 ax[0].axvline(a_t, color="k", linestyle="--", label="truth")
 ax[1].axvline(b_t, color="k", linestyle="--", label="truth")
 ax[2].axvline(c_t, color="k", linestyle="--", label="truth")
 
 plot_posterior(ax, X_ES_ert, method="ES ert")
 _ = plot_posterior(ax, X_IES_ert, method=f"SIES ert ({n_ies_iter})")
-
-# %%
