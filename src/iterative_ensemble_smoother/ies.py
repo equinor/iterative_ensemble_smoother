@@ -238,6 +238,7 @@ def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
     if inversion == "naive":
         # Compute K = S.T @ sp.linalg.inv(S @ S.T + E @ E.T, overwrite_a=True) @ H
         to_invert = S @ S.T + E @ E.T
+        to_invert.flat[:: to_invert.shape[0] + 1] += 1e-12
         K = S.T @ sp.linalg.solve(to_invert, H, assume_a="sym", overwrite_a=True)
         return W - steplength * (W - K)
     elif inversion == "exact":
