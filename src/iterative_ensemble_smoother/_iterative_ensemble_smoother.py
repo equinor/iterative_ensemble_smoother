@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 from iterative_ensemble_smoother.utils import (
     _validate_inputs,
-    _create_errors,
+    covariance_to_correlation,
     steplength_exponential,
     response_projection,
 )
@@ -116,7 +116,7 @@ class SIES:
 
         E -= E.mean(axis=1, keepdims=True)
 
-        R, observation_errors_std = _create_errors(observation_errors, inversion)
+        R, observation_errors_std = covariance_to_correlation(observation_errors)
 
         # Store D as defined by Equation (14) in Evensen (2019)
         self.D_ = E + observation_values.reshape(num_obs, 1)
@@ -145,8 +145,8 @@ class SIES:
 
         W: npt.NDArray[np.double] = create_coefficient_matrix(  # type: ignore
             _response_ensemble,
-            R,
-            E,
+            R,  # Correlation matrix or None (if 1D array was passed)
+            E,  # Samples from multivariate normal
             D,
             inversion,
             truncation,

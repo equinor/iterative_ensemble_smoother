@@ -7,7 +7,7 @@ import numpy as np
 rng = np.random.default_rng()
 
 from iterative_ensemble_smoother.utils import (
-    _create_errors,
+    covariance_to_correlation,
 )
 
 from iterative_ensemble_smoother.ies import create_coefficient_matrix
@@ -38,7 +38,7 @@ def ensemble_smoother_update_step_row_scaling(
         - np.ones((ensemble_size, ensemble_size)) / ensemble_size
     )
 
-    R, observation_errors = _create_errors(observation_errors, inversion)
+    R, observation_errors = covariance_to_correlation(observation_errors)
 
     D = (E + observation_values.reshape(num_obs, 1)) - response_ensemble
     D = (D.T / observation_errors).T
