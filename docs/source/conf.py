@@ -17,5 +17,5 @@ extensions = [
     "sphinxcontrib.bibtex",
 ]
 bibtex_bibfiles = ["refs.bib"]
-language = "python"
+language = "en"
 html_theme = "sphinx_rtd_theme"

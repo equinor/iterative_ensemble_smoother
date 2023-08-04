@@ -18,7 +18,7 @@ from iterative_ensemble_smoother.ies import create_coefficient_matrix
 
 class SIES:
     """SIES performs the update step of the Subspace Iterative Ensemble Smoother
-    algorithm. See `Evensen[1]`_.
+    algorithm.
 
     :param ensemble_size: The number of realizations in the ensemble model.
     :param steplength_schedule: A function that takes the iteration number (starting at 1) and returns steplength.
