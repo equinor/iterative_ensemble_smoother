@@ -25,6 +25,8 @@ class SIES:
     :param seed: Integer used to seed the random number generator.
     """
 
+    _inversion_methods = ("naive", "exact", "exact_r", "subspace_re")
+
     def __init__(
         self,
         ensemble_size: int,
@@ -36,7 +38,37 @@ class SIES:
         self.iteration_nr = 1
         self.steplength_schedule = steplength_schedule
         self.coefficient_matrix = np.zeros(shape=(ensemble_size, ensemble_size))
-        self.seed = seed
+        self.rng = np.random.default_rng(seed)
+
+    def _get_E(self, *, observation_errors, observation_values, ensemble_size):
+        """Draw samples from N(0, Cdd). Use cached values if already drawn."""
+
+        # Return cached values if they exist
+        if hasattr(self, "E_"):
+            return self.E_
+
+        # A covariance matrix was passed
+        # Columns of E should be sampled from N(0, Cdd) and centered, Evensen 2019
+        if observation_errors.ndim == 2:
+            E = self.rng.multivariate_normal(
+                mean=np.zeros_like(observation_values),
+                cov=observation_errors,
+                size=ensemble_size,
+                method="cholesky",  # An order of magnitude faster than 'svd'
+            ).T
+        # A vector of standard deviations was passed
+        else:
+            E = self.rng.normal(
+                loc=0,
+                scale=observation_errors,
+                size=(ensemble_size, len(observation_errors)),
+            ).T
+
+        # Center values, removing one degree of freedom
+        E -= E.mean(axis=1, keepdims=True)
+
+        self.E_ = E
+        return self.E_
 
     def fit(
         self,
@@ -94,47 +126,53 @@ class SIES:
 
         assert 0 < step_length <= 1, "Step length must be in (0, 1]"
 
-        # Seed here so we draw the same samples in every iteration (call to update())
-        rng = np.random.default_rng(self.seed)
-
-        # A covariance matrix was passed
-        # Columns of E should be sampled from N(0, Cdd) and centered, Evensen 2019
-        if observation_errors.ndim == 2:
-            E = rng.multivariate_normal(
-                mean=np.zeros_like(observation_values),
-                cov=observation_errors,
-                size=ensemble_size,
-                method="cholesky",  # An order of magnitude faster than 'svd'
-            ).T
-        # A vector of standard deviations was passed
-        else:
-            E = rng.normal(
-                loc=0, scale=observation_errors, size=(ensemble_size, num_obs)
-            ).T
-
+        # Draw samples from N(0, C_dd)
+        E = self._get_E(
+            observation_errors=observation_errors,
+            observation_values=observation_values,
+            ensemble_size=ensemble_size,
+        )
         assert E.shape == (num_obs, ensemble_size)
 
-        E -= E.mean(axis=1, keepdims=True)
-
+        # Transform covariance matrix to correlation matrix
         R, observation_errors_std = covariance_to_correlation(observation_errors)
 
         # Store D as defined by Equation (14) in Evensen (2019)
         self.D_ = E + observation_values.reshape(num_obs, 1)
         D = self.D_ - response_ensemble
 
+        # Note on scaling
+        # -------------------
+        # In line 8 in Algorithm 1, we solve (S S^T + E E^T) X = (SW + D - g(X))
+        # for X, and then we compute S.T X. If we scale the rows (observed variables)
+        # of these equations using the standard deviations, we can obtain better
+        # conditioning numbers on the equation. This corresponds to left-multiplying
+        # with a diagonal matrix L := sqrt(diag(C_dd)). In an experiment with
+        # random covariance matrices, this improved the condition number ~90%
+        # of the time.
+        # To see the equality, note that if we scale S, E and K := (SW + D - g(X))
+        # we obtain
+        #              (L S) (L S)^T + (L E) (L E)^T X_2 = L K
+        #              L (S S^T + E E^T) L X_2 = L K
+        # so the new solution X_2 := L^-1 X, expressed in terms of the original X.
+        # But when we left-multiply with S^T, we do so with a transformed S,
+        # so we obtain S_2^T X_2 = (L S)^T (L^-1 X) = S^T X, so the solution
+        # to the transformed system is equal to the solution of the original system.
+        # In the implementation of scaling the right hand side (SW + D - g(X))
+        # we first scale D - g(X), then we scale S implicitly by solving
+        # S Sigma = L Y, instead of S Sigma = Y for S.
+
         # Scale D and E with observation error standard deviations.
         D /= observation_errors_std.reshape(num_obs, 1)
-        E /= observation_errors_std.reshape(num_obs, 1)
+        E = E / observation_errors_std.reshape(num_obs, 1)
 
+        # See section 2.4 in the paper
         if param_ensemble is not None:
-            projected_response = response_ensemble @ response_projection(param_ensemble)
-            _response_ensemble = projected_response / observation_errors_std.reshape(
-                num_obs, 1
-            )
-        else:
-            _response_ensemble = response_ensemble / observation_errors_std.reshape(
-                num_obs, 1
-            )
+            response_ensemble = response_ensemble @ response_projection(param_ensemble)
+
+        _response_ensemble = response_ensemble / observation_errors_std.reshape(
+            num_obs, 1
+        )
         _response_ensemble -= _response_ensemble.mean(axis=1, keepdims=True)
         _response_ensemble /= np.sqrt(ensemble_size - 1)
 
