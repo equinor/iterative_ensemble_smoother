@@ -4,7 +4,8 @@ import scipy as sp  # type: ignore
 
 
 def empirical_covariance_upper(X: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
-    """Compute the upper triangular part of the empirical covariance matrix.
+    """Compute the upper triangular part of the empirical covariance matrix X
+    with shape (num_variables, num_observations).
 
     Examples
     --------
@@ -23,7 +24,7 @@ def empirical_covariance_upper(X: npt.NDArray[np.double]) -> npt.NDArray[np.doub
            [0.981, 0.997, 0.392],
            [0.371, 0.392, 0.407]])
     """
-    num_variables, num_observations = X.shape
+    _, num_observations = X.shape
     X = (X - np.mean(X, axis=1, keepdims=True)) / np.sqrt(num_observations - 1)
     # https://www.math.utah.edu/software/lapack/lapack-blas/dsyrk.html
     XXT: npt.NDArray[np.double] = sp.linalg.blas.dsyrk(alpha=1.0, a=X)
@@ -505,7 +506,7 @@ def inversion_rescaled_subspace(
         C_D_L_inv = 1 / np.sqrt(alpha * C_D)  # Invert the Cholesky factor a diagonal
         C_D_L_times_D_delta = (D_delta.T * C_D_L_inv).T
 
-    U, w, VT = sp.linalg.svd(C_D_L_times_D_delta, overwrite_a=True, full_matrices=False)
+    U, w, _ = sp.linalg.svd(C_D_L_times_D_delta, overwrite_a=True, full_matrices=False)
     idx = singular_values_to_keep(w, truncation=truncation)
 
     # assert np.allclose(VT @ VT.T, np.eye(VT.shape[0]))

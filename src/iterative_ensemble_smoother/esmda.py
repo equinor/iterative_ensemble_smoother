@@ -49,7 +49,7 @@ class ESMDA:
         C_D: npt.NDArray[np.double],
         observations: npt.NDArray[np.double],
         alpha: Union[int, npt.NDArray[np.double]] = 5,
-        seed: Optional[int] = None,
+        seed: Union[np.random._generator.Generator, int, None] = None,
         inversion: str = "exact",
     ) -> None:
         """Initialize Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
@@ -78,8 +78,9 @@ class ESMDA:
         # Validate inputs
         if not (isinstance(C_D, np.ndarray) and C_D.ndim in (1, 2)):
             raise TypeError("Argument `C_D` must be a NumPy array of dimension 1 or 2.")
-            if C_D.ndim == 2 and C_D.shape[0] != C_D.shape[1]:
-                raise ValueError("Argument `C_D` must be square if it's 2D.")
+
+        if C_D.ndim == 2 and C_D.shape[0] != C_D.shape[1]:
+            raise ValueError("Argument `C_D` must be square if it's 2D.")
 
         if not (isinstance(observations, np.ndarray) and observations.ndim == 1):
             raise TypeError("Argument `observations` must be a 1D NumPy array.")
@@ -179,7 +180,7 @@ class ESMDA:
             raise Exception("No more assimilation steps to run.")
 
         # Verify shapes
-        num_inputs, num_ensemble = X.shape
+        _, num_ensemble = X.shape
         num_outputs, num_emsemble2 = Y.shape
         assert (
             num_ensemble == num_emsemble2
