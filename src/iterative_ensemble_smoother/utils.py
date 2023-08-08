@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Tuple, Optional, TYPE_CHECKING
 
 import numpy as np
-import scipy as sp
+import scipy as sp  # type: ignore
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -132,7 +132,7 @@ def _validate_inputs(
 
 def covariance_to_correlation(
     C: npt.NDArray[np.double],
-) -> Tuple[npt.NDArray[np.double], npt.NDArray[np.double]]:
+) -> Tuple[Optional[npt.NDArray[np.double]], npt.NDArray[np.double]]:
     """The input C is either (1) a 2D covariance matrix or (2) a 1D array of
     standard deviations. This function normalizes the covariance matrix to a
     correlation matrix (unit diagonal).
@@ -150,6 +150,7 @@ def covariance_to_correlation(
     >>> stds
     array([2., 2., 2.])
     """
+    assert isinstance(C, np.ndarray) and C.ndim in (1, 2)
 
     # A covariance matrix was passed
     if C.ndim == 2:
@@ -167,10 +168,9 @@ def covariance_to_correlation(
         return correlation_matrix, standard_deviations
 
     # A vector of standard deviations was passed
-    if C.ndim == 1:
-        correlation_matrix = None
-        standard_deviations = C
-        return None, standard_deviations
+    correlation_matrix = None
+    standard_deviations = C
+    return None, standard_deviations
 
 
 if __name__ == "__main__":

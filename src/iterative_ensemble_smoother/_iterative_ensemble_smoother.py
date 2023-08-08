@@ -40,7 +40,13 @@ class SIES:
         self.coefficient_matrix = np.zeros(shape=(ensemble_size, ensemble_size))
         self.rng = np.random.default_rng(seed)
 
-    def _get_E(self, *, observation_errors, observation_values, ensemble_size):
+    def _get_E(
+        self,
+        *,
+        observation_errors: npt.NDArray[np.double],
+        observation_values: npt.NDArray[np.double],
+        ensemble_size: int,
+    ) -> npt.NDArray[np.double]:
         """Draw samples from N(0, Cdd). Use cached values if already drawn."""
 
         # Return cached values if they exist
@@ -67,7 +73,7 @@ class SIES:
         # Center values, removing one degree of freedom
         E -= E.mean(axis=1, keepdims=True)
 
-        self.E_ = E
+        self.E_: npt.NDArray[np.double] = E
         return self.E_
 
     def fit(
