@@ -149,7 +149,7 @@ def exact_inversion(W, S, H, steplength):
     C = S.T @ S  # TODO: Only form upper part of this matrix
     # Add the identity matrix in place
     # See: https://github.com/numpy/numpy/blob/db4f43983cb938f12c311e1f5b7165e270c393b4/numpy/lib/index_tricks.py#L786
-    C.flat[:: ensemble_size + 1] += 1.0
+    C.flat[:: ensemble_size + 1] += 1
 
     # Compute term = (S.T @ S + I)^-1 @ S.T @ H
     try:
@@ -251,7 +251,7 @@ def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
         W = W - steplength * (W - X3)
         return W
     elif inversion == "subspace_re":  # Section 3.4 in paper
-        num_observations, ensemble_size = S.shape
+        _, ensemble_size = S.shape
         nsc = 1.0 / np.sqrt(ensemble_size - 1.0)
         eig, X1 = lowrankE(S, E * nsc, truncation)
         # Compute W2 @ diag(lambda_inv) @ W2.T @ H
@@ -305,7 +305,7 @@ def lowrankE(S, E, truncation):
     X0 = (U0 * inv_sigma0).T @ E  # Same as diag(inv_sigma) @ U0.T @ E
 
     # Equation 14.52
-    U1, sigma1, VT1 = sp.linalg.svd(X0, full_matrices=False)
+    U1, sigma1, _ = sp.linalg.svd(X0, full_matrices=False)
 
     # Equation 14.55
     X1 = (U0 * inv_sigma0) @ U1
