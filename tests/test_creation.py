@@ -5,7 +5,7 @@ import re
 
 
 def test_that_repr_can_be_created():
-    smoother = SIES(100)
+    smoother = SIES()
     smoother_repr = eval(repr(smoother))
     assert isinstance(smoother_repr, SIES)
 

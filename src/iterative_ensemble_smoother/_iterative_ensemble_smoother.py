@@ -27,6 +27,7 @@ class SIES:
 
     def __init__(
         self,
+        *,
         steplength_schedule: Optional[Callable[[int], float]] = None,
         seed: Optional[int] = None,
     ):
@@ -179,7 +180,7 @@ class SIES:
         return param_ensemble @ transition_matrix
 
     def __repr__(self) -> str:
-        return f"SIES()"
+        return "SIES()"
 
 
 class ES:
