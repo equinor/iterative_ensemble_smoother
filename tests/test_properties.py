@@ -86,7 +86,7 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_n(N):
 
     seed = 123
     # find solutions with and without projection
-    model_projection = ies.SIES(N, seed=seed)
+    model_projection = ies.SIES(seed=seed)
     model_projection.fit(
         gX,
         d_sd,
@@ -97,7 +97,7 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_n(N):
     )
     X_posterior_projection = model_projection.update(X_prior)
 
-    model_no_projection = ies.SIES(N, seed=seed)
+    model_no_projection = ies.SIES(seed=seed)
     model_no_projection.fit(
         gX,
         d_sd,
@@ -294,7 +294,7 @@ def test_that_sies_converges_to_es_in_gauss_linear_case():
 
     params_ies = X.copy()
     responses_ies = response_ensemble.copy()
-    smoother_ies = ies.SIES(ensemble_size, seed=seed)
+    smoother_ies = ies.SIES(seed=seed)
     for _ in range(10):
         smoother_ies.fit(responses_ies, d.sd.values, d.value.values)
         params_ies = smoother_ies.update(params_ies)
@@ -368,7 +368,7 @@ def test_that_update_correctly_multiples_gaussians(inversion, errors):
 
     obs_val = 10
     observation_values = np.array([obs_val, obs_val, obs_val])
-    smoother = ies.SIES(N)
+    smoother = ies.SIES(seed=42)
 
     smoother.fit(
         Y,
@@ -468,7 +468,7 @@ def test_that_ies_runs_with_failed_realizations():
     obs_errors = 0.01 + np.abs(rng.normal(size=num_responses))  # Stds must be positive
     ens_mask = np.array([True] * ensemble_size)
     ens_mask[10:] = False
-    smoother = ies.SIES(ensemble_size)
+    smoother = ies.SIES(seed=42)
     smoother.fit(
         response_ensemble[:, ens_mask],
         obs_errors,

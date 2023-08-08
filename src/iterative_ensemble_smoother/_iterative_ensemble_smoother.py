@@ -27,15 +27,11 @@ class SIES:
 
     def __init__(
         self,
-        ensemble_size: int,
-        *,
         steplength_schedule: Optional[Callable[[int], float]] = None,
         seed: Optional[int] = None,
     ):
-        self._initial_ensemble_size = ensemble_size
         self.iteration_nr = 1
         self.steplength_schedule = steplength_schedule
-        self.coefficient_matrix = np.zeros(shape=(ensemble_size, ensemble_size))
         self.seed = seed
 
     def fit(
@@ -93,6 +89,10 @@ class SIES:
                 step_length = self.steplength_schedule(self.iteration_nr)
 
         assert 0 < step_length <= 1, "Step length must be in (0, 1]"
+
+        # If it's the first time the method is called, create coeff matrix
+        if not hasattr(self, "coefficient_matrix"):
+            self.coefficient_matrix = np.zeros(shape=(ensemble_size, ensemble_size))
 
         # Seed here so we draw the same samples in every iteration (call to update())
         rng = np.random.default_rng(self.seed)
@@ -179,7 +179,7 @@ class SIES:
         return param_ensemble @ transition_matrix
 
     def __repr__(self) -> str:
-        return f"SIES(ensemble_size={self._initial_ensemble_size})"
+        return f"SIES()"
 
 
 class ES:
@@ -200,7 +200,7 @@ class ES:
         inversion: str = "exact",
         param_ensemble: Optional[npt.NDArray[np.double]] = None,
     ) -> None:
-        self.smoother = SIES(ensemble_size=response_ensemble.shape[1], seed=self.seed)
+        self.smoother = SIES(seed=self.seed)
         self.smoother.fit(
             response_ensemble,
             observation_errors,

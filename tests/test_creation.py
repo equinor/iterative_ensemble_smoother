@@ -29,7 +29,7 @@ def test_that_bad_inputs_cause_nice_error_messages():
             "response_ensemble must be a matrix of size (number of responses by number of realizations)"
         ),
     ):
-        _ = SIES(ensemble_size).fit(Y.ravel(), obs_errors, obs_values)
+        _ = SIES().fit(Y.ravel(), obs_errors, obs_values)
 
     with pytest.raises(
         ValueError,
@@ -37,7 +37,7 @@ def test_that_bad_inputs_cause_nice_error_messages():
             "observation_errors and observation_values must have the same number of elements"
         ),
     ):
-        _ = SIES(ensemble_size).fit(Y, obs_errors[1:], obs_values)
+        _ = SIES().fit(Y, obs_errors[1:], obs_values)
 
     with pytest.raises(
         ValueError,
@@ -45,13 +45,13 @@ def test_that_bad_inputs_cause_nice_error_messages():
             "observation_values must have the same number of elements as there are responses"
         ),
     ):
-        _ = SIES(ensemble_size).fit(Y, obs_errors[1:], obs_values[1:])
+        _ = SIES().fit(Y, obs_errors[1:], obs_values[1:])
 
     with pytest.raises(
         ValueError,
         match="param_ensemble and response_ensemble must have the same number of columns",
     ):
-        _ = SIES(ensemble_size).fit(
+        _ = SIES().fit(
             Y,
             obs_errors,
             obs_values,
@@ -64,7 +64,7 @@ def test_that_bad_inputs_cause_nice_error_messages():
             "parameter_ensemble must be a matrix of size (number of parameters by number of realizations)"
         ),
     ):
-        _ = SIES(ensemble_size).fit(
+        _ = SIES().fit(
             Y,
             obs_errors,
             obs_values,
