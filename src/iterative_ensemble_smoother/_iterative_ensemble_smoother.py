@@ -35,7 +35,7 @@ class SIES:
         seed: Optional[int] = None,
     ):
         self._initial_ensemble_size = ensemble_size
-        self.iteration_nr = 1
+        self.iteration = 1
         self.steplength_schedule = steplength_schedule
         self.coefficient_matrix = np.zeros(shape=(ensemble_size, ensemble_size))
         self.rng = np.random.default_rng(seed)
@@ -113,6 +113,10 @@ class SIES:
             less than ensemble_size - 1 and the dynamical model is non-linear.
         """
 
+        # ---------------------------------------------------------------------
+        # ----------------- Input validation and setup ------------------------
+        # ---------------------------------------------------------------------
+
         _validate_inputs(
             response_ensemble,
             observation_errors,
@@ -126,11 +130,20 @@ class SIES:
         # Determine the step length
         if step_length is None:
             if self.steplength_schedule is None:
-                step_length = steplength_exponential(self.iteration_nr)
+                step_length = steplength_exponential(self.iteration)
             else:
-                step_length = self.steplength_schedule(self.iteration_nr)
+                step_length = self.steplength_schedule(self.iteration)
 
         assert 0 < step_length <= 1, "Step length must be in (0, 1]"
+
+        if ensemble_mask is None:
+            ensemble_mask = np.ones(ensemble_size, dtype=bool)
+
+        self.ensemble_mask = ensemble_mask
+
+        # ---------------------------------------------------------------------
+        # ----------- Computations corresponding to algorithm 1 ---------------
+        # ---------------------------------------------------------------------
 
         # Draw samples from N(0, C_dd)
         E = self._get_E(
@@ -182,16 +195,11 @@ class SIES:
         _response_ensemble -= _response_ensemble.mean(axis=1, keepdims=True)
         _response_ensemble /= np.sqrt(ensemble_size - 1)
 
-        if ensemble_mask is None:
-            ensemble_mask = np.ones(ensemble_size, dtype=bool)
-
-        self.ensemble_mask = ensemble_mask
-
         W: npt.NDArray[np.double] = create_coefficient_matrix(  # type: ignore
             _response_ensemble,
             R,  # Correlation matrix or None (if 1D array was passed)
             E,  # Samples from multivariate normal
-            D,
+            D,  # D - G(x) in line 7 in algorithm 1
             inversion,
             truncation,
             self.coefficient_matrix[np.ix_(ensemble_mask, ensemble_mask)],
@@ -203,7 +211,7 @@ class SIES:
                 "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."
             )
 
-        self.iteration_nr += 1
+        self.iteration += 1
 
         # Put the values back into the coefficient matrix
         self.coefficient_matrix[np.ix_(ensemble_mask, ensemble_mask)] = W

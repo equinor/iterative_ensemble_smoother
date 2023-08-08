@@ -149,7 +149,7 @@ def exact_inversion(W, S, H, steplength):
     C = S.T @ S  # TODO: Only form upper part of this matrix
     # Add the identity matrix in place
     # See: https://github.com/numpy/numpy/blob/db4f43983cb938f12c311e1f5b7165e270c393b4/numpy/lib/index_tricks.py#L786
-    C.flat[:: ensemble_size + 1] += 1
+    C.flat[:: ensemble_size + 1] += 1.0
 
     # Compute term = (S.T @ S + I)^-1 @ S.T @ H
     try:
@@ -237,7 +237,7 @@ def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
         to_invert = S @ S.T + E @ E.T
         K = S.T @ sp.linalg.solve(to_invert, H, assume_a="sym", overwrite_a=True)
         return W - steplength * (W - K)
-    elif inversion == "exact":
+    elif inversion == "exact":  # Section 3.2 in paper
         return exact_inversion(W, S, H, steplength)
 
     # Implements parts of Eq. 14.31 in the book Data Assimilation,
