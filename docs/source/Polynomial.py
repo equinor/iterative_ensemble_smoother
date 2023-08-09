@@ -135,7 +135,7 @@ X_ES_ert = smoother_es.update(X_ES_ert)
 
 X_IES_ert = X.copy()
 Y_IES_ert = Y.copy()
-smoother_ies = ies.SIES(ensemble_size=ensemble_size, seed=42)
+smoother_ies = ies.SIES(seed=42)
 n_ies_iter = 7
 for i in range(n_ies_iter):
     smoother_ies.fit(Y_IES_ert, d.sd.values, d.value.values)

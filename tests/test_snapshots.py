@@ -119,7 +119,7 @@ def test_iterative_ensemble_smoother_update_step(snapshot, initial_A, initial_S)
     # performing an update step gives us a new A matrix with updated parameters
     # for the ensemble
     seed = 12345
-    smoother = ies.SIES(ensemble_size=initial_A.shape[1], seed=seed)
+    smoother = ies.SIES(seed=seed)
     smoother.fit(
         initial_S,
         observation_errors,
@@ -156,8 +156,7 @@ def test_ensemble_smoother_update_step(snapshot, initial_A, initial_S):
     # performing an update step gives us a new A matrix with updated parameters
     # for the ensemble
     seed = 12345
-    ensemble_size = initial_A.shape[1]
-    smoother = ies.SIES(ensemble_size, seed=seed)
+    smoother = ies.SIES(seed=seed)
     smoother.fit(
         initial_S,
         observation_errors,
