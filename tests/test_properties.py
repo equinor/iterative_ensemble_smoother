@@ -514,7 +514,7 @@ def test_that_diagonal_and_dense_covariance_return_the_same_result(inversion, se
     observation_errors_cov_mat = np.diag(observation_errors_diag_std**2)
 
     # 1D array of standard deviations
-    smoother_diag = ies.SIES(ensemble_size=ensemble_size, seed=1)
+    smoother_diag = ies.SIES(seed=1)
     assert observation_errors_diag_std.ndim == 1
     smoother_diag.fit(
         response_ensemble=response_ensemble,
@@ -526,7 +526,7 @@ def test_that_diagonal_and_dense_covariance_return_the_same_result(inversion, se
     X_post_diag = smoother_diag.update(param_ensemble)
 
     # 2D array of covariances (covariance matrix)
-    smoother_covar = ies.SIES(ensemble_size=ensemble_size, seed=1)
+    smoother_covar = ies.SIES(seed=1)
     assert observation_errors_cov_mat.ndim == 2
     smoother_covar.fit(
         response_ensemble=response_ensemble,
