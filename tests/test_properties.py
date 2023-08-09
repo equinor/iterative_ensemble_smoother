@@ -86,7 +86,7 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_n(N):
 
     seed = 123
     # find solutions with and without projection
-    model_projection = ies.SIES(N, seed=seed)
+    model_projection = ies.SIES(seed=seed)
     model_projection.fit(
         gX,
         d_sd,
@@ -97,7 +97,7 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_n(N):
     )
     X_posterior_projection = model_projection.update(X_prior)
 
-    model_no_projection = ies.SIES(N, seed=seed)
+    model_no_projection = ies.SIES(seed=seed)
     model_no_projection.fit(
         gX,
         d_sd,
@@ -294,7 +294,7 @@ def test_that_sies_converges_to_es_in_gauss_linear_case():
 
     params_ies = X.copy()
     responses_ies = response_ensemble.copy()
-    smoother_ies = ies.SIES(ensemble_size, seed=seed)
+    smoother_ies = ies.SIES(seed=seed)
     for _ in range(10):
         smoother_ies.fit(responses_ies, d.sd.values, d.value.values)
         params_ies = smoother_ies.update(params_ies)
@@ -368,7 +368,7 @@ def test_that_update_correctly_multiples_gaussians(inversion, errors):
 
     obs_val = 10
     observation_values = np.array([obs_val, obs_val, obs_val])
-    smoother = ies.SIES(N)
+    smoother = ies.SIES(seed=42)
 
     smoother.fit(
         Y,
@@ -468,7 +468,7 @@ def test_that_ies_runs_with_failed_realizations():
     obs_errors = 0.01 + np.abs(rng.normal(size=num_responses))  # Stds must be positive
     ens_mask = np.array([True] * ensemble_size)
     ens_mask[10:] = False
-    smoother = ies.SIES(ensemble_size)
+    smoother = ies.SIES(seed=42)
     smoother.fit(
         response_ensemble[:, ens_mask],
         obs_errors,
@@ -494,6 +494,51 @@ def test_that_ies_runs_with_failed_realizations():
     param_ensemble = smoother.update(param_ensemble)
 
     assert param_ensemble.shape == (num_params, ens_mask.sum())
+
+
+@pytest.mark.parametrize("seed", list(range(10)))
+@pytest.mark.parametrize("inversion", ["naive", "exact", "exact_r", "subspace_re"])
+def test_that_diagonal_and_dense_covariance_return_the_same_result(inversion, seed):
+    rng = np.random.default_rng(seed)
+
+    # Create a random problem instance
+    ensemble_size = rng.choice([5, 10, 50, 100])
+    num_params = rng.choice([5, 10, 50, 100])
+    num_obs = rng.choice([5, 10, 50, 100])
+
+    param_ensemble = rng.normal(size=(num_params, ensemble_size))  # X
+    response_ensemble = rng.normal(size=(num_obs, ensemble_size))  # Y
+    observation_values = rng.normal(size=num_obs)  # d
+
+    observation_errors_diag_std = np.exp(rng.normal(size=num_obs))
+    observation_errors_cov_mat = np.diag(observation_errors_diag_std**2)
+
+    # 1D array of standard deviations
+    smoother_diag = ies.SIES(seed=1)
+    assert observation_errors_diag_std.ndim == 1
+    smoother_diag.fit(
+        response_ensemble=response_ensemble,
+        observation_errors=observation_errors_diag_std,
+        observation_values=observation_values,
+        inversion=inversion,
+        param_ensemble=param_ensemble,
+    )
+    X_post_diag = smoother_diag.update(param_ensemble)
+
+    # 2D array of covariances (covariance matrix)
+    smoother_covar = ies.SIES(seed=1)
+    assert observation_errors_cov_mat.ndim == 2
+    smoother_covar.fit(
+        response_ensemble=response_ensemble,
+        observation_errors=observation_errors_cov_mat,
+        observation_values=observation_values,
+        inversion=inversion,
+        param_ensemble=param_ensemble,
+    )
+    X_post_covar = smoother_covar.update(param_ensemble)
+
+    assert np.allclose(X_post_diag, X_post_covar)  # Same result
+    assert not np.allclose(param_ensemble, X_post_covar)  # Update happened
 
 
 @pytest.mark.limit_memory("70 MB")
@@ -537,3 +582,10 @@ def test_memory_usage():
         observation_values,
     )
     smoother.update(X)
+
+
+if __name__ == "__main__":
+    import pytest
+
+    # --durations=10  <- May be used to show potentially slow tests
+    pytest.main(args=[__file__, "--doctest-modules", "-v", "-v"])

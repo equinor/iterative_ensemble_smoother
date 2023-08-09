@@ -133,14 +133,13 @@ plot_result(new_A, response_x_axis, uniform, priors)
 
 # %%
 import numpy as np
-from matplotlib import pyplot as plt
 import iterative_ensemble_smoother as ies
 
 
 def iterative_smoother():
     A_current = np.copy(A)
     iterations = 4
-    smoother = ies.SIES(realizations)
+    smoother = ies.SIES(seed=42)
 
     for _ in range(iterations):
         plot_result(A_current, response_x_axis, uniform, priors)
@@ -160,7 +159,6 @@ iterative_smoother()
 
 # %%
 import numpy as np
-from matplotlib import pyplot as plt
 import iterative_ensemble_smoother as ies
 
 
