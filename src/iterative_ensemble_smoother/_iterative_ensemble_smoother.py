@@ -135,7 +135,6 @@ class SIES:
 
         if ensemble_mask is None:
             ensemble_mask = np.ones(ensemble_size, dtype=bool)
-
         self.ensemble_mask = ensemble_mask
 
         # If it's the first time the method is called, create coeff matrix
@@ -163,20 +162,25 @@ class SIES:
 
         # Note on scaling
         # -------------------
-        # In line 8 in Algorithm 1, we solve (S S^T + E E^T) X = (SW + D - g(X))
-        # for X, and then we compute S.T X. If we scale the rows (observed variables)
+        # In line 8 in Algorithm 1, we have to compute (S S^T + E E^T)^-1 H, where
+        # H := (SW + D - g(X)). This is equivalent to solving the following
+        # equation for an unknown matrix M:
+        #     (S S^T + E E^T) M = (SW + D - g(X))
+        # Afterwards we compute S.T M. If we scale the rows (observed variables)
         # of these equations using the standard deviations, we can obtain better
         # conditioning numbers on the equation. This corresponds to left-multiplying
         # with a diagonal matrix L := sqrt(diag(C_dd)). In an experiment with
         # random covariance matrices, this improved the condition number ~90%
-        # of the time.
-        # To see the equality, note that if we scale S, E and K := (SW + D - g(X))
-        # we obtain
-        #              (L S) (L S)^T + (L E) (L E)^T X_2 = L K
-        #              L (S S^T + E E^T) L X_2 = L K
-        # so the new solution X_2 := L^-1 X, expressed in terms of the original X.
-        # But when we left-multiply with S^T, we do so with a transformed S,
-        # so we obtain S_2^T X_2 = (L S)^T (L^-1 X) = S^T X, so the solution
+        # of the time (results may depend on how random covariance matrices are
+        # generated --- I covariances C by first E ~ stdnorm(), then C = E.T @ E).
+        # To see the equality, note that if we scale S, E and H := (SW + D - g(X))
+        # we obtain:
+        #     (L S) (L S)^T + (L E) (L E)^T M_2 = L H
+        #               L (S S^T + E E^T) L M_2 = L H
+        #            L (S S^T + E E^T) L L^-1 M = L H
+        # so the new solution is M_2 := L^-1 M, expressed in terms of the original M.
+        # But when we left-multiply M_2 with S^T, we do so with a transformed S,
+        # so we obtain S_2^T M_2 = (L S)^T (L^-1 M) = S^T M, so the solution
         # to the transformed system is equal to the solution of the original system.
         # In the implementation of scaling the right hand side (SW + D - g(X))
         # we first scale D - g(X), then we scale S implicitly by solving
@@ -184,6 +188,9 @@ class SIES:
 
         # Scale D and E with observation error standard deviations.
         D /= observation_errors_std.reshape(num_obs, 1)
+
+        # Here we have to make a new copy of E, since if not we would
+        # divide the same E by the standard deviations in every iteration
         E = E / observation_errors_std.reshape(num_obs, 1)
 
         # See section 2.4 in the paper
@@ -227,7 +234,7 @@ class SIES:
             np.ix_(self.ensemble_mask, self.ensemble_mask)
         ]
         transition_matrix /= np.sqrt(ensemble_size - 1)
-        transition_matrix.flat[:: ensemble_size + 1] += 1.0
+        transition_matrix.flat[:: ensemble_size + 1] += 1
 
         return param_ensemble @ transition_matrix
 
