@@ -2,7 +2,7 @@ Iterative Ensemble Smoother
 ===========================
 
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![docs](https://readthedocs.org/projects/iterative_ensemble_smoother/badge/?version=latest&style=plastic)](https://iterative_ensemble_smoother.readthedocs.io/)
+[![docs](https://readthedocs.org/projects/iterative_ensemble_smoother/badge/?version=latest&style=plastic)](https://iterative-ensemble-smoother.readthedocs.io/)
 
 ## About
 
