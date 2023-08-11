@@ -70,7 +70,8 @@ def response_projection(
     # to compute pinv(A) @ A directly without forming pinv(A) explicitly should
     # be faster, but a quick timing showed no such result. Might be worth
     # looking into.
-    return np.linalg.pinv(A) @ A
+    ans: npt.NDArray[np.double] = np.linalg.pinv(A) @ A
+    return ans
 
 
 def _validate_inputs(
