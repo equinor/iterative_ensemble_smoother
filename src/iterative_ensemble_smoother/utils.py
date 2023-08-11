@@ -53,6 +53,14 @@ def response_projection(
     array([[ 0.5,  0. , -0.5],
            [ 0. ,  0. ,  0. ],
            [-0.5,  0. ,  0.5]])
+
+    Equivalent to:
+
+    >>> C = (A - A.mean(axis=1, keepdims=True)) / np.sqrt(3 - 1)
+    >>> np.linalg.pinv(C) @ C
+    array([[ 0.5,  0. , -0.5],
+           [ 0. ,  0. ,  0. ],
+           [-0.5,  0. ,  0.5]])
     """
     ensemble_size = param_ensemble.shape[1]
     A = param_ensemble - param_ensemble.mean(axis=1, keepdims=True)

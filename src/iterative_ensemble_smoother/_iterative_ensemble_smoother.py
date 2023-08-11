@@ -172,7 +172,7 @@ class SIES:
         # with a diagonal matrix L := sqrt(diag(C_dd)). In an experiment with
         # random covariance matrices, this improved the condition number ~90%
         # of the time (results may depend on how random covariance matrices are
-        # generated --- I covariances C by first E ~ stdnorm(), then C = E.T @ E).
+        # generated --- I generated covariances C as E ~ stdnorm(), then C = E.T @ E).
         # To see the equality, note that if we scale S, E and H := (SW + D - g(X))
         # we obtain:
         #     (L S) (L S)^T + (L E) (L E)^T M_2 = L H
@@ -234,7 +234,7 @@ class SIES:
             np.ix_(self.ensemble_mask, self.ensemble_mask)
         ]
         transition_matrix /= np.sqrt(ensemble_size - 1)
-        transition_matrix.flat[:: ensemble_size + 1] += 1
+        transition_matrix.flat[:: ensemble_size + 1] += 1.0
 
         return param_ensemble @ transition_matrix
 
