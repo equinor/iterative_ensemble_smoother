@@ -31,11 +31,12 @@ class SIES:
     Parameters
     ----------
     steplength_schedule : Optional[Callable[[int], float]], optional
-        A function that takes the iteration number (starting at 1) and returns steplength.
+        A function that takes as input the iteration number (starting at 1) and
+        returns steplength (a float in the range (0, 1]).
         The default is None, which defaults to using an exponential decay.
         See the references or the function `steplength_exponential`.
     seed : Optional[int], optional
-        Integer used to seed the random number generator.. The default is None.
+        Integer used to seed the random number generator. The default is None.
 
     Examples
     --------
@@ -66,6 +67,7 @@ class SIES:
         param_ensemble: Optional[npt.NDArray[np.double]] = None,
     ) -> None:
         """Perform one Gauss-Newton step and update the coefficient matrix W.
+        To apply the coefficient matrix W to the ensemble, call update() after fit().
 
         Parameters
         ----------
