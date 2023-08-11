@@ -15,6 +15,7 @@ extensions = [
     "sphinx.ext.doctest",
     "nbsphinx",
     "sphinxcontrib.bibtex",
+    "numpydoc",
 ]
 bibtex_bibfiles = ["refs.bib"]
 language = "en"
