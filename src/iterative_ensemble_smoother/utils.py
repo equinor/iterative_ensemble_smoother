@@ -66,23 +66,11 @@ def response_projection(
     A = param_ensemble - param_ensemble.mean(axis=1, keepdims=True)
     A /= np.sqrt(ensemble_size - 1)
 
-    # The code below is equivalent to np.linalg.pinv(A) @ A, since:
-    # pinv(A) @ A = [V (1/s) U.T] @ [U s V.T]
-    #             = V (1/s) @ s V.T
-
-    # Compute SVD
-    U, s, VT = sp.linalg.svd(A, full_matrices=False)
-
-    # This code is adapted from
-    # https://github.com/numpy/numpy/blob/db4f43983cb938f12c311e1f5b7165e270c393b4/numpy/linalg/linalg.py#L2015
-    rcond = np.asarray(1e-15)
-    cutoff = rcond[..., np.newaxis] * np.amax(s, axis=-1, keepdims=True)
-
-    # Only keep columns in V corresponding to "large" singular values
-    VT_filtered = VT[(s > cutoff), :]
-
-    projection: npt.NDArray[np.double] = VT_filtered.T @ VT_filtered
-    return projection
+    # TODO: Since pinv(A) takes the SVD, it seems like using the SVD directly
+    # to compute pinv(A) @ A directly without forming pinv(A) explicitly should
+    # be faster, but a quick timing showed no such result. Might be worth
+    # looking into.
+    return np.linalg.pinv(A) @ A
 
 
 def _validate_inputs(
