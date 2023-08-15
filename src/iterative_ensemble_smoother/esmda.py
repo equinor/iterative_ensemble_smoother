@@ -2,7 +2,7 @@
 Ensemble Smoother with Multiple Data Assimilation (ES-MDA)
 ----------------------------------------------------------
 
-Imlementation of the 2013 paper "Ensemble smoother with multiple data assimilation"
+Implementation of the 2013 paper "Ensemble smoother with multiple data assimilation"
 
 References
 ----------
@@ -68,9 +68,10 @@ class ESMDA:
             elements `alpha` is constructed. If an 1D array is given, it is
             normalized so sum_i 1/alpha_i = 1 and used. The default is 5, which
             corresponds to np.array([5, 5, 5, 5, 5]).
-        seed : integer, optional
-            A seed or Generator used for random number generation. The argument
-            is passed to numpy.random.default_rng(). The default is None.
+        seed : integer or numpy.random._generator.Generator, optional
+            A seed or numpy.random._generator.Generator used for random number
+            generation. The argument is passed to numpy.random.default_rng().
+            The default is None.
         inversion : str, optional
             Which inversion method to use. The default is "exact".
 
@@ -97,7 +98,9 @@ class ESMDA:
         if not (
             isinstance(seed, (int, np.random._generator.Generator)) or seed is None
         ):
-            raise TypeError("Argument `seed` must be an integer.")
+            raise TypeError(
+                "Argument `seed` must be an integer or numpy.random._generator.Generator."
+            )
 
         if not isinstance(inversion, str):
             raise TypeError(
@@ -131,7 +134,6 @@ class ESMDA:
         if isinstance(C_D, np.ndarray) and C_D.ndim == 2:
             self.C_D_L = sp.linalg.cholesky(C_D, lower=False)
         elif isinstance(C_D, np.ndarray) and C_D.ndim == 1:
-            assert len(C_D) == num_outputs
             self.C_D_L = np.sqrt(C_D)
         else:
             raise TypeError("Argument `C_D` must be 1D or 2D array")
