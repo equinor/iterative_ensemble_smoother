@@ -19,7 +19,6 @@ class LinearModel:
     def __init__(self, a, b):
         self.a = a
         self.b = b
-        self.size = 2
 
     @classmethod
     def random(cls):

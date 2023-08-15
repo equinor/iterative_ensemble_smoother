@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Tuple, Optional, TYPE_CHECKING
 
 import numpy as np
+import scipy as sp  # type: ignore
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -44,13 +45,33 @@ def response_projection(
 ) -> npt.NDArray[np.double]:
     """A^+A projection is necessary when the parameter matrix has fewer rows than
     columns, and when the forward model is non-linear. Section 2.4.3
+
+    Examples
+    --------
+    >>> A = np.arange(9, dtype=float).reshape(3,3)
+    >>> response_projection(A)
+    array([[ 0.5,  0. , -0.5],
+           [ 0. ,  0. ,  0. ],
+           [-0.5,  0. ,  0.5]])
+
+    Equivalent to:
+
+    >>> C = (A - A.mean(axis=1, keepdims=True)) / np.sqrt(3 - 1)
+    >>> np.linalg.pinv(C) @ C
+    array([[ 0.5,  0. , -0.5],
+           [ 0. ,  0. ,  0. ],
+           [-0.5,  0. ,  0.5]])
     """
     ensemble_size = param_ensemble.shape[1]
-    A = (param_ensemble - param_ensemble.mean(axis=1, keepdims=True)) / np.sqrt(
-        ensemble_size - 1
-    )
-    projection: npt.NDArray[np.double] = np.linalg.pinv(A) @ A
-    return projection
+    A = param_ensemble - param_ensemble.mean(axis=1, keepdims=True)
+    A /= np.sqrt(ensemble_size - 1)
+
+    # TODO: Since pinv(A) takes the SVD, it seems like using the SVD directly
+    # to compute pinv(A) @ A directly without forming pinv(A) explicitly should
+    # be faster, but a quick timing showed no such result. Might be worth
+    # looking into.
+    ans: npt.NDArray[np.double] = np.linalg.pinv(A) @ A
+    return ans
 
 
 def _validate_inputs(
@@ -106,21 +127,51 @@ def _validate_inputs(
         )
 
 
-def _create_errors(
-    observation_errors: npt.NDArray[np.double],
-    inversion: str,
-) -> Tuple[npt.NDArray[np.double], npt.NDArray[np.double]]:
-    if observation_errors.ndim == 2:
-        R = observation_errors
-        observation_errors = np.sqrt(observation_errors.diagonal())
-        # The line below is equivalent to:
-        # R = np.diag(1 / observation_errors) @ R @ np.diag(1 / observation_errors)
-        R = R * np.outer(1 / observation_errors, 1 / observation_errors)
+def covariance_to_correlation(
+    C: npt.NDArray[np.double],
+) -> Tuple[Optional[npt.NDArray[np.double]], npt.NDArray[np.double]]:
+    """The input C is either (1) a 2D covariance matrix or (2) a 1D array of
+    standard deviations. This function normalizes the covariance matrix to a
+    correlation matrix (unit diagonal).
 
-    elif observation_errors.ndim == 1 and inversion == "exact_r":
-        R = np.identity(len(observation_errors))
+    Examples
+    --------
+    >>> C = np.array([[4., 1., 0.],
+    ...               [1., 4., 1.],
+    ...               [0., 1., 4.]])
+    >>> corr_mat, stds = covariance_to_correlation(C)
+    >>> corr_mat
+    array([[1.  , 0.25, 0.  ],
+           [0.25, 1.  , 0.25],
+           [0.  , 0.25, 1.  ]])
+    >>> stds
+    array([2., 2., 2.])
+    """
+    assert isinstance(C, np.ndarray) and C.ndim in (1, 2)
 
-    else:
-        R = None
+    # A covariance matrix was passed
+    if C.ndim == 2:
+        standard_deviations = np.sqrt(C.diagonal())
 
-    return R, observation_errors
+        # Create a correlation matrix from a covariance matrix
+        # https://en.wikipedia.org/wiki/Covariance_matrix#Relation_to_the_correlation_matrix
+
+        # Divide every column
+        correlation_matrix = C / standard_deviations.reshape(1, -1)
+
+        # Divide every row
+        correlation_matrix /= standard_deviations.reshape(-1, 1)
+
+        return correlation_matrix, standard_deviations
+
+    # A vector of standard deviations was passed
+    correlation_matrix = None
+    standard_deviations = C
+    return None, standard_deviations
+
+
+if __name__ == "__main__":
+    import pytest
+
+    # --durations=10  <- May be used to show potentially slow tests
+    pytest.main(args=[__file__, "--doctest-modules", "-v", "-v"])
