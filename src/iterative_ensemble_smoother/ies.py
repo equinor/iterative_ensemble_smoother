@@ -188,7 +188,7 @@ def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
     array([[0.76348548, 0.63347165],
            [1.94605809, 1.79944675]])
 
-    Diagonal corvariane matrix:
+    Diagonal covariance matrix:
 
     >>> R = np.eye(2)
     >>> E = np.eye(2)
@@ -210,10 +210,7 @@ def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
 
     # Add the identity matrix in place
     # See: https://github.com/numpy/numpy/blob/db4f43983cb938f12c311e1f5b7165e270c393b4/numpy/lib/index_tricks.py#L786
-    Omega.flat[: ensemble_size * ensemble_size : ensemble_size + 1] += 1
-
-    # Omega.transposeInPlace();
-    # MatrixXd S = Omega.fullPivLu().solve(Y.transpose()).transpose();
+    Omega.flat[: ensemble_size * ensemble_size : ensemble_size + 1] += 1.0
 
     # Line 6 of Algorithm 1, also Section 5
     # Solving for the average sensitivity matrix.
@@ -243,12 +240,30 @@ def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
         to_invert.flat[:: to_invert.shape[0] + 1] += 1e-12
         K = S.T @ sp.linalg.solve(to_invert, H, assume_a="sym", overwrite_a=True)
         return W - steplength * (W - K)
-    elif inversion == "exact":
+    elif inversion == "exact":  # Section 3.2 in paper
         return exact_inversion(W, S, H, steplength)
-    else:
-        return subspace_inversion(W, S, E, H, truncation, inversion, steplength, R=R)
 
-    return None
+    # Implements parts of Eq. 14.31 in the book Data Assimilation,
+    # The Ensemble Kalman Filter, 2nd Edition by Geir Evensen.
+
+    elif inversion == "exact_r":  # Section 3.3 in paper
+        eig, X1 = lowrankCinv(S, R, truncation)
+        # Compute W2 @ diag(lambda_inv) @ W2.T @ H
+        X3 = np.linalg.multi_dot([S.T, X1 * eig, X1.T, H])
+        # Line 9 in algorithm 1
+        W = W - steplength * (W - X3)
+        return W
+    elif inversion == "subspace_re":  # Section 3.4 in paper
+        _, ensemble_size = S.shape
+        nsc = 1.0 / np.sqrt(ensemble_size - 1.0)
+        eig, X1 = lowrankE(S, E * nsc, truncation)
+        # Compute W2 @ diag(lambda_inv) @ W2.T @ H
+        X3 = np.linalg.multi_dot([S.T, X1 * eig, X1.T, H])
+        # Line 9 in algorithm 1
+        W = W - steplength * (W - X3)
+        return W
+    else:
+        raise Exception(f"Invalid inversion {inversion}")
 
 
 def lowrankE(S, E, truncation):
@@ -293,7 +308,7 @@ def lowrankE(S, E, truncation):
     X0 = (U0 * inv_sigma0).T @ E  # Same as diag(inv_sigma) @ U0.T @ E
 
     # Equation 14.52
-    U1, sigma1, VT1 = sp.linalg.svd(X0, full_matrices=False)
+    U1, sigma1, _ = sp.linalg.svd(X0, full_matrices=False)
 
     # Equation 14.55
     X1 = (U0 * inv_sigma0) @ U1
@@ -345,7 +360,12 @@ def lowrankCinv(S, R, truncation):
 
     # Equation (14.26)
     U0_inv_sigma = U0 * inv_sig0
-    X0 = np.linalg.multi_dot([U0_inv_sigma.T, R, U0_inv_sigma])
+
+    # If a 1D array was passed for covariance, then R (correlation matrix) is None
+    if R is None:
+        X0 = U0_inv_sigma.T @ U0_inv_sigma
+    else:
+        X0 = np.linalg.multi_dot([U0_inv_sigma.T, R, U0_inv_sigma])
 
     U1, sig, _ = sp.linalg.svd(X0, full_matrices=False)
 
@@ -355,30 +375,6 @@ def lowrankCinv(S, R, truncation):
     # Equation (14.29)
     eig = 1 / (1 + sig)
     return eig, X1
-
-
-def subspace_inversion(W, S, E, H, truncation, inversion, steplength, R=None):
-    assert inversion in ("exact_r", "subspace_re")
-
-    num_observations, ensemble_size = S.shape
-    nsc = 1.0 / np.sqrt(ensemble_size - 1.0)
-
-    if inversion == "subspace_re":  # Section 3.4 in paper
-        eig, X1 = lowrankE(S, E * nsc, truncation)
-    elif inversion == "exact_r":  # # Section 3.3 in paper
-        eig, X1 = lowrankCinv(S, R, truncation)
-    else:
-        raise Exception(f"Invalid inversion {inversion}")
-
-    # Implements parts of Eq. 14.31 in the book Data Assimilation,
-    # The Ensemble Kalman Filter, 2nd Edition by Geir Evensen.
-
-    # Compute W2 @ diag(lambda_inv) @ W2.T @ H
-    X3 = np.linalg.multi_dot([S.T, X1 * eig, X1.T, H])
-
-    # Line 9 in algorithm 1
-    W = W - steplength * (W - X3)
-    return W
 
 
 if __name__ == "__main__":

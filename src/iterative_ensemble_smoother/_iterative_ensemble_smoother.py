@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 from iterative_ensemble_smoother.utils import (
     _validate_inputs,
-    _create_errors,
+    covariance_to_correlation,
     steplength_exponential,
     response_projection,
 )
@@ -25,15 +25,53 @@ class SIES:
     :param seed: Integer used to seed the random number generator.
     """
 
+    _inversion_methods = ("naive", "exact", "exact_r", "subspace_re")
+
     def __init__(
         self,
         *,
         steplength_schedule: Optional[Callable[[int], float]] = None,
         seed: Optional[int] = None,
     ):
-        self.iteration_nr = 1
+        self.iteration = 1
         self.steplength_schedule = steplength_schedule
-        self.seed = seed
+        self.rng = np.random.default_rng(seed)
+
+    def _get_E(
+        self,
+        *,
+        observation_errors: npt.NDArray[np.double],
+        observation_values: npt.NDArray[np.double],
+        ensemble_size: int,
+    ) -> npt.NDArray[np.double]:
+        """Draw samples from N(0, Cdd). Use cached values if already drawn."""
+
+        # Return cached values if they exist
+        if hasattr(self, "E_"):
+            return self.E_
+
+        # A covariance matrix was passed
+        # Columns of E should be sampled from N(0, Cdd) and centered, Evensen 2019
+        if observation_errors.ndim == 2:
+            E = self.rng.multivariate_normal(
+                mean=np.zeros_like(observation_values),
+                cov=observation_errors,
+                size=ensemble_size,
+                method="cholesky",  # An order of magnitude faster than 'svd'
+            ).T
+        # A vector of standard deviations was passed
+        else:
+            E = self.rng.normal(
+                loc=0,
+                scale=observation_errors,
+                size=(ensemble_size, len(observation_errors)),
+            ).T
+
+        # Center values, removing one degree of freedom
+        E -= E.mean(axis=1, keepdims=True)
+
+        self.E_: npt.NDArray[np.double] = E
+        return self.E_
 
     def fit(
         self,
@@ -72,6 +110,10 @@ class SIES:
             less than ensemble_size - 1 and the dynamical model is non-linear.
         """
 
+        # ---------------------------------------------------------------------
+        # ----------------- Input validation and setup ------------------------
+        # ---------------------------------------------------------------------
+
         _validate_inputs(
             response_ensemble,
             observation_errors,
@@ -85,70 +127,87 @@ class SIES:
         # Determine the step length
         if step_length is None:
             if self.steplength_schedule is None:
-                step_length = steplength_exponential(self.iteration_nr)
+                step_length = steplength_exponential(self.iteration)
             else:
-                step_length = self.steplength_schedule(self.iteration_nr)
+                step_length = self.steplength_schedule(self.iteration)
 
         assert 0 < step_length <= 1, "Step length must be in (0, 1]"
+
+        if ensemble_mask is None:
+            ensemble_mask = np.ones(ensemble_size, dtype=bool)
+        self.ensemble_mask = ensemble_mask
 
         # If it's the first time the method is called, create coeff matrix
         if not hasattr(self, "coefficient_matrix"):
             self.coefficient_matrix = np.zeros(shape=(ensemble_size, ensemble_size))
 
-        # Seed here so we draw the same samples in every iteration (call to update())
-        rng = np.random.default_rng(self.seed)
+        # ---------------------------------------------------------------------
+        # ----------- Computations corresponding to algorithm 1 ---------------
+        # ---------------------------------------------------------------------
 
-        # A covariance matrix was passed
-        # Columns of E should be sampled from N(0, Cdd) and centered, Evensen 2019
-        if observation_errors.ndim == 2:
-            E = rng.multivariate_normal(
-                mean=np.zeros_like(observation_values),
-                cov=observation_errors,
-                size=ensemble_size,
-                method="cholesky",  # An order of magnitude faster than 'svd'
-            ).T
-        # A vector of standard deviations was passed
-        else:
-            E = rng.normal(
-                loc=0, scale=observation_errors, size=(ensemble_size, num_obs)
-            ).T
-
+        # Draw samples from N(0, C_dd)
+        E = self._get_E(
+            observation_errors=observation_errors,
+            observation_values=observation_values,
+            ensemble_size=ensemble_size,
+        )
         assert E.shape == (num_obs, ensemble_size)
 
-        E -= E.mean(axis=1, keepdims=True)
-
-        R, observation_errors_std = _create_errors(observation_errors, inversion)
+        # Transform covariance matrix to correlation matrix
+        R, observation_errors_std = covariance_to_correlation(observation_errors)
 
         # Store D as defined by Equation (14) in Evensen (2019)
         self.D_ = E + observation_values.reshape(num_obs, 1)
         D = self.D_ - response_ensemble
 
+        # Note on scaling
+        # -------------------
+        # In line 8 in Algorithm 1, we have to compute (S S^T + E E^T)^-1 H, where
+        # H := (SW + D - g(X)). This is equivalent to solving the following
+        # equation for an unknown matrix M:
+        #     (S S^T + E E^T) M = (SW + D - g(X))
+        # Afterwards we compute S.T M. If we scale the rows (observed variables)
+        # of these equations using the standard deviations, we can obtain better
+        # conditioning numbers on the equation. This corresponds to left-multiplying
+        # with a diagonal matrix L := sqrt(diag(C_dd)). In an experiment with
+        # random covariance matrices, this improved the condition number ~90%
+        # of the time (results may depend on how random covariance matrices are
+        # generated --- I generated covariances C as E ~ stdnorm(), then C = E.T @ E).
+        # To see the equality, note that if we scale S, E and H := (SW + D - g(X))
+        # we obtain:
+        #     (L S) (L S)^T + (L E) (L E)^T M_2 = L H
+        #               L (S S^T + E E^T) L M_2 = L H
+        #            L (S S^T + E E^T) L L^-1 M = L H
+        # so the new solution is M_2 := L^-1 M, expressed in terms of the original M.
+        # But when we left-multiply M_2 with S^T, we do so with a transformed S,
+        # so we obtain S_2^T M_2 = (L S)^T (L^-1 M) = S^T M, so the solution
+        # to the transformed system is equal to the solution of the original system.
+        # In the implementation of scaling the right hand side (SW + D - g(X))
+        # we first scale D - g(X), then we scale S implicitly by solving
+        # S Sigma = L Y, instead of S Sigma = Y for S.
+
         # Scale D and E with observation error standard deviations.
         D /= observation_errors_std.reshape(num_obs, 1)
-        E /= observation_errors_std.reshape(num_obs, 1)
 
+        # Here we have to make a new copy of E, since if not we would
+        # divide the same E by the standard deviations in every iteration
+        E = E / observation_errors_std.reshape(num_obs, 1)
+
+        # See section 2.4 in the paper
         if param_ensemble is not None:
-            projected_response = response_ensemble @ response_projection(param_ensemble)
-            _response_ensemble = projected_response / observation_errors_std.reshape(
-                num_obs, 1
-            )
-        else:
-            _response_ensemble = response_ensemble / observation_errors_std.reshape(
-                num_obs, 1
-            )
+            response_ensemble = response_ensemble @ response_projection(param_ensemble)
+
+        _response_ensemble = response_ensemble / observation_errors_std.reshape(
+            num_obs, 1
+        )
         _response_ensemble -= _response_ensemble.mean(axis=1, keepdims=True)
         _response_ensemble /= np.sqrt(ensemble_size - 1)
 
-        if ensemble_mask is None:
-            ensemble_mask = np.ones(ensemble_size, dtype=bool)
-
-        self.ensemble_mask = ensemble_mask
-
         W: npt.NDArray[np.double] = create_coefficient_matrix(  # type: ignore
             _response_ensemble,
-            R,
-            E,
-            D,
+            R,  # Correlation matrix or None (if 1D array was passed)
+            E,  # Samples from multivariate normal
+            D,  # D - G(x) in line 7 in algorithm 1
             inversion,
             truncation,
             self.coefficient_matrix[np.ix_(ensemble_mask, ensemble_mask)],
@@ -160,7 +219,7 @@ class SIES:
                 "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."
             )
 
-        self.iteration_nr += 1
+        self.iteration += 1
 
         # Put the values back into the coefficient matrix
         self.coefficient_matrix[np.ix_(ensemble_mask, ensemble_mask)] = W
