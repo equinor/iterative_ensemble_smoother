@@ -14,11 +14,13 @@
 # ---
 
 # %% [markdown]
-# # Using ESMDA to infer savings rate and deposit in a mutual fund
+# # Estimating savings rate and deposit in a mutual fund using ESMDA
 #
 # In this notebook we use ESMDA to answer the question:
 #
 # - Given observations of someones mutual fund account, what is the likely yearly (1) interest rate and (2) deposit amount?
+#
+# We start with priors on these two parameters, then use the observations to assimilate data, updating the prior to a posterior.
 #
 # The purpose is primarily to demonstrate the API for ESMDA on a simple problem.
 # %%

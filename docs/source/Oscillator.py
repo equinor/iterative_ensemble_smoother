@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Example: Estimating parameters of an anharmonic oscillator
+# # Estimating parameters of an anharmonic oscillator
 #
 # The anharnomic oscillator can be modelled by a non-linear partial differential
 # equation as described in section 6.4.3 of the book Fundamentals of Algorithms
