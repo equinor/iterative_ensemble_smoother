@@ -2,4 +2,4 @@ API reference
 =============
 
 .. automodule:: iterative_ensemble_smoother
-   :members: ES, SIES
+   :members: ES, SIES, ESMDA

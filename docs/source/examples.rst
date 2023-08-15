@@ -7,3 +7,4 @@ Example Usage
 
    Polynomial
    Oscillator
+   MutualFund
