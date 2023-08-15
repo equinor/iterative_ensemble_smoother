@@ -63,7 +63,7 @@ class ESMDA:
     Examples
     --------
     >>> C_D = np.diag([1, 1, 1])
-    >>> observations = np.array([1, 2, 3, 4])
+    >>> observations = np.array([1, 2, 3])
     >>> esmda = ESMDA(C_D, observations)
 
     """
