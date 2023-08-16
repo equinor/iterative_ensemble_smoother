@@ -18,10 +18,8 @@ A library for the iterative ensemble smoothers.
 
 Currently, two main algorithms are implemented:
 
-* :class:`SIES` - Subspace Iterative Ensemble Smoother - based on the method developed
-in :cite:`evensen2018analysis`.
-* :class:`ESMDA` - Ensemble Smoother with Multiple Data Assimilation - based on the method developed
-in :cite:`EMERICK2013`.
+* :class:`SIES` - Subspace Iterative Ensemble Smoother - based on the method developed in :cite:`evensen2018analysis`.
+* :class:`ESMDA` - Ensemble Smoother with Multiple Data Assimilation - based on the method developed in :cite:`EMERICK2013`.
 
 
 Installation
@@ -32,7 +30,6 @@ Install from `PyPI <https://pypi.org/project/iterative-ensemble-smoother/>`_:
 .. code-block:: console
 
     pip install iterative_ensemble_smoother
-
 
 
 Indices and tables
