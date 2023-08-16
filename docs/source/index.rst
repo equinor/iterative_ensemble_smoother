@@ -12,15 +12,22 @@ Iterative Ensemble Smoother
    bibliography
 
 
-A library for the iterative ensemble smoother algorithm.
+A library for the iterative ensemble smoothers.
 
-The algorithm performs :term:`history matching` based on the method developed
+.. currentmodule:: iterative_ensemble_smoother
+
+Currently, two main algorithms are implemented:
+
+* :class:`SIES` - Subspace Iterative Ensemble Smoother - based on the method developed
 in :cite:`evensen2018analysis`.
+* :class:`ESMDA` - Ensemble Smoother with Multiple Data Assimilation - based on the method developed
+in :cite:`EMERICK2013`.
 
 
+Installation
+============
 
-Quick Start Guide
-=================
+Install from `PyPI <https://pypi.org/project/iterative-ensemble-smoother/>`_:
 
 .. code-block:: console
 

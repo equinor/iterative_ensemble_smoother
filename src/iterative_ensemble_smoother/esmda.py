@@ -14,7 +14,7 @@ Comput Geosci 16, 639–659 (2012). https://doi.org/10.1007/s10596-012-9275-5
 Alexandre A. Emerick, Albert C. Reynolds.
 Ensemble smoother with multiple data assimilation.
 Computers & Geosciences, Volume 55, 2013, Pages 3-15, ISSN 0098-3004,
-https://doi.org/10.1016/j.cageo.2012.03.011.
+https://doi.org/10.1016/j.cageo.2012.03.011
 
 https://gitlab.com/antoinecollet5/pyesmda
 
