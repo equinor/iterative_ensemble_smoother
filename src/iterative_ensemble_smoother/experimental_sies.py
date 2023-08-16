@@ -105,12 +105,15 @@ class SIES:
 
         # Equation (14)
         self.D = self.d.reshape(-1, 1) + sample_mvnormal(
-            C_dd_cholesky=self.C_dd, rng=self.rng, size=self.X.shape[1]
+            C_dd_cholesky=self.C_dd_cholesky, rng=self.rng, size=self.X.shape[1]
         )
 
         self.W = np.zeros(shape=(self.X.shape[1], self.X.shape[1]))
+        self.X_i = self.X
 
-    def newton(self, Y, step_length=0.1):
+    def newton(self, Y, step_length=0.5):
+
+        g_X = Y.copy()
 
         # Get shapes
         N = Y.shape[1]  # Ensemble members
@@ -118,8 +121,7 @@ class SIES:
         m = self.C_dd.shape[0]  # Responses (outputs)
 
         # Line 4 in Algorithm 1
-        H = -Y.copy()
-        Y = (Y - Y.mean(axis=1, keepdims=True)) / np.sqrt(N - 1)
+        Y = (g_X - g_X.mean(axis=1, keepdims=True)) / np.sqrt(N - 1)
 
         # Line 5
         Omega = self.W.copy()
@@ -128,10 +130,21 @@ class SIES:
         # Line 6
         if n < N - 1:
             print("Case 2.4.3")
+            A_i0 = (self.X_i - self.X_i.mean(axis=1, keepdims=True)) / np.sqrt(N - 1)
             A_i = self.A @ Omega
+            # assert np.allclose(A_i0, A_i)
             ST = sp.linalg.solve(
                 Omega.T, np.linalg.multi_dot([Y, sp.linalg.pinv(A_i), A_i]).T
             )
+
+        # =============================================================================
+        #             ST, *_ = sp.linalg.lstsq(
+        #                 A_i.T, Y.T
+        #             )
+        #
+        #             S = ST.T @ A_i
+        # =============================================================================
+
         else:
 
             print(f"Solving sytem of size lhs = {Omega.T.shape}, rhs= {Y.T.shape}")
@@ -139,14 +152,37 @@ class SIES:
         S = ST.T
 
         # Line 7
-        H += S @ self.W + self.D
+        H = S @ self.W + self.D - g_X
+
+        center = False
+        if center:
+            factor = np.diag(1 / np.sqrt(np.diag(self.C_dd)))
+            C_dd = factor @ self.C_dd @ factor
+            S = factor @ S
+            H = factor @ H
+        else:
+            C_dd = self.C_dd
 
         # Line 8
-        to_invert = S @ S.T + self.C_dd
-        # to_invert.flat[:: to_invert.shape[1] + 1] += 1e-12
-        self.W = self.W - step_length * (self.W - ST @ sp.linalg.inv(to_invert) @ H)
+        to_invert = S @ S.T + C_dd
 
-        return self.X + self.X @ self.W / (np.sqrt(N - 1))
+        import matplotlib.pyplot as plt
+
+        # plt.imshow(to_invert)
+        # plt.show()
+
+        print(np.mean(S), np.mean(C_dd), np.mean(to_invert))
+        K, *_ = sp.linalg.lstsq(to_invert, H)
+
+        print(np.linalg.det(to_invert))
+        print(np.linalg.det(sp.linalg.inv(to_invert)))
+        #        print(np.linalg.det(ST @ sp.linalg.inv(to_invert) @ H))
+        #       print(np.linalg.det((self.W - ST @ sp.linalg.inv(to_invert) @ H)))
+        # to_invert.flat[:: to_invert.shape[1] + 1] += 1e-12
+        self.W = self.W - step_length * (self.W - S.T @ np.linalg.inv(to_invert) @ H)
+
+        self.X_i = self.X + self.X @ self.W / (np.sqrt(N - 1))
+        return self.X_i
 
 
 if __name__ == "__main__":
@@ -203,7 +239,7 @@ if __name__ == "__main__":
 
     # %%
     num_observations = 25  # Number of years we simulate the mutual fund account
-    num_ensemble = 100  # Number of ensemble members
+    num_ensemble = 1000  # Number of ensemble members
 
     def g(interest_rate, deposit, obs=None):
         """Simulate a mutual fund account, starting with year 0.
@@ -257,13 +293,70 @@ if __name__ == "__main__":
     )
 
     X_i = np.copy(X_prior)
-    for iteration in range(10):
+    for iteration in range(25):
 
-        X_i = smoother.newton(Y=G(X_i))
+        X_i = smoother.newton(Y=G(X_i), step_length=0.3)
 
         if np.any(X_i > 100_000):
             print("Breaking due to large values")
             break
+
+        plot_ensemble(observations, X_i, title=f"Iteration {iteration+1}")
+        plt.show()
+
+    1 / 0
+
+    # --------------------------------------
+
+    def subspace_ies(
+        X: npt.NDArray[np.double],
+        D: npt.NDArray[np.double],
+        g: Callable[[npt.NDArray[np.double]], float],
+        linear: bool = False,
+        step_size: float = 0.3,
+        iterations: int = 2,
+    ) -> npt.NDArray[np.double]:
+        """Updates ensemble of parameters according to the Subspace
+        Iterative Ensemble Smoother (Evensen 2019).
+
+        :param X: sample from prior parameter distribution, i.e. ensemble.
+        :param D: observations perturbed with noise having observation uncertainty.
+        :param g: the forward model g:Re**parameter_size -> R^m
+        :param linear: if g is a linear forward model.
+        :param step_size: the step size of an ensemble-weight update at each iteration.
+        :param iterations: number of iterations in the udpate algorithm.
+        """
+        parameters, realizations = X.shape
+        projection = not linear and parameters < realizations
+        if projection:
+            print("Using projection matrix")
+        m = D.shape[0]
+        W = np.zeros((realizations, realizations))
+        Xi = X.copy()
+        I = np.identity(realizations)
+        centering_matrix = (
+            I - np.ones((realizations, realizations)) / realizations
+        ) / np.sqrt(realizations - 1)
+        E = D @ centering_matrix
+        for i in range(iterations):
+            gXi = G(Xi)
+            Y = gXi @ centering_matrix
+            if projection:
+                Ai = Xi @ centering_matrix  ## NB: Using Xi not X
+                projection_matrix = np.linalg.pinv(Ai) @ Ai
+                Y = Y @ projection_matrix
+            Ohmega = I + W @ centering_matrix
+            S = np.linalg.solve(Ohmega.T, Y.T).T
+            H = S @ W + D - gXi
+            W = W - step_size * (W - S.T @ np.linalg.inv(S @ S.T + E @ E.T) @ H)
+            Xi = X @ (I + W / np.sqrt(realizations - 1))
+            # print(np.mean(Xi, axis=1))
+            yield Xi
+
+    X_i = np.copy(X_prior)
+    for X_i in subspace_ies(
+        X_i, smoother.D, g, linear=False, iterations=10, step_size=0.9
+    ):
 
         plot_ensemble(observations, X_i, title=f"Iteration {iteration+1}")
         plt.show()
