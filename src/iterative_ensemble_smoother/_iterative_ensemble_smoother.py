@@ -141,7 +141,6 @@ class SIES:
             ensemble_size - 1 and the dynamical model g(x) is non-linear.
             This is X in Evensen (2019), and has shape (parameters, ensemble_size).
             The default is None. See section 2.4.3 in Evensen (2019).
-
         """
 
         # ---------------------------------------------------------------------
@@ -271,7 +270,6 @@ class SIES:
         -------
         np.ndarray
             Updated parameter ensemble.
-
         """
         # Line 9 of Algorithm 1
         ensemble_size = self.ensemble_mask.sum()

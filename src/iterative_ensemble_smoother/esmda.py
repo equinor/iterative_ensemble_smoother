@@ -136,7 +136,6 @@ class ESMDA:
         # Only compute the covariance factorization once
         # If it's a full matrix, we gain speedup by only computing cholesky once
         # If it's a diagonal, we gain speedup by never having to compute cholesky
-        num_outputs = C_D.shape[0]
 
         if isinstance(C_D, np.ndarray) and C_D.ndim == 2:
             self.C_D_L = sp.linalg.cholesky(C_D, lower=False)
