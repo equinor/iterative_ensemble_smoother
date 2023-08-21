@@ -63,7 +63,7 @@ dev = [
     "pylint"
 ]
 
-# setuptools_scm also write the version to a file so that one can use the 
+# setuptools_scm also writes the version to a file so that one can use the 
 # __version__ attribute from the package
 [tool.setuptools_scm]
 write_to = "src/iterative_ensemble_smoother/_version.py"
