@@ -25,6 +25,4 @@ language = "en"
 html_theme = "sphinx_rtd_theme"
 
 
-# autosummary_generate = True
-# numpydoc_show_class_members = False
 numpydoc_class_members_toctree = False
