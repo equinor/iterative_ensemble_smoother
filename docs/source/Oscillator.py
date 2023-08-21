@@ -25,15 +25,19 @@
 from matplotlib import pyplot as plt
 
 
-def plot_result(A, response_x_axis, trans_func=lambda x: x, priors=[]):
+def plot_result(A, response_x_axis, trans_func=lambda x: x, priors=[], title=None):
     responses = forward_model(A, priors, response_x_axis)
-    plt.rcParams["figure.figsize"] = [15, 4]
-    _, axs = plt.subplots(1, 1 + len(A))
+    plt.rcParams["figure.figsize"] = [12, 4]
+    fig, axs = plt.subplots(1, 1 + len(A))
+    if title:
+        fig.suptitle(title)
 
     axs[0].plot(response_x_axis, responses)
     for i, param in enumerate(A):
         A_trans = np.array([trans_func(v, *priors[i]) for v in param])
-        axs[i + 1].hist(A_trans, bins=10)
+        axs[i + 1].hist(A_trans, bins="fd")
+
+    fig.tight_layout()
     plt.show()
 
 
@@ -141,45 +145,61 @@ def iterative_smoother():
     iterations = 4
     smoother = ies.SIES(seed=42)
 
-    for _ in range(iterations):
-        plot_result(A_current, response_x_axis, uniform, priors)
+    plot_result(A_current, response_x_axis, uniform, priors, title="Prior")
 
+    for iteration in range(iterations):
+        # Evaluate model
         responses_before = forward_model(A_current, priors, response_x_axis)
         Y = responses_before[observation_x_axis]
 
         smoother.fit(Y, observation_errors, observation_values)
         A_current = smoother.update(A_current)
-    plot_result(A_current, response_x_axis, uniform, priors)
+
+        plot_result(
+            A_current,
+            response_x_axis,
+            uniform,
+            priors,
+            title=f"IES iteration {iteration+1}",
+        )
 
 
 iterative_smoother()
 
 # %% [markdown]
-# ## ES-MDA (Multiple Data Assimilation - Ensemble Smoother)
+# ## ES-MDA (Ensemble Smoother - Multiple Data Assimilation)
 
 # %%
-import numpy as np
-import iterative_ensemble_smoother as ies
+smoother = ies.ESMDA(
+    # Here C_D is a covariance matrix. If a 1D array is passed,
+    # it is interpreted as the diagonal of the covariance matrix,
+    # and NOT as a vector of standard deviations
+    C_D=observation_errors**2,
+    observations=observation_values,
+    # The inflation factors used in ESMDA
+    # They are scaled so that sum_i alpha_i^-1 = 1
+    alpha=np.array([8, 4, 2, 1]),
+    seed=42,
+)
 
 
-def es_mda():
-    A_current = np.copy(A)
-    weights = [8, 4, 2, 1]
-    length = sum(1.0 / x for x in weights)
+A_current = np.copy(A)
 
-    smoother = ies.ES()
-    for weight in weights:
-        plot_result(A_current, response_x_axis, uniform, priors)
+plot_result(A_current, response_x_axis, uniform, priors, title="Prior")
 
-        responses_before = forward_model(A_current, priors, response_x_axis)
-        Y = responses_before[observation_x_axis]
+for iteration in range(smoother.num_assimilations()):
+    # Evaluate the model
+    responses_before = forward_model(A_current, priors, response_x_axis)
+    Y = responses_before[observation_x_axis]
 
-        observation_errors_scaled = observation_errors * sqrt(weight * length)
-        smoother.fit(Y, observation_errors_scaled, observation_values)
-        A_current = smoother.update(A_current)
-    plot_result(A_current, response_x_axis, uniform, priors)
+    # Assimilate data
+    A_current = smoother.assimilate(A_current, Y)
 
-
-es_mda()
-
-# %%
+    # Plot
+    plot_result(
+        A_current,
+        response_x_axis,
+        uniform,
+        priors,
+        title=f"ESMDA iteration {iteration+1}",
+    )
