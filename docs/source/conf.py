@@ -10,8 +10,6 @@ check_output(["jupytext", "Polynomial.py", "-o", "Polynomial.ipynb"])
 
 check_output(["jupytext", "Oscillator.py", "-o", "Oscillator.ipynb"])
 
-check_output(["jupytext", "MutualFund.py", "-o", "MutualFund.ipynb"])
-
 
 extensions = [
     "sphinx.ext.autodoc",
