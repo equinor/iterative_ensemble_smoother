@@ -125,6 +125,7 @@ class SIES:
 
         # Line 5
         Omega = self.W.copy()
+        Omega = (Omega - Omega.mean(axis=1, keepdims=True)) / np.sqrt(N - 1)
         Omega.flat[:: Omega.shape[0] + 1] += 1
 
         # Line 6
@@ -295,7 +296,7 @@ if __name__ == "__main__":
     X_i = np.copy(X_prior)
     for iteration in range(25):
 
-        X_i = smoother.newton(Y=G(X_i), step_length=0.3)
+        X_i = smoother.newton(Y=G(X_i), step_length=0.66)
 
         if np.any(X_i > 100_000):
             print("Breaking due to large values")
