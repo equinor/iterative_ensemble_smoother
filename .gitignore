@@ -11,7 +11,7 @@ __pycache__/
 *.so
 
 # Exclude the _verison.py from the git control
-src/iterative_ensemble_smoother/_verison.py
+src/iterative_ensemble_smoother/_version.py
 
 # Distribution / packaging
 .Python
