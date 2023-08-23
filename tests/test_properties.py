@@ -43,6 +43,11 @@ def g(x):
     return x1 + 0.2 * x1**3
 
 
+def test_version_attribute() -> None:
+    assert ies.__verison__ != "unknown version"
+    assert ies.version_tuple != (0, 0, "unknown version", "unknown commit")
+
+
 @pytest.mark.parametrize("N", [100, 200])
 def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_n(N):
     # For non-linear forward model, g, and n<N,
