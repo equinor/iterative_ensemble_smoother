@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Aug 16 06:49:22 2023
-
-@author: tommy
-"""
-
 from __future__ import annotations
 from typing import Optional, TYPE_CHECKING, Callable
 
@@ -15,16 +7,111 @@ import scipy as sp
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-from iterative_ensemble_smoother.utils import (
-    _validate_inputs,
-    covariance_to_correlation,
-    steplength_exponential,
-    response_projection,
-)
 
-from iterative_ensemble_smoother.ies import create_coefficient_matrix
+# =============================================================================
+# MAIN CLASS
+# =============================================================================
 
 
+class SIES:
+    def __init__(
+        self,
+        param_ensemble: npt.NDArray[np.double],
+        observation_errors: npt.NDArray[np.double],
+        observation_values: npt.NDArray[np.double],
+        *,
+        steplength_schedule: Optional[Callable[[int], float]] = None,
+        seed: Optional[int] = None,
+        verbosity: int = 0,
+    ):
+        self.iteration = 1
+        self.steplength_schedule = steplength_schedule
+        self.rng = np.random.default_rng(seed)
+        self.X = param_ensemble
+        self.d = observation_values
+        self.C_dd = observation_errors
+        self.A = (self.X - self.X.mean(axis=1, keepdims=True)) / np.sqrt(
+            self.X.shape[1] - 1
+        )
+
+        if self.C_dd.ndim == 2:
+            self.C_dd_cholesky = sp.linalg.cholesky(
+                self.C_dd,
+                lower=True,
+                overwrite_a=False,
+                check_finite=True,
+            )
+        else:
+            self.C_dd_cholesky = np.sqrt(self.C_dd)
+
+        # Equation (14)
+        self.D = self.d.reshape(-1, 1) + sample_mvnormal(
+            C_dd_cholesky=self.C_dd_cholesky, rng=self.rng, size=self.X.shape[1]
+        )
+
+        self.W = np.zeros(shape=(self.X.shape[1], self.X.shape[1]))
+        self.X_i = self.X
+
+    def newton(self, Y, step_length=0.5):
+        """Implementation of Algorithm 1."""
+        g_X = Y.copy()
+
+        # Get shapes. Same notation as used in the paper.
+        N = Y.shape[1]  # Ensemble members
+        n = self.X.shape[0]  # Parameters (inputs)
+        m = self.C_dd.shape[0]  # Responses (outputs)
+
+        # Line 4 in Algorithm 1
+        Y = (g_X - g_X.mean(axis=1, keepdims=True)) / np.sqrt(N - 1)
+
+        # Line 5
+        Omega = self.W.copy()
+        Omega -= Omega.mean(axis=1, keepdims=True)
+        Omega /= np.sqrt(N - 1)
+        Omega.flat[:: Omega.shape[0] + 1] += 1  # Add identity in place
+
+        # Line 6
+        if n < N - 1:
+            # There are fewer parameters than realizations. This means that the
+            # system of equations is overdetermined, and we must solve a least
+            # squares problem.
+
+            # An alternative approach to producing A_i would be keeping the
+            # returned value from the previous Newton iteration (call it X_i),
+            # then computing:
+            # A_i = (self.X_i - self.X_i.mean(axis=1, keepdims=True)) / np.sqrt(N - 1)
+            A_i = self.A @ Omega
+            S = sp.linalg.solve(
+                Omega.T, np.linalg.multi_dot([Y, sp.linalg.pinv(A_i), A_i]).T
+            ).T
+        else:
+            # The system is underdetermined
+            S = sp.linalg.solve(Omega.T, Y.T).T
+
+        # Line 7
+        H = S @ self.W + self.D - g_X
+
+        # Line 8
+        assert self.W.shape == (N, N)
+        assert S.shape == (m, N)
+        assert self.C_dd.shape in [(m, m), (m,)]
+        assert H.shape == (m, N)
+        self.W = inversion_exact(
+            W=self.W,
+            step_length=step_length,
+            S=S,
+            C_dd=self.C_dd,
+            H=H,
+            C_dd_cholesky=self.C_dd_cholesky,
+        )
+
+        # Line 9
+        return self.X + self.X @ self.W / (np.sqrt(N - 1))
+
+
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
 def center(X):
     # Center each row, in place, so sum(row) = 0 for every row
     X -= X.mean(axis=1, keepdims=True)
@@ -61,303 +148,171 @@ def sample_mvnormal(*, C_dd_cholesky, rng, size):
         )
 
 
-class SIES:
-    """SIES performs the update step of the Subspace Iterative Ensemble Smoother
-    algorithm.
+def _verify_inversion_args(*, W, step_length, S, C_dd, H, C_dd_cholesky):
+    if C_dd_cholesky is not None:
+        assert C_dd.shape == C_dd_cholesky.shape
 
-    :param ensemble_size: The number of realizations in the ensemble model.
-    :param steplength_schedule: A function that takes the iteration number (starting at 1) and returns steplength.
-    :param seed: Integer used to seed the random number generator.
-    """
+    # Verify N
+    assert W.shape[0] == W.shape[1]
+    assert W.shape[0] == S.shape[1]
+    assert W.shape[0] == H.shape[1]
 
-    _inversion_methods = ("naive", "exact", "exact_r", "subspace_re")
+    # Verify m
+    assert S.shape[0] == C_dd.shape[0]
+    assert S.shape[0] == H.shape[0]
 
-    def __init__(
-        self,
-        param_ensemble: npt.NDArray[np.double],
-        observation_errors: npt.NDArray[np.double],
-        observation_values: npt.NDArray[np.double],
-        *,
-        steplength_schedule: Optional[Callable[[int], float]] = None,
-        seed: Optional[int] = None,
-        verbosity: int = 0,
-    ):
-        self.iteration = 1
-        self.steplength_schedule = steplength_schedule
-        self.rng = np.random.default_rng(seed)
-        self.X = param_ensemble
-        self.d = observation_values
-        self.C_dd = (
-            np.diag(observation_errors)
-            if observation_errors.ndim == 1
-            else observation_errors
+
+# =============================================================================
+# INVERSION FUNCTIONS
+# =============================================================================
+
+
+def inversion_naive(*, W, step_length, S, C_dd, H, C_dd_cholesky=None):
+    """Naive implementation of Equation (42)."""
+    _verify_inversion_args(
+        W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
+    )
+
+    # Since it's naive, we just create zeros here
+    if C_dd.ndim == 1:
+        C_dd = np.diag(C_dd)
+
+    to_invert = S @ S.T + C_dd
+    return W - step_length * (
+        W - np.linalg.multi_dot([S.T, sp.linalg.inv(to_invert), H])
+    )
+
+
+def inversion_direct(*, W, step_length, S, C_dd, H, C_dd_cholesky=None):
+    """Implementation of equation (42)."""
+    _verify_inversion_args(
+        W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
+    )
+
+    # We define K as the solution to
+    # (S @ S.T + C_dd) @ K = H, so that
+    # K = (S @ S.T + C_dd)^-1 H
+    # K = solve(S @ S.T + C_dd, H)
+    if C_dd.ndim == 1:
+        # Since S has shape (m, N), and m >> N, using BLAS is typically faster:
+        # >>> S = np.random.randn(10_000, 100)
+        # >>> %timeit S @ S.T
+        # 512 ms ± 14.4 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+        # >>> %timeit sp.linalg.blas.dsyrk(alpha=1.0, a=S)
+        # 225 ms ± 37 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
+        # Here BLAS only computes the upper triangular part of S @ S.T, but
+        # that's all we need when we call the solver with "lower=False".
+        lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=S)  # Equivalent to S @ S.T
+        lhs.flat[:: lhs.shape[0] + 1] += C_dd
+    else:
+        lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=S, c=C_dd, beta=1.0)  # S @ S.T + C_dd
+
+    K = sp.linalg.solve(
+        lhs,
+        H,
+        lower=False,
+        overwrite_a=True,
+        overwrite_b=False,
+        check_finite=True,
+        assume_a="pos",
+    )
+    return W - step_length * (W - np.linalg.multi_dot([S.T, K]))
+
+
+def inversion_direct_corrscale(*, W, step_length, S, C_dd, H, C_dd_cholesky=None):
+    """Implementation of equation (42), with correlation matrix scaling."""
+    _verify_inversion_args(
+        W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
+    )
+
+    if C_dd.ndim == 2:
+        scale_factor = 1 / np.sqrt(np.diag(C_dd))
+        # Scale rows and columns by diagonal, creating correlation matrix R
+        R = (C_dd * scale_factor.reshape(1, -1)) * scale_factor.reshape(-1, 1)
+    else:
+        scale_factor = 1 / np.sqrt(C_dd)
+        # The correlation matrix R is simply the identity matrix in this case
+
+    # Scale rows
+    S = S * scale_factor.reshape(-1, 1)
+    H = H * scale_factor.reshape(-1, 1)
+
+    # We define K as the solution to
+    # (S @ S.T + C_dd) @ K = H, so that
+    # K = (S @ S.T + C_dd)^-1 H
+    # K = solve(S @ S.T + C_dd, H)
+    if C_dd.ndim == 1:
+        lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=S)  # S.T @ S
+        lhs.flat[:: lhs.shape[0] + 1] += 1
+    else:
+        lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=S, beta=1.0, c=R)  # S.T @ S + R
+
+    K = sp.linalg.solve(
+        lhs,
+        H,
+        sym_pos=False,
+        lower=False,
+        overwrite_a=True,
+        overwrite_b=False,
+        check_finite=True,
+        assume_a="pos",
+    )
+    return W - step_length * (W - np.linalg.multi_dot([S.T, K]))
+
+
+def inversion_exact(*, W, step_length, S, C_dd, H, C_dd_cholesky):
+    """Implementation of equation (50)."""
+    _verify_inversion_args(
+        W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
+    )
+
+    # Special case for diagonal covariance matrix.
+    # See below for a more explanation of these computations.
+    if C_dd.ndim == 1:
+        K = S / C_dd_cholesky.reshape(-1, 1)
+        lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)  # K.T @ K
+        lhs.flat[:: lhs.shape[0] + 1] += 1
+        C_dd_inv_H = H / C_dd.reshape(-1, 1)
+        K = sp.linalg.solve(
+            lhs,
+            S.T @ C_dd_inv_H,
+            lower=False,
+            overwrite_a=True,
+            overwrite_b=True,
+            check_finite=True,
+            assume_a="pos",
         )
-        self.A = (self.X - self.X.mean(axis=1, keepdims=True)) / np.sqrt(
-            self.X.shape[1] - 1
-        )
+        return W - step_length * (W - K)
 
-        if self.C_dd.ndim == 2:
-            self.C_dd_cholesky = sp.linalg.cholesky(
-                self.C_dd, lower=False, overwrite_a=False, check_finite=True
-            )
-        else:
-            self.C_dd_cholesky = np.sqrt(self.C_dd)
+    # Solve the equation: C_dd_cholesky @ K = S for K,
+    # which is equivalent to forming K := C_dd_cholesky^-1 @ S,
+    # exploiting the fact that C_dd_cholesky is lower triangular
+    K = sp.linalg.blas.dtrsm(alpha=1.0, a=C_dd_cholesky, b=S, lower=1)
 
-        # Equation (14)
-        self.D = self.d.reshape(-1, 1) + sample_mvnormal(
-            C_dd_cholesky=self.C_dd_cholesky, rng=self.rng, size=self.X.shape[1]
-        )
+    # Form lhs := (S.T @ C_dd^-1 @ S + I)
+    lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)  # K.T @ K
+    lhs.flat[:: lhs.shape[0] + 1] += 1
 
-        self.W = np.zeros(shape=(self.X.shape[1], self.X.shape[1]))
-        self.X_i = self.X
+    # Compute C_dd^-1 @ H, exploiting the fact that we have the cholesky factor
+    C_dd_inv_H = sp.linalg.cho_solve((C_dd_cholesky, 1), H)
 
-    def newton(self, Y, step_length=0.5):
+    # Solve the following for K
+    # lhs @ K = S.T @ C_dd_inv_H
+    K = sp.linalg.solve(
+        lhs,
+        S.T @ C_dd_inv_H,
+        lower=False,
+        overwrite_a=True,
+        overwrite_b=True,
+        check_finite=True,
+        assume_a="pos",
+    )
 
-        g_X = Y.copy()
-
-        # Get shapes
-        N = Y.shape[1]  # Ensemble members
-        n = self.X.shape[0]  # Parameters (inputs)
-        m = self.C_dd.shape[0]  # Responses (outputs)
-
-        # Line 4 in Algorithm 1
-        Y = (g_X - g_X.mean(axis=1, keepdims=True)) / np.sqrt(N - 1)
-
-        # Line 5
-        Omega = self.W.copy()
-        Omega = (Omega - Omega.mean(axis=1, keepdims=True)) / np.sqrt(N - 1)
-        Omega.flat[:: Omega.shape[0] + 1] += 1
-
-        # Line 6
-        if n < N - 1:
-            print("Case 2.4.3")
-            A_i0 = (self.X_i - self.X_i.mean(axis=1, keepdims=True)) / np.sqrt(N - 1)
-            A_i = self.A @ Omega
-            # assert np.allclose(A_i0, A_i)
-            ST = sp.linalg.solve(
-                Omega.T, np.linalg.multi_dot([Y, sp.linalg.pinv(A_i), A_i]).T
-            )
-
-        # =============================================================================
-        #             ST, *_ = sp.linalg.lstsq(
-        #                 A_i.T, Y.T
-        #             )
-        #
-        #             S = ST.T @ A_i
-        # =============================================================================
-
-        else:
-
-            print(f"Solving sytem of size lhs = {Omega.T.shape}, rhs= {Y.T.shape}")
-            ST = sp.linalg.solve(Omega.T, Y.T)
-        S = ST.T
-
-        # Line 7
-        H = S @ self.W + self.D - g_X
-
-        center = False
-        if center:
-            factor = np.diag(1 / np.sqrt(np.diag(self.C_dd)))
-            C_dd = factor @ self.C_dd @ factor
-            S = factor @ S
-            H = factor @ H
-        else:
-            C_dd = self.C_dd
-
-        # Line 8
-        to_invert = S @ S.T + C_dd
-
-        import matplotlib.pyplot as plt
-
-        # plt.imshow(to_invert)
-        # plt.show()
-
-        print(np.mean(S), np.mean(C_dd), np.mean(to_invert))
-        K, *_ = sp.linalg.lstsq(to_invert, H)
-
-        print(np.linalg.det(to_invert))
-        print(np.linalg.det(sp.linalg.inv(to_invert)))
-        #        print(np.linalg.det(ST @ sp.linalg.inv(to_invert) @ H))
-        #       print(np.linalg.det((self.W - ST @ sp.linalg.inv(to_invert) @ H)))
-        # to_invert.flat[:: to_invert.shape[1] + 1] += 1e-12
-        self.W = self.W - step_length * (self.W - S.T @ np.linalg.inv(to_invert) @ H)
-
-        self.X_i = self.X + self.X @ self.W / (np.sqrt(N - 1))
-        return self.X_i
+    return W - step_length * (W - K)
 
 
 if __name__ == "__main__":
     import pytest
 
     # --durations=10  <- May be used to show potentially slow tests
-    pytest.main(args=[__file__, "--doctest-modules", "-v", "-v"])
-
-    import numpy as np
-    import matplotlib.pyplot as plt
-
-    np.set_printoptions(suppress=True)
-    rng = np.random.default_rng(12345)
-
-    plt.rcParams["figure.figsize"] = (6, 6)
-    plt.rcParams.update({"font.size": 10})
-
-    import iterative_ensemble_smoother as ies
-
-    # %%
-    def plot_ensemble(observations, X, title=None):
-        """Utility function for plotting the ensemble."""
-        fig, axes = plt.subplots(1, 4, figsize=(9, 2.5))
-
-        if title:
-            fig.suptitle(title, fontsize=14)
-
-        x = np.arange(len(observations))
-        axes[0].plot(x, observations, label="Observations", zorder=10, lw=3)
-        for simulation in G(X).T:
-            axes[0].plot(x, simulation, color="black", alpha=0.33, zorder=0)
-        axes[0].legend()
-
-        axes[1].set_title("Interest rate")
-        axes[1].hist(X[0, :], bins="fd")
-        axes[1].axvline(x=INTEREST_RATE, label="Truth", color="black", ls="--")
-        axes[1].legend()
-
-        axes[2].set_title("Deposit")
-        axes[2].hist(X[1, :], bins="fd")
-        axes[2].axvline(x=DEPOSIT, label="Truth", color="black", ls="--")
-        axes[2].legend()
-
-        axes[3].scatter(*X)
-        axes[3].scatter([INTEREST_RATE], [DEPOSIT], label="Truth", color="black", s=50)
-        axes[3].legend()
-
-        fig.tight_layout()
-
-        return fig, axes
-
-    # %% [markdown]
-    # ## Define synthetic truth and use it to create noisy observations
-
-    # %%
-    num_observations = 25  # Number of years we simulate the mutual fund account
-    num_ensemble = 1000  # Number of ensemble members
-
-    def g(interest_rate, deposit, obs=None):
-        """Simulate a mutual fund account, starting with year 0.
-
-        g is linear in deposit, but non-linear in interest_rate.
-        """
-        obs = obs or num_observations
-
-        saved = 0
-        for year in range(obs):
-            yield saved
-            saved = saved * interest_rate + deposit
-
-    # Test the function
-    assert list(g(1.1, 100, obs=4)) == [0, 100.0, 210.0, 331.0]
-
-    def G(X):
-        """Run model g(x) on every column in X."""
-        return np.array([np.array(list(g(*i))) for i in X.T]).T
-
-    # True inputs, unknown to us
-    INTEREST_RATE = 1.05
-    DEPOSIT = 1000
-    X_true = np.array([INTEREST_RATE, DEPOSIT])
-
-    # Real world observations
-    observations = np.array(list(g(*X_true))) * (
-        1 + rng.standard_normal(size=num_observations) / 10
-    )
-
-    # Priors for interest rate and deposit - quite wide (see plot below)
-    X_prior_interest_rate = 2 ** rng.normal(loc=0, scale=0.1, size=num_ensemble)
-    X_prior_deposit = np.exp(rng.normal(loc=6, scale=0.5, size=num_ensemble))
-
-    X_prior = np.vstack([X_prior_interest_rate, X_prior_deposit])
-    assert X_prior.shape == (2, num_ensemble)
-
-    # %%
-    plot_ensemble(observations, X_prior, title="Prior distribution")
-    plt.show()
-
-    # %% [markdown]
-    # ## Create and run ESMDA - with one iteration
-
-    # %%
-    smoother = SIES(
-        param_ensemble=X_prior,
-        observation_errors=1 + (observations * 0.1) ** 2,
-        observation_values=observations,
-        seed=42,
-    )
-
-    X_i = np.copy(X_prior)
-    for iteration in range(25):
-
-        X_i = smoother.newton(Y=G(X_i), step_length=0.66)
-
-        if np.any(X_i > 100_000):
-            print("Breaking due to large values")
-            break
-
-        plot_ensemble(observations, X_i, title=f"Iteration {iteration+1}")
-        plt.show()
-
-    1 / 0
-
-    # --------------------------------------
-
-    def subspace_ies(
-        X: npt.NDArray[np.double],
-        D: npt.NDArray[np.double],
-        g: Callable[[npt.NDArray[np.double]], float],
-        linear: bool = False,
-        step_size: float = 0.3,
-        iterations: int = 2,
-    ) -> npt.NDArray[np.double]:
-        """Updates ensemble of parameters according to the Subspace
-        Iterative Ensemble Smoother (Evensen 2019).
-
-        :param X: sample from prior parameter distribution, i.e. ensemble.
-        :param D: observations perturbed with noise having observation uncertainty.
-        :param g: the forward model g:Re**parameter_size -> R^m
-        :param linear: if g is a linear forward model.
-        :param step_size: the step size of an ensemble-weight update at each iteration.
-        :param iterations: number of iterations in the udpate algorithm.
-        """
-        parameters, realizations = X.shape
-        projection = not linear and parameters < realizations
-        if projection:
-            print("Using projection matrix")
-        m = D.shape[0]
-        W = np.zeros((realizations, realizations))
-        Xi = X.copy()
-        I = np.identity(realizations)
-        centering_matrix = (
-            I - np.ones((realizations, realizations)) / realizations
-        ) / np.sqrt(realizations - 1)
-        E = D @ centering_matrix
-        for i in range(iterations):
-            gXi = G(Xi)
-            Y = gXi @ centering_matrix
-            if projection:
-                Ai = Xi @ centering_matrix  ## NB: Using Xi not X
-                projection_matrix = np.linalg.pinv(Ai) @ Ai
-                Y = Y @ projection_matrix
-            Ohmega = I + W @ centering_matrix
-            S = np.linalg.solve(Ohmega.T, Y.T).T
-            H = S @ W + D - gXi
-            W = W - step_size * (W - S.T @ np.linalg.inv(S @ S.T + E @ E.T) @ H)
-            Xi = X @ (I + W / np.sqrt(realizations - 1))
-            # print(np.mean(Xi, axis=1))
-            yield Xi
-
-    X_i = np.copy(X_prior)
-    for X_i in subspace_ies(
-        X_i, smoother.D, g, linear=False, iterations=10, step_size=0.9
-    ):
-
-        plot_ensemble(observations, X_i, title=f"Iteration {iteration+1}")
-        plt.show()
+    pytest.main(args=[__file__, "--doctest-modules", "-v", "-v", "--maxfail=1"])
