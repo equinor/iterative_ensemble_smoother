@@ -1,7 +1,7 @@
 [build-system]
 requires = ["setuptools>=63.4.2", "setuptools_scm[toml]>=7.1.0", "wheel"]
 build-backend = "setuptools.build_meta"
-	
+
 [project]
 name = "iterative_ensemble_smoother"
 description="A library for the iterative ensemble smoother algorithm."
@@ -63,7 +63,7 @@ dev = [
     "pylint"
 ]
 
-# setuptools_scm also writes the version to a file so that one can use the 
+# setuptools_scm also writes the version to a file so that one can use the
 # __version__ attribute from the package
 [tool.setuptools_scm]
 write_to = "src/iterative_ensemble_smoother/_version.py"
