@@ -8,7 +8,7 @@ try:
     from ._version import version_tuple
 except ImportError:
     __version__ = "unknown version"
-    version_tuple = (0, 0, "unknown version")
+    version_tuple = (0, 0, "unknown version", "unknown commit")
 
 from iterative_ensemble_smoother._iterative_ensemble_smoother import (
     ES,
