@@ -44,7 +44,7 @@ def g(x):
 
 
 def test_version_attribute() -> None:
-    assert ies.__verison__ != "unknown version"
+    assert ies.__version__ != "unknown version"
     assert ies.version_tuple != (0, 0, "unknown version", "unknown commit")
 
 
