@@ -20,12 +20,9 @@ class SIES:
         observation_errors: npt.NDArray[np.double],
         observation_values: npt.NDArray[np.double],
         *,
-        steplength_schedule: Optional[Callable[[int], float]] = None,
         seed: Optional[int] = None,
-        verbosity: int = 0,
     ):
         self.iteration = 1
-        self.steplength_schedule = steplength_schedule
         self.rng = np.random.default_rng(seed)
         self.X = param_ensemble
         self.d = observation_values
@@ -92,6 +89,7 @@ class SIES:
         H = S @ self.W + self.D - g_X
 
         # Line 8
+        # Some asserts to remind us what the shapes of the matrices are
         assert self.W.shape == (N, N)
         assert S.shape == (m, N)
         assert self.C_dd.shape in [(m, m), (m,)]
@@ -250,7 +248,6 @@ def inversion_direct_corrscale(*, W, step_length, S, C_dd, H, C_dd_cholesky=None
     K = sp.linalg.solve(
         lhs,
         H,
-        sym_pos=False,
         lower=False,
         overwrite_a=True,
         overwrite_b=False,
