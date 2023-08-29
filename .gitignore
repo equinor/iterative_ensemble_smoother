@@ -10,6 +10,9 @@ __pycache__/
 # C extensions
 *.so
 
+# Exclude the _verison.py from the git control
+src/iterative_ensemble_smoother/_version.py
+
 # Distribution / packaging
 .Python
 build/
