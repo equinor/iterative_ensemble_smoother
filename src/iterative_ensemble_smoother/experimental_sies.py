@@ -33,6 +33,8 @@ class SIES:
 
         # Create and store the cholesky factorization of C_dd
         if self.C_dd.ndim == 2:
+            # With lower=True, the cholesky factorization obeys:
+            # C_dd_cholesky @ C_dd_cholesky.T = C_dd
             self.C_dd_cholesky = sp.linalg.cholesky(
                 self.C_dd,
                 lower=True,
@@ -48,6 +50,42 @@ class SIES:
         )
 
         self.W = np.zeros(shape=(self.X.shape[1], self.X.shape[1]))
+
+    def objective(self, W, Y):
+        """Evaluate the objective function."""
+        (prior, likelihood) = self.objective_elementwise(W, Y)
+        return (prior + likelihood).sum()
+
+    def objective_elementwise(self, W, Y):
+        """Equation (9)."""
+
+        # Evaluate the elementwise prior term
+        # Evaluate np.diag(W.T @ W) = (W**2).sum(axis=0)
+        prior = (W**2).sum(axis=0)
+
+        if self.C_dd.ndim == 2:
+            # Evaluate the elementwise likelihood term
+            # Evaluate np.diag((g(X_i) - D).T @ C_dd^{-1} @ (g(X_i) - D))
+            #        = np.diag((Y - D).T @ C_dd^{-1} @ (Y - D))
+            # First let A := Y - D, then use the cholesky factors C_dd = L @ L.T
+            # to write (Y - D).T @ C_dd^{-1} @ (Y - D)
+            #             A.T @ (L @ L.T)^-1 @ A
+            #             (L^-1 @ A).T @ (L^-1 @ A)
+            # To compute the expression above, we solve K := L^-1 @ A,
+            # then we compute np.diag(K.T @ K) as (K**2).sum(axis=0)
+            A = Y - self.D
+            K = sp.linalg.blas.dtrsm(alpha=1.0, a=self.C_dd_cholesky, b=A, lower=1)
+            likelihood = (K**2).sum(axis=0)
+            # assert np.allclose(likelihood, np.diag(A.T @ np.linalg.inv(self.C_dd) @ A))
+
+        else:
+            # If C_dd is diagonal, then (L^-1 @ A) = A / L.reshape(-1, 1)
+            A = Y - self.D
+            K = A / self.C_dd_cholesky.reshape(-1, 1)
+            likelihood = (K**2).sum(axis=0)
+            # assert np.allclose(likelihood, np.diag(A.T @ np.diag(1/self.C_dd) @ A))
+
+        return (prior, likelihood)
 
     def sies_iteration(self, Y, step_length=0.5):
         """Implementation of Algorithm 1."""

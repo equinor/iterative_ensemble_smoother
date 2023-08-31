@@ -90,6 +90,44 @@ class TestInversions:
         assert np.allclose(ans_naive, ans)
 
 
+@pytest.mark.parametrize("seed", list(range(999)))
+def test_that_sies_objective_function_decreases(seed):
+    rng = np.random.default_rng(seed)
+
+    ensemble_size = 50
+    num_params = 25
+    num_obs = num_params
+    X = rng.normal(size=(num_params, ensemble_size))
+
+    C_0 = rng.normal(size=(num_obs, ensemble_size))
+    C_1 = rng.normal(size=(num_obs, num_params))
+    C_2 = rng.normal(size=(num_obs, num_params))
+
+    def G(X):
+        return C_0 + C_1 @ X + 0.01 * C_2 @ X**2
+
+    Y = rng.normal(size=(num_obs, ensemble_size))
+
+    observation_errors = 1 + np.exp(rng.normal(size=num_obs))
+    observation_values = rng.normal(np.zeros(num_obs), observation_errors)
+
+    smoother = SIES(
+        param_ensemble=X,
+        observation_errors=observation_errors,
+        observation_values=observation_values,
+    )
+
+    Y = G(X)
+    objective_before = smoother.objective(W=smoother.W, Y=Y)
+
+    # One iteration
+    X_i = smoother.sies_iteration(Y, 0.5)
+    Y_i = G(X_i)
+    objective_after = smoother.objective(W=smoother.W, Y=Y_i)
+
+    assert objective_after <= objective_before
+
+
 @pytest.mark.limit_memory("70 MB")
 def test_memory_usage():
     """Estimate expected memory usage and make sure ES does not waste memory
@@ -132,7 +170,7 @@ def test_memory_usage():
         observation_values=observation_values,
     )
 
-    smoother.newton(Y, 1.0)
+    smoother.sies_iteration(Y, 1.0)
 
 
 if __name__ == "__main__":
