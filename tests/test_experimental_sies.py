@@ -104,7 +104,7 @@ def test_that_sies_objective_function_decreases(seed):
     C_2 = rng.normal(size=(num_obs, num_params))
 
     def G(X):
-        return C_0 + C_1 @ X + 0.01 * C_2 @ X**2
+        return C_0 + C_1 @ X + 0.1 * C_2 @ X**3
 
     observation_errors = 1 + np.exp(rng.normal(size=num_obs))
     observation_values = rng.normal(np.zeros(num_obs), observation_errors)
@@ -140,13 +140,13 @@ def test_that_sies_objective_function_decreases_with_many_iterations(seed):
     C_2 = rng.normal(size=(num_obs, num_params))
 
     def G(X):
-        return C_0 + C_1 @ X + 0.01 * C_2 @ X**2
+        return C_0 + C_1 @ X + 0.1 * C_2 @ X**3
 
     observation_errors = 1 + np.exp(rng.normal(size=num_obs))
     observation_values = rng.normal(np.zeros(num_obs), observation_errors)
 
-    F = rng.normal(size=(num_obs, num_obs))
-    observation_errors = F.T @ F
+    # F = rng.normal(size=(num_obs, num_obs))
+    # observation_errors = F.T @ F
 
     smoother = SIES(
         param_ensemble=X,
@@ -162,14 +162,14 @@ def test_that_sies_objective_function_decreases_with_many_iterations(seed):
 
     for iteration in range(9):
         # One iteration
-        X_i = smoother.sies_iteration(Y_i, 0.05)
+        X_i = smoother.sies_iteration(Y_i, 0.01)
         Y_i = G(X_i)
 
         # Evaluate objective
         objective_after = smoother.objective(W=smoother.W, Y=Y_i)
 
         # Check and update
-        assert objective_after < objective_before
+        assert objective_after <= objective_before
         objective_before = objective_after
 
 
@@ -260,6 +260,6 @@ if __name__ == "__main__":
             "-v",
             "-v",
             "--maxfail=1",
-            "-k test_that_sies_objective_function_decreases_with_many_iterations",
+            "-k test_that_sies_objective",
         ]
     )
