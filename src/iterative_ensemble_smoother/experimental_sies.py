@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, TYPE_CHECKING, Callable
+from typing import Optional, TYPE_CHECKING
 
 import numpy as np
 import scipy as sp
@@ -31,6 +31,7 @@ class SIES:
             self.X.shape[1] - 1
         )
 
+        # Create and store the cholesky factorization of C_dd
         if self.C_dd.ndim == 2:
             self.C_dd_cholesky = sp.linalg.cholesky(
                 self.C_dd,
@@ -47,9 +48,8 @@ class SIES:
         )
 
         self.W = np.zeros(shape=(self.X.shape[1], self.X.shape[1]))
-        self.X_i = self.X
 
-    def newton(self, Y, step_length=0.5):
+    def sies_iteration(self, Y, step_length=0.5):
         """Implementation of Algorithm 1."""
         g_X = Y.copy()
 
@@ -104,24 +104,27 @@ class SIES:
         )
 
         # Line 9
-        return self.X + self.X @ self.W / (np.sqrt(N - 1))
+        return self.X + self.X @ self.W / np.sqrt(N - 1)
 
 
 # =============================================================================
 # UTILITY FUNCTIONS
 # =============================================================================
-def center(X):
-    # Center each row, in place, so sum(row) = 0 for every row
-    X -= X.mean(axis=1, keepdims=True)
-
-
-def scale(X):
-    # Scale each entry so a_ij = a_ij / sqrt(columns - 1)
-    X /= np.sqrt(X.shape[1] - 1)
 
 
 def sample_mvnormal(*, C_dd_cholesky, rng, size):
-    """Draw samples from N(0, C_dd).
+    """Draw samples from the multivariate normal N(0, C_dd).
+
+    We write this function from scratch here we can to avoid factoring the
+    covariance matrix every time we sample, and we want to exploit diagonal
+    covariance matrices in terms of computation and memory. More specifically:
+
+        - numpy.random.multivariate_normal factors the covariance in every call
+        - scipy.stats.Covariance.from_diagonal stores off diagonal zeros
+
+    So the best choice seems to be to write sampling from scratch.
+
+
 
     Examples
     --------
@@ -137,13 +140,16 @@ def sample_mvnormal(*, C_dd_cholesky, rng, size):
            [13.19096962, 11.66687903]])
     """
 
+    # Standard normal samples
+    z = rng.standard_normal(size=(C_dd_cholesky.shape[0], size))
+
     # A 2D covariance matrix was passed
     if C_dd_cholesky.ndim == 2:
-        return C_dd_cholesky @ rng.standard_normal(size=(C_dd_cholesky.shape[0], size))
+        return C_dd_cholesky @ z
+
+    # A 1D diagonal of a covariance matrix was passed
     else:
-        return C_dd_cholesky.reshape(-1, 1) * rng.standard_normal(
-            size=(C_dd_cholesky.shape[0], size)
-        )
+        return C_dd_cholesky.reshape(-1, 1) * z
 
 
 def _verify_inversion_args(*, W, step_length, S, C_dd, H, C_dd_cholesky):
