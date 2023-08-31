@@ -106,8 +106,6 @@ def test_that_sies_objective_function_decreases(seed):
     def G(X):
         return C_0 + C_1 @ X + 0.01 * C_2 @ X**2
 
-    Y = rng.normal(size=(num_obs, ensemble_size))
-
     observation_errors = 1 + np.exp(rng.normal(size=num_obs))
     observation_values = rng.normal(np.zeros(num_obs), observation_errors)
 
@@ -126,6 +124,84 @@ def test_that_sies_objective_function_decreases(seed):
     objective_after = smoother.objective(W=smoother.W, Y=Y_i)
 
     assert objective_after <= objective_before
+
+
+@pytest.mark.parametrize("seed", list(range(999)))
+def test_that_sies_objective_function_decreases_with_many_iterations(seed):
+    rng = np.random.default_rng(seed)
+
+    ensemble_size = 5
+    num_params = 10
+    num_obs = num_params
+    X = rng.normal(size=(num_params, ensemble_size))
+
+    C_0 = rng.normal(size=(num_obs, ensemble_size))
+    C_1 = rng.normal(size=(num_obs, num_params))
+    C_2 = rng.normal(size=(num_obs, num_params))
+
+    def G(X):
+        return C_0 + C_1 @ X + 0.01 * C_2 @ X**2
+
+    observation_errors = 1 + np.exp(rng.normal(size=num_obs))
+    observation_values = rng.normal(np.zeros(num_obs), observation_errors)
+
+    F = rng.normal(size=(num_obs, num_obs))
+    observation_errors = F.T @ F
+
+    smoother = SIES(
+        param_ensemble=X,
+        observation_errors=observation_errors,
+        observation_values=observation_values,
+    )
+
+    X_i = np.copy(X)
+
+    # Initial evaluation
+    Y_i = G(X_i)
+    objective_before = smoother.objective(W=smoother.W, Y=Y_i)
+
+    for iteration in range(9):
+        # One iteration
+        X_i = smoother.sies_iteration(Y_i, 0.05)
+        Y_i = G(X_i)
+
+        # Evaluate objective
+        objective_after = smoother.objective(W=smoother.W, Y=Y_i)
+
+        # Check and update
+        assert objective_after < objective_before
+        objective_before = objective_after
+
+
+def test_line_search():
+    rng = np.random.default_rng(4)
+
+    ensemble_size = 5
+    num_params = 10
+    num_obs = num_params
+    X = rng.normal(size=(num_params, ensemble_size))
+
+    C_0 = rng.normal(size=(num_obs, ensemble_size))
+    C_1 = rng.normal(size=(num_obs, num_params))
+    C_2 = rng.normal(size=(num_obs, num_params))
+
+    def G(X):
+        return C_0 + C_1 @ X + 0.1 * C_2 @ X**3
+
+    observation_errors = 1 + np.exp(rng.normal(size=num_obs))
+    observation_values = rng.normal(np.zeros(num_obs), observation_errors)
+
+    F = rng.normal(size=(num_obs, num_obs))
+    observation_errors = F.T @ F
+
+    smoother = SIES(
+        param_ensemble=X,
+        observation_errors=observation_errors,
+        observation_values=observation_values,
+    )
+
+    for X_i in smoother.line_search(g=G):
+        print("-------------------------------")
 
 
 @pytest.mark.limit_memory("70 MB")
@@ -177,4 +253,13 @@ if __name__ == "__main__":
     import pytest
 
     # --durations=10  <- May be used to show potentially slow tests
-    pytest.main(args=[__file__, "--doctest-modules", "-v", "-v", "--maxfail=1"])
+    pytest.main(
+        args=[
+            __file__,
+            "--doctest-modules",
+            "-v",
+            "-v",
+            "--maxfail=1",
+            "-k test_that_sies_objective_function_decreases_with_many_iterations",
+        ]
+    )

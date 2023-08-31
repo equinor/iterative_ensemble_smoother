@@ -52,12 +52,13 @@ class SIES:
         self.W = np.zeros(shape=(self.X.shape[1], self.X.shape[1]))
 
     def objective(self, W, Y):
-        """Evaluate the objective function."""
+        """Evaluate the objective function in Equation (18)."""
         (prior, likelihood) = self.objective_elementwise(W, Y)
         return (prior + likelihood).sum()
 
     def objective_elementwise(self, W, Y):
-        """Equation (9)."""
+        """Equation (18) elementwise and termwise, returning a tuple of vectors
+        (prior, likelihood)."""
 
         # Evaluate the elementwise prior term
         # Evaluate np.diag(W.T @ W) = (W**2).sum(axis=0)
@@ -87,8 +88,70 @@ class SIES:
 
         return (prior, likelihood)
 
+    def line_search(self, g):
+        """Demo implementation of halving line search."""
+        HALVING_ITERATIONS = 20
+
+        # Initial evaluation
+        X_i = np.copy(self.X)
+        N = self.X.shape[1]  # Ensemble members
+        Y_i = g(X_i)
+
+        # Perform a Gauss-Newton iteration
+        while True:
+            objective_before = self.objective(W=self.W, Y=Y_i)
+
+            # Perform a line-search iteration
+            for p in range(HALVING_ITERATIONS):
+                step_length = 1 / 2**p  # 1, 0.5, 0.25, 0.125, ...
+                print(f"Step length: {step_length}")
+
+                # Make a step with the given step length
+                proposed_W = self.propose_W(Y_i, step_length)
+
+                # Evaluate at the new point
+                proposed_X = self.X + self.X @ proposed_W / np.sqrt(N - 1)
+                proposed_Y = g(proposed_X)
+                objective = self.objective(W=proposed_W, Y=proposed_Y)
+
+                # Accept the step
+                if objective <= objective_before:
+                    print(f"Accepting. {objective} <= {objective_before}")
+                    # Update variables
+                    self.W = proposed_W
+                    X_i = proposed_X
+                    Y_i = proposed_Y
+                    break
+                else:
+                    print(f"Rejecting. {objective} > {objective_before}")
+
+            # If no break was triggered in the for loop, we never accepted
+            else:
+                print(
+                    f"Terminating. No improvement after {HALVING_ITERATIONS} iterations."
+                )
+                return X_i
+
+            yield X_i
+
     def sies_iteration(self, Y, step_length=0.5):
-        """Implementation of Algorithm 1."""
+        """Implementation of lines 4-9 in Algorithm 1.
+
+        Returns updated X and updates internal state W.
+        """
+
+        # Lines 4 through 8
+        proposed_W = self.propose_W(Y, step_length)
+        self.W = proposed_W
+
+        # Line 9
+        N = Y.shape[1]  # Ensemble members
+        return self.X + self.X @ self.W / np.sqrt(N - 1)
+
+    def propose_W(self, Y, step_length=0.5):
+        """Implementation of lines 4-8 in Algorithm 1.
+
+        Returns a proposal for W_i, without updating any internal state."""
         g_X = Y.copy()
 
         # Get shapes. Same notation as used in the paper.
@@ -132,7 +195,7 @@ class SIES:
         assert S.shape == (m, N)
         assert self.C_dd.shape in [(m, m), (m,)]
         assert H.shape == (m, N)
-        self.W = inversion_exact(
+        return inversion_exact(
             W=self.W,
             step_length=step_length,
             S=S,
