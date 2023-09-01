@@ -87,7 +87,7 @@ def plot_result(A, response_x_axis):
 # ## Setup
 
 # %%
-def _generate_observations(K):
+def generate_observations(K):
     """Run the model with true parameters, then generate observations."""
     # Evaluate using true parameter values on a fine grid with K sample points
     x = simulate_anharmonic(omega=3.5e-2, lmbda=3e-4, K=K)
@@ -125,7 +125,7 @@ def forward_model(A, response_x_axis):
 
 
 response_x_axis = range(2500)
-observation_values, observation_errors, observation_x_axis = _generate_observations(
+observation_values, observation_errors, observation_x_axis = generate_observations(
     len(response_x_axis)
 )
 
@@ -154,8 +154,8 @@ plt.show()
 
 # %%
 realizations = 100
-priors = [(2.5e-2, 4.5e-2), (2.0e-4, 4.0e-4)]
-A = np.vstack([rng.uniform(low, high, size=realizations) for (low, high) in priors])
+priors = [(0.035, 0.01), (0.0003, 0.0001)]
+A = np.vstack([rng.normal(low, high, size=realizations) for (low, high) in priors])
 
 plot_result(A, response_x_axis)
 
