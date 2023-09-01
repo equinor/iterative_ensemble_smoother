@@ -22,7 +22,6 @@ class SIES:
         *,
         seed: Optional[int] = None,
     ):
-        self.iteration = 1
         self.rng = np.random.default_rng(seed)
         self.X = param_ensemble
         self.d = observation_values
@@ -54,7 +53,7 @@ class SIES:
     def objective(self, W, Y):
         """Evaluate the objective function in Equation (18)."""
         (prior, likelihood) = self.objective_elementwise(W, Y)
-        return (prior + likelihood).sum()
+        return (prior + likelihood).mean()
 
     def objective_elementwise(self, W, Y):
         """Equation (18) elementwise and termwise, returning a tuple of vectors
@@ -89,8 +88,8 @@ class SIES:
         return (prior, likelihood)
 
     def line_search(self, g):
-        """Demo implementation of halving line search."""
-        HALVING_ITERATIONS = 20
+        """Demo implementation of line search."""
+        BACKTRACK_ITERATIONS = 10
 
         # Initial evaluation
         X_i = np.copy(self.X)
@@ -102,8 +101,8 @@ class SIES:
             objective_before = self.objective(W=self.W, Y=Y_i)
 
             # Perform a line-search iteration
-            for p in range(HALVING_ITERATIONS):
-                step_length = 1 / 2**p  # 1, 0.5, 0.25, 0.125, ...
+            for p in range(BACKTRACK_ITERATIONS):
+                step_length = pow(1 / 2, p)  # 1, 0.5, 0.25, 0.125, ...
                 print(f"Step length: {step_length}")
 
                 # Make a step with the given step length
@@ -128,7 +127,7 @@ class SIES:
             # If no break was triggered in the for loop, we never accepted
             else:
                 print(
-                    f"Terminating. No improvement after {HALVING_ITERATIONS} iterations."
+                    f"Terminating. No improvement after {BACKTRACK_ITERATIONS} iterations."
                 )
                 return X_i
 
@@ -183,7 +182,7 @@ class SIES:
                 Omega.T, np.linalg.multi_dot([Y, sp.linalg.pinv(A_i), A_i]).T
             ).T
         else:
-            # The system is underdetermined
+            # The system is not overdetermined
             S = sp.linalg.solve(Omega.T, Y.T).T
 
         # Line 7
@@ -203,9 +202,6 @@ class SIES:
             H=H,
             C_dd_cholesky=self.C_dd_cholesky,
         )
-
-        # Line 9
-        return self.X + self.X @ self.W / np.sqrt(N - 1)
 
 
 # =============================================================================

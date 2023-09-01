@@ -160,7 +160,8 @@ def test_that_sies_objective_function_decreases_with_many_iterations(seed):
     Y_i = G(X_i)
     objective_before = smoother.objective(W=smoother.W, Y=Y_i)
 
-    for iteration in range(9):
+    # Iterations
+    for _ in range(9):
         # One iteration
         X_i = smoother.sies_iteration(Y_i, 0.01)
         Y_i = G(X_i)
