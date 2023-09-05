@@ -56,7 +56,9 @@
 # %%
 from matplotlib import pyplot as plt
 import numpy as np
+from scipy import stats
 from scipy.special import erf
+import iterative_ensemble_smoother as ies
 
 rng = np.random.default_rng(12345)
 
@@ -157,24 +159,24 @@ plt.show()
 #
 # Let $g$ be the forward model, so that $y = g(x)$.
 # Assume for instance that $x$ must be a positive parameter.
-# In that case we can for instance use an exponential prior on $x$.
+# If so, then we can for instance use an exponential prior on $x$.
 # But if we use samples from an exponential prior directly in an ensemble smoother,
 # there is no guarantee that the posterior samples will be positive.
 #
-# The trick is to let sample $x \sim \mathcal{N}(0, 1)$,
+# The trick is to sample $x \sim \mathcal{N}(0, 1)$,
 # then define a function $f$ that maps from standard normal to the
 # exponential distribution.
 # This funciton can be constructed by first mapping from standard normal to
 # the interval $[0, 1)$ using the CDF, then mapping to exponential using the
-# inverse CDF of the exponential distribution.
+# quantile function (inverse CDF) of the exponential distribution.
+#
+# In summary:
 #
 # - We send $x \sim \mathcal{N}(0, 1)$ into the ensemble smoother as before
-# - We use the composite function $g(f(x))$ as our forward model instead of $g(x)$
-# - When we plot the prior and posterior, we show $f(x)$ instead of $x$ directly
+# - We use the composite function $g(f(x))$ as our forward model, instead of $g(x)$
+# - When we plot the prior and posterior, we plot $f(x)$ instead of $x$ directly
 
 # %%
-from scipy import stats
-
 # Create Uniform prior distributions
 realizations = 100
 PRIORS = [stats.uniform(loc=0.025, scale=0.02), stats.uniform(loc=0.0002, scale=0.0002)]
@@ -184,14 +186,14 @@ PRIORS = [stats.uniform(loc=0.025, scale=0.02), stats.uniform(loc=0.0002, scale=
 def prior_to_standard_normal(A):
     """Map prior to U(0, 1), then use inverse of CDF to map to N(0, 1)."""
     return np.vstack(
-        [stats.norm().ppf(prior.cdf(A_col)) for (A_col, prior) in zip(A, PRIORS)]
+        [stats.norm().ppf(prior.cdf(A_param)) for (A_param, prior) in zip(A, PRIORS)]
     )
 
 
 def standard_normal_to_prior(A):
     """Reverse mapping."""
     return np.vstack(
-        [prior.ppf(stats.norm().cdf(A_col)) for (A_col, prior) in zip(A, PRIORS)]
+        [prior.ppf(stats.norm().cdf(A_param)) for (A_param, prior) in zip(A, PRIORS)]
     )
 
 
@@ -213,28 +215,24 @@ plot_result(standard_normal_to_prior(A), response_x_axis)
 # ## Update step
 
 # %%
-import numpy as np
-import iterative_ensemble_smoother as ies
-
 plot_result(standard_normal_to_prior(A), response_x_axis)
 
+# The forward model is composed with the transformation from N(0, 1) to uniform priors
 responses_before = forward_model(standard_normal_to_prior(A), response_x_axis)
 Y = responses_before[observation_x_axis]
 
+# Run smoother for one step
 smoother = ies.ES()
 smoother.fit(Y, observation_errors, observation_values)
 new_A = smoother.update(A)
 
 plot_result(standard_normal_to_prior(new_A), response_x_axis)
 
+
 # %% [markdown]
 # ## Iterative smoother
 
 # %%
-import numpy as np
-import iterative_ensemble_smoother as ies
-
-
 def iterative_smoother(A):
     A_current = np.copy(A)
     iterations = 4
@@ -256,20 +254,19 @@ def iterative_smoother(A):
 
 iterative_smoother(A)
 
+
 # %% [markdown]
 # ## ES-MDA (Multiple Data Assimilation - Ensemble Smoother)
 
 # %%
-import numpy as np
-import iterative_ensemble_smoother as ies
-
-
 def es_mda(A):
     A_current = np.copy(A)
     weights = [8, 4, 2, 1]
     length = sum(1.0 / x for x in weights)
+    weights = [w_i * length for w_i in weights]
+    assert sum(1 / w_i for w_i in weights) == 1
 
-    smoother = ies.ES()
+    smoother = ies.ES(seed=42)
     for weight in weights:
         plot_result(standard_normal_to_prior(A_current), response_x_axis)
 
@@ -278,7 +275,10 @@ def es_mda(A):
         )
         Y = responses_before[observation_x_axis]
 
-        observation_errors_scaled = observation_errors * np.sqrt(weight * length)
+        # We take square roots of weights (alpha in paper) since
+        # we're working with the standard deviations as observation
+        # errors, and not the covariance matrix
+        observation_errors_scaled = observation_errors * np.sqrt(weight)
         smoother.fit(Y, observation_errors_scaled, observation_values)
         A_current = smoother.update(A_current)
 
