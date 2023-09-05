@@ -150,14 +150,64 @@ plt.legend()
 plt.show()
 
 # %% [markdown]
-# ## Plot prior
+# ## Create and plot prior
+#
+#
+# This section shows a "trick" for working with non-normal priors.
+#
+# Let $g$ be the forward model, so that $y = g(x)$.
+# Assume for instance that $x$ must be a positive parameter.
+# In that case we can for instance use an exponential prior on $x$.
+# But if we use samples from an exponential prior directly in an ensemble smoother,
+# there is no guarantee that the posterior samples will be positive.
+#
+# The trick is to let sample $x \sim \mathcal{N}(0, 1)$,
+# then define a function $f$ that maps from standard normal to the
+# exponential distribution.
+# This funciton can be constructed by first mapping from standard normal to
+# the interval $[0, 1)$ using the CDF, then mapping to exponential using the
+# inverse CDF of the exponential distribution.
+#
+# - We send $x \sim \mathcal{N}(0, 1)$ into the ensemble smoother as before
+# - We use the composite function $g(f(x))$ as our forward model instead of $g(x)$
+# - When we plot the prior and posterior, we show $f(x)$ instead of $x$ directly
 
 # %%
-realizations = 100
-priors = [(0.035, 0.01), (0.0003, 0.0001)]
-A = np.vstack([rng.normal(low, high, size=realizations) for (low, high) in priors])
+from scipy import stats
 
-plot_result(A, response_x_axis)
+# Create Uniform prior distributions
+realizations = 100
+PRIORS = [stats.uniform(loc=0.025, scale=0.02), stats.uniform(loc=0.0002, scale=0.0002)]
+
+
+# %%
+def prior_to_standard_normal(A):
+    """Map prior to U(0, 1), then use inverse of CDF to map to N(0, 1)."""
+    return np.vstack(
+        [stats.norm().ppf(prior.cdf(A_col)) for (A_col, prior) in zip(A, PRIORS)]
+    )
+
+
+def standard_normal_to_prior(A):
+    """Reverse mapping."""
+    return np.vstack(
+        [prior.ppf(stats.norm().cdf(A_col)) for (A_col, prior) in zip(A, PRIORS)]
+    )
+
+
+# verify that mappings are invertible
+A_uniform = np.vstack([prior.rvs(realizations) for prior in PRIORS])
+assert np.allclose(
+    standard_normal_to_prior(prior_to_standard_normal(A_uniform)), A_uniform
+)
+assert np.allclose(
+    prior_to_standard_normal(standard_normal_to_prior(A_uniform)), A_uniform
+)
+
+# %%
+# Create a standard normal prior and plot it in transformed space
+A = rng.standard_normal(size=(2, realizations))
+plot_result(standard_normal_to_prior(A), response_x_axis)
 
 # %% [markdown]
 # ## Update step
@@ -166,16 +216,16 @@ plot_result(A, response_x_axis)
 import numpy as np
 import iterative_ensemble_smoother as ies
 
-plot_result(A, response_x_axis)
+plot_result(standard_normal_to_prior(A), response_x_axis)
 
-responses_before = forward_model(A, response_x_axis)
+responses_before = forward_model(standard_normal_to_prior(A), response_x_axis)
 Y = responses_before[observation_x_axis]
 
 smoother = ies.ES()
 smoother.fit(Y, observation_errors, observation_values)
 new_A = smoother.update(A)
 
-plot_result(new_A, response_x_axis)
+plot_result(standard_normal_to_prior(new_A), response_x_axis)
 
 # %% [markdown]
 # ## Iterative smoother
@@ -185,24 +235,26 @@ import numpy as np
 import iterative_ensemble_smoother as ies
 
 
-def iterative_smoother():
+def iterative_smoother(A):
     A_current = np.copy(A)
     iterations = 4
     smoother = ies.SIES(seed=42)
 
     for _ in range(iterations):
-        plot_result(A_current, response_x_axis)
+        plot_result(standard_normal_to_prior(A_current), response_x_axis)
 
-        responses_before = forward_model(A_current, response_x_axis)
+        responses_before = forward_model(
+            standard_normal_to_prior(A_current), response_x_axis
+        )
         Y = responses_before[observation_x_axis]
 
         smoother.fit(Y, observation_errors, observation_values)
         A_current = smoother.update(A_current)
 
-    plot_result(A_current, response_x_axis)
+    plot_result(standard_normal_to_prior(A_current), response_x_axis)
 
 
-iterative_smoother()
+iterative_smoother(A)
 
 # %% [markdown]
 # ## ES-MDA (Multiple Data Assimilation - Ensemble Smoother)
@@ -212,22 +264,25 @@ import numpy as np
 import iterative_ensemble_smoother as ies
 
 
-def es_mda():
+def es_mda(A):
     A_current = np.copy(A)
     weights = [8, 4, 2, 1]
     length = sum(1.0 / x for x in weights)
 
     smoother = ies.ES()
     for weight in weights:
-        plot_result(A_current, response_x_axis)
+        plot_result(standard_normal_to_prior(A_current), response_x_axis)
 
-        responses_before = forward_model(A_current, response_x_axis)
+        responses_before = forward_model(
+            standard_normal_to_prior(A_current), response_x_axis
+        )
         Y = responses_before[observation_x_axis]
 
         observation_errors_scaled = observation_errors * np.sqrt(weight * length)
         smoother.fit(Y, observation_errors_scaled, observation_values)
         A_current = smoother.update(A_current)
-    plot_result(A_current, response_x_axis)
+
+    plot_result(standard_normal_to_prior(A_current), response_x_axis)
 
 
-es_mda()
+es_mda(A)
