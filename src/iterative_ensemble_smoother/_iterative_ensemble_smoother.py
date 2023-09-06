@@ -17,12 +17,31 @@ from iterative_ensemble_smoother.ies import create_coefficient_matrix
 
 
 class SIES:
-    """SIES performs the update step of the Subspace Iterative Ensemble Smoother
-    algorithm.
+    """
+    Initialize a Subspace Iterative Ensemble Smoother (SIES) instance.
 
-    :param ensemble_size: The number of realizations in the ensemble model.
-    :param steplength_schedule: A function that takes the iteration number (starting at 1) and returns steplength.
-    :param seed: Integer used to seed the random number generator.
+    This is an implementation of the algorithm described in the paper:
+    Efficient Implementation of an Iterative Ensemble Smoother for Data Assimilation and Reservoir History Matching
+    written by Evensen et al (2019), URL: https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full
+
+    The default step length is described in equation (49) in the paper
+    Formulating the history matching problem with consistent error statistics
+    written by Geir Evensen (2021), URL: https://link.springer.com/article/10.1007/s10596-021-10032-7
+
+    Parameters
+    ----------
+    steplength_schedule : Optional[Callable[[int], float]], optional
+        A function that takes as input the iteration number (starting at 1) and
+        returns steplength (a float in the range (0, 1]).
+        The default is None, which defaults to using an exponential decay.
+        See the references or the function `steplength_exponential`.
+    seed : Optional[int], optional
+        Integer used to seed the random number generator. The default is None.
+
+    Examples
+    --------
+    >>> steplength_schedule = lambda iteration: 0.8 * 2**(-iteration - 1)
+    >>> smoother = SIES(steplength_schedule=steplength_schedule, seed=42)
     """
 
     _inversion_methods = ("naive", "exact", "exact_r", "subspace_re")
@@ -85,29 +104,43 @@ class SIES:
         inversion: str = "exact",
         param_ensemble: Optional[npt.NDArray[np.double]] = None,
     ) -> None:
-        """Perform one step of the iterative ensemble smoother algorithm
+        """Perform one Gauss-Newton step and update the coefficient matrix W.
+        To apply the coefficient matrix W to the ensemble, call update() after fit().
 
-        :param response_ensemble: Matrix of responses from the :term:`forward model`.
-            Has shape (number of observations, number of realizations).
-            (Y in Evensen et. al)
-        :param observation_errors: 1D array of measurement errors (standard deviations)
-                                   for each observation, or covariance matrix
-                                   if errors are correlated.
-        :param observation_values: 1D array of observations.
-        :param truncation: float used to determine the number of significant singular
-            values. Defaults to 0.98 (ie. 98% significant values).
-        :param step_length: The step length to be used in the algorithm,
-            defaults to using the method described in Eq. 49 Geir Evensen,
-            Formulating the history matching problem with consistent error
-            statistics, Computational Geosciences (2021) 25:945 –970
-        :param ensemble_mask: 1D array describing which realizations are active. Defaults
-            to all active. Inactive realizations are ignored.
-        :param inversion: The type of subspace inversion used in the algorithm, defaults
-            to exact.
-        :param param_ensemble: All parameters input to dynamical model used to
-            generate responses.
-            Must be passed if total number of parameters is
-            less than ensemble_size - 1 and the dynamical model is non-linear.
+        Parameters
+        ----------
+        response_ensemble : npt.NDArray[np.double]
+            A 2D array of reponses from the model g(X) of shape (observations, ensemble_size).
+            This matrix is Y in Evensen (2019).
+        observation_errors : npt.NDArray[np.double]
+            Either a 1D array of standard deviations, or a 2D covariance matrix.
+            This is C_dd in Evensen (2019), and represents observation or measurement
+            errors. We observe d from the real world, y from the model g(x), and
+            assume that d = y + e, where e is multivariate normal with covariance
+            or standard devaiations given by observation_errors.
+        observation_values : npt.NDArray[np.double]
+            A 1D array of observations, with shape (observations,).
+            This is d in Evensen (2019).
+        truncation : float, optional
+            A value in the range [0, 1], used to determine the number of
+            significant singular values. The default is 0.98.
+        step_length : Optional[float], optional
+            If given, this value (in the range [0, 1]) overrides the step length
+            schedule that was provided at initialization. The default is None.
+        ensemble_mask : Optional[npt.NDArray[bool]], optional
+            A 1D array of booleans describing which realizations in the ensemble
+            that are are active. The default is None, which means all realizations
+            are active. Inactive realizations are ignored (not updated).
+            Must be of shape (ensemble_size,).
+        inversion : InversionType, optional
+            The type of subspace inversion used in the algorithm.
+            The default is InversionType.EXACT.
+        param_ensemble : Optional[npt.NDArray[np.double]], optional
+            All parameters input to dynamical model used to generate responses.
+            Must be passed if total number of parameters is less than
+            ensemble_size - 1 and the dynamical model g(x) is non-linear.
+            This is X in Evensen (2019), and has shape (parameters, ensemble_size).
+            The default is None. See section 2.4.3 in Evensen (2019).
         """
 
         # ---------------------------------------------------------------------
@@ -225,6 +258,19 @@ class SIES:
         self.coefficient_matrix[np.ix_(ensemble_mask, ensemble_mask)] = W
 
     def update(self, param_ensemble: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
+        """Update the parameter ensemble (X in Evensen (2019)).
+
+        Parameters
+        ----------
+        param_ensemble : npt.NDArray[np.double]
+            The (prior) parameter ensemble. The same `param_ensemble` should be
+            used in each Gauss-Newton step.
+
+        Returns
+        -------
+        np.ndarray
+            Updated parameter ensemble.
+        """
         # Line 9 of Algorithm 1
         ensemble_size = self.ensemble_mask.sum()
 

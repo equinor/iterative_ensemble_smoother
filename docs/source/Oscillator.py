@@ -14,7 +14,7 @@
 # ---
 
 # %% [markdown]
-# # Example: Estimating parameters of an anharmonic oscillator
+# # Estimating parameters of an anharmonic oscillator
 #
 # The anharnomic oscillator can be modelled by a non-linear partial differential
 # equation as described in section 6.3.4 of the book [Fundamentals of Algorithms
@@ -66,13 +66,15 @@ plt.rcParams["figure.figsize"] = [8, 3]
 
 
 # %%
-def plot_result(A, response_x_axis):
+def plot_result(A, response_x_axis, title=None):
     """Plot the anharmonic oscillator, as well as marginal
     and joint distributions for the parameters."""
 
     responses = forward_model(A, response_x_axis)
 
     fig, axes = plt.subplots(1, 2 + len(A), figsize=(9, 2.25))
+    if title:
+        fig.suptitle(title)
 
     axes[0].plot(response_x_axis, responses, color="black", alpha=0.1)
     for ax, param, label in zip(axes[1:], A, ["omega", "lambda"]):
@@ -137,7 +139,7 @@ observation_values, observation_errors, observation_x_axis = generate_observatio
 
 # %%
 fig, ax = plt.subplots(figsize=(8, 3))
-
+ax.set_title("Anharmonic Oscillator")
 ax.plot(
     np.arange(2500),
     simulate_anharmonic(omega=3.5e-2, lmbda=3e-4, K=2500),
@@ -212,7 +214,7 @@ A = rng.standard_normal(size=(2, realizations))
 plot_result(standard_normal_to_prior(A), response_x_axis)
 
 # %% [markdown]
-# ## Update step
+# ## A single update step
 
 # %%
 plot_result(standard_normal_to_prior(A), response_x_axis)
@@ -238,51 +240,68 @@ def iterative_smoother(A):
     iterations = 4
     smoother = ies.SIES(seed=42)
 
-    for _ in range(iterations):
-        plot_result(standard_normal_to_prior(A_current), response_x_axis)
+    plot_result(
+        standard_normal_to_prior(A_current),
+        response_x_axis,
+        title="Prior",
+    )
+
+    for iteration in range(iterations):
 
         responses_before = forward_model(
             standard_normal_to_prior(A_current), response_x_axis
         )
+
         Y = responses_before[observation_x_axis]
 
         smoother.fit(Y, observation_errors, observation_values)
         A_current = smoother.update(A_current)
 
-    plot_result(standard_normal_to_prior(A_current), response_x_axis)
+        plot_result(
+            standard_normal_to_prior(A_current),
+            response_x_axis,
+            title=f"SIES iteration {iteration+1}",
+        )
 
 
 iterative_smoother(A)
 
 
 # %% [markdown]
-# ## ES-MDA (Multiple Data Assimilation - Ensemble Smoother)
+# ## ES-MDA (Ensemble Smoother - Multiple Data Assimilation)
 
 # %%
-def es_mda(A):
-    A_current = np.copy(A)
-    weights = [8, 4, 2, 1]
-    length = sum(1.0 / x for x in weights)
-    weights = [w_i * length for w_i in weights]
-    assert sum(1 / w_i for w_i in weights) == 1
 
-    smoother = ies.ES(seed=42)
-    for weight in weights:
-        plot_result(standard_normal_to_prior(A_current), response_x_axis)
-
-        responses_before = forward_model(
-            standard_normal_to_prior(A_current), response_x_axis
-        )
-        Y = responses_before[observation_x_axis]
-
-        # We take square roots of weights (alpha in paper) since
-        # we're working with the standard deviations as observation
-        # errors, and not the covariance matrix
-        observation_errors_scaled = observation_errors * np.sqrt(weight)
-        smoother.fit(Y, observation_errors_scaled, observation_values)
-        A_current = smoother.update(A_current)
-
-    plot_result(standard_normal_to_prior(A_current), response_x_axis)
+smoother = ies.ESMDA(
+    # Here C_D is a covariance matrix. If a 1D array is passed,
+    # it is interpreted as the diagonal of the covariance matrix,
+    # and NOT as a vector of standard deviations
+    C_D=observation_errors**2,
+    observations=observation_values,
+    # The inflation factors used in ESMDA
+    # They are scaled so that sum_i alpha_i^-1 = 1
+    alpha=np.array([8, 4, 2, 1]),
+    seed=42,
+)
 
 
-es_mda(A)
+A_current = np.copy(A)
+
+plot_result(standard_normal_to_prior(A_current), response_x_axis, title="Prior")
+
+for iteration in range(smoother.num_assimilations()):
+    # Evaluate the model
+    responses_before = forward_model(
+        standard_normal_to_prior(A_current), response_x_axis
+    )
+    Y = responses_before[observation_x_axis]
+
+    # Assimilate data
+    A_current = smoother.assimilate(A_current, Y)
+
+    # Plot
+    plot_result(
+        standard_normal_to_prior(A_current),
+        response_x_axis,
+        title=f"ESMDA iteration {iteration+1}",
+    )

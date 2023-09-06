@@ -14,7 +14,7 @@ Comput Geosci 16, 639–659 (2012). https://doi.org/10.1007/s10596-012-9275-5
 Alexandre A. Emerick, Albert C. Reynolds.
 Ensemble smoother with multiple data assimilation.
 Computers & Geosciences, Volume 55, 2013, Pages 3-15, ISSN 0098-3004,
-https://doi.org/10.1016/j.cageo.2012.03.011.
+https://doi.org/10.1016/j.cageo.2012.03.011
 
 https://gitlab.com/antoinecollet5/pyesmda
 
@@ -37,6 +37,37 @@ from iterative_ensemble_smoother.esmda_inversion import (
 
 
 class ESMDA:
+    """Initialize Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
+
+    The implementation follows the 2013 paper by Emerick et al.
+
+    Parameters
+    ----------
+    C_D : np.ndarray
+        Covariance matrix of outputs of shape (num_outputs, num_outputs).
+        If a 1D array is passed, it represents a diagonal covariance matrix.
+    observations : np.ndarray
+        1D array of shape (num_inputs,) representing real-world observations.
+    alpha : int or 1D np.ndarray, optional
+        If an integer `alpha` is given, an array with length `alpha` and
+        elements `alpha` is constructed. If an 1D array is given, it is
+        normalized so sum_i 1/alpha_i = 1 and used. The default is 5, which
+        corresponds to np.array([5, 5, 5, 5, 5]).
+    seed : integer or numpy.random._generator.Generator, optional
+        A seed or numpy.random._generator.Generator used for random number
+        generation. The argument is passed to numpy.random.default_rng().
+        The default is None.
+    inversion : str, optional
+        Which inversion method to use. The default is "exact".
+
+    Examples
+    --------
+    >>> C_D = np.diag([1, 1, 1])
+    >>> observations = np.array([1, 2, 3])
+    >>> esmda = ESMDA(C_D, observations)
+
+    """
+
     # Available inversion methods. The inversion methods all compute
     # C_MD @ (C_DD + alpha * C_D)^(-1)  @ (D - Y)
     _inversion_methods = {
@@ -52,30 +83,6 @@ class ESMDA:
         seed: Union[np.random._generator.Generator, int, None] = None,
         inversion: str = "exact",
     ) -> None:
-        """Initialize Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
-
-        The implementation follows the 2013 paper by Emerick et al.
-
-        Parameters
-        ----------
-        C_D : np.ndarray
-            Covariance matrix of outputs of shape (num_outputs, num_outputs).
-            If a 1D array is passed, it represents a diagonal covariance matrix.
-        observations : np.ndarray
-            1D array of shape (num_inputs,) representing real-world observations.
-        alpha : int or 1D np.ndarray, optional
-            If an integer `alpha` is given, an array with length `alpha` and
-            elements `alpha` is constructed. If an 1D array is given, it is
-            normalized so sum_i 1/alpha_i = 1 and used. The default is 5, which
-            corresponds to np.array([5, 5, 5, 5, 5]).
-        seed : integer or numpy.random._generator.Generator, optional
-            A seed or numpy.random._generator.Generator used for random number
-            generation. The argument is passed to numpy.random.default_rng().
-            The default is None.
-        inversion : str, optional
-            Which inversion method to use. The default is "exact".
-
-        """
         # Validate inputs
         if not (isinstance(C_D, np.ndarray) and C_D.ndim in (1, 2)):
             raise TypeError("Argument `C_D` must be a NumPy array of dimension 1 or 2.")
@@ -129,7 +136,6 @@ class ESMDA:
         # Only compute the covariance factorization once
         # If it's a full matrix, we gain speedup by only computing cholesky once
         # If it's a diagonal, we gain speedup by never having to compute cholesky
-        num_outputs = C_D.shape[0]
 
         if isinstance(C_D, np.ndarray) and C_D.ndim == 2:
             self.C_D_L = sp.linalg.cholesky(C_D, lower=False)

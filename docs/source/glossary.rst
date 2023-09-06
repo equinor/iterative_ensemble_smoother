@@ -1,4 +1,4 @@
-glossary
+Glossary
 ========
 
 .. glossary::
