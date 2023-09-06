@@ -47,7 +47,8 @@ doc = [
     "pandas",
     "p_tqdm",
     "ipykernel",
-    "ipywidgets"
+    "ipywidgets",
+    "numpydoc",
 ]
 dev = [
     "pytest",

@@ -10,12 +10,17 @@ check_output(["jupytext", "Polynomial.py", "-o", "Polynomial.ipynb"])
 
 check_output(["jupytext", "Oscillator.py", "-o", "Oscillator.ipynb"])
 
+
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.doctest",
     "nbsphinx",
     "sphinxcontrib.bibtex",
+    "numpydoc",
 ]
 bibtex_bibfiles = ["refs.bib"]
 language = "en"
 html_theme = "sphinx_rtd_theme"
+
+
+numpydoc_class_members_toctree = False
