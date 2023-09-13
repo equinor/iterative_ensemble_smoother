@@ -1,6 +1,10 @@
 # mypy: ignore-errors
+from __future__ import annotations
 
+from typing import Optional
+from iterative_ensemble_smoother.utils import SiesInversionType
 import numpy as np
+import numpy.typing as npt
 import scipy as sp
 
 
@@ -102,7 +106,12 @@ def truncated_svd_inv_sigma(S, truncation, full_matrices=False):
     )
 
 
-def exact_inversion(W, S, H, steplength):
+def exact_inversion(
+    W: npt.NDArray[np.double],
+    S: npt.NDArray[np.double],
+    H: npt.NDArray[np.double],
+    steplength: float,
+) -> npt.NDArray[np.double]:
     """Compute exact inversion, assuming identity error covariance matrix.
 
     This is equation (51) in the paper.
@@ -146,7 +155,8 @@ def exact_inversion(W, S, H, steplength):
 
     # Form the matrix C
     _, ensemble_size = S.shape
-    C = S.T @ S  # TODO: Only form upper part of this matrix
+    # https://www.math.utah.edu/software/lapack/lapack-blas/dsyrk.html
+    C: npt.NDArray[np.double] = sp.linalg.blas.dsyrk(alpha=1.0, a=S.T)
     # Add the identity matrix in place
     # See: https://github.com/numpy/numpy/blob/db4f43983cb938f12c311e1f5b7165e270c393b4/numpy/lib/index_tricks.py#L786
     C.flat[:: ensemble_size + 1] += 1
@@ -159,7 +169,9 @@ def exact_inversion(W, S, H, steplength):
         # option 2: solve(C, S.T) @ H
         # the reason is that with typical dimensions (num_ensemble << num_outputs)
         # the first option is faster.
-        term = np.linalg.solve(C, S.T @ H)
+        term: npt.NDArray[np.double] = sp.linalg.solve(
+            C, S.T @ H, assume_a="sym", lower=False
+        )
     except np.linalg.LinAlgError:
         raise ValueError(
             "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."
@@ -168,7 +180,16 @@ def exact_inversion(W, S, H, steplength):
     return W - steplength * (W - term)
 
 
-def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
+def create_coefficient_matrix(
+    Y: npt.NDArray[np.double],
+    R: Optional[npt.NDArray[np.double]],
+    E: npt.NDArray[np.double],
+    D: npt.NDArray[np.double],
+    inversion: SiesInversionType,
+    truncation: float,
+    W: npt.NDArray[np.double],
+    steplength: float,
+) -> npt.NDArray[np.double]:
     """Creates the coefficient matrix W_i defined in line 8 in Algorithm 1.
 
     Examples
@@ -232,7 +253,7 @@ def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
     # than 1.0 could stabilize the algorithm.
 
     # Naive computation, used for testing purposes only
-    if inversion == "naive":
+    if inversion == SiesInversionType.NAIVE:
         # Compute K = S.T @ sp.linalg.inv(S @ S.T + E @ E.T, overwrite_a=True) @ H
         to_invert = S @ S.T + E @ E.T
         # Add a small number to the diagonal to improve the condition number
@@ -240,20 +261,20 @@ def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
         to_invert.flat[:: to_invert.shape[0] + 1] += 1e-12
         K = S.T @ sp.linalg.solve(to_invert, H, assume_a="sym", overwrite_a=True)
         return W - steplength * (W - K)
-    elif inversion == "exact":  # Section 3.2 in paper
+    if inversion == SiesInversionType.EXACT:  # Section 3.2 in paper
         return exact_inversion(W, S, H, steplength)
 
     # Implements parts of Eq. 14.31 in the book Data Assimilation,
     # The Ensemble Kalman Filter, 2nd Edition by Geir Evensen.
 
-    elif inversion == "exact_r":  # Section 3.3 in paper
+    if inversion == SiesInversionType.EXACT_R:  # Section 3.3 in paper
         eig, X1 = lowrankCinv(S, R, truncation)
         # Compute W2 @ diag(lambda_inv) @ W2.T @ H
         X3 = np.linalg.multi_dot([S.T, X1 * eig, X1.T, H])
         # Line 9 in algorithm 1
         W = W - steplength * (W - X3)
         return W
-    elif inversion == "subspace_re":  # Section 3.4 in paper
+    if inversion == SiesInversionType.SUBSPACE_RE:  # Section 3.4 in paper
         _, ensemble_size = S.shape
         nsc = 1.0 / np.sqrt(ensemble_size - 1.0)
         eig, X1 = lowrankE(S, E * nsc, truncation)
@@ -262,8 +283,7 @@ def create_coefficient_matrix(Y, R, E, D, inversion, truncation, W, steplength):
         # Line 9 in algorithm 1
         W = W - steplength * (W - X3)
         return W
-    else:
-        raise Exception(f"Invalid inversion {inversion}")
+    raise Exception(f"Invalid inversion {inversion}")
 
 
 def lowrankE(S, E, truncation):

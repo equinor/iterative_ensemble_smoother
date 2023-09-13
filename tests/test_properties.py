@@ -1,6 +1,6 @@
 import numpy as np
-import pytest
 import pandas as pd
+import pytest
 from p_tqdm import p_map
 
 import iterative_ensemble_smoother as ies
@@ -90,29 +90,25 @@ def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_n(N):
 
     seed = 123
     # find solutions with and without projection
-    model_projection = ies.SIES(seed=seed)
+    model_projection = ies.SIES(d_sd, d, N, seed=seed)
     model_projection.fit(
         gX,
-        d_sd,
-        d,
         truncation=1.0,
         step_length=step_length,
         param_ensemble=X_prior,
     )
     X_posterior_projection = model_projection.update(X_prior)
 
-    model_no_projection = ies.SIES(seed=seed)
+    model_no_projection = ies.SIES(d_sd, d, N, seed=seed)
     model_no_projection.fit(
         gX,
-        d_sd,
-        d,
         truncation=1.0,
         step_length=step_length,
     )
     X_posterior_no_projection = model_no_projection.update(X_prior)
 
-    assert np.allclose(model_projection.D_, model_no_projection.D_)
-    D = model_projection.D_
+    assert np.allclose(model_projection.D, model_no_projection.D)
+    D = model_projection.D
 
     # Assert projection solution better than no-projection
     centering_matrix = (np.identity(N) - np.ones((N, N)) / N) / np.sqrt(N - 1)
@@ -298,9 +294,9 @@ def test_that_sies_converges_to_es_in_gauss_linear_case():
 
     params_ies = X.copy()
     responses_ies = response_ensemble.copy()
-    smoother_ies = ies.SIES(seed=seed)
+    smoother_ies = ies.SIES(d.sd.values, d.value.values, ensemble_size, seed=seed)
     for _ in range(10):
-        smoother_ies.fit(responses_ies, d.sd.values, d.value.values)
+        smoother_ies.fit(responses_ies)
         params_ies = smoother_ies.update(params_ies)
 
         _coeff_a = params_ies[0, :]
@@ -372,12 +368,10 @@ def test_that_update_correctly_multiples_gaussians(inversion, errors):
 
     obs_val = 10
     observation_values = np.array([obs_val, obs_val, obs_val])
-    smoother = ies.SIES(seed=42)
+    smoother = ies.SIES(errors, observation_values, N, seed=42)
 
     smoother.fit(
         Y,
-        errors,
-        observation_values,
         inversion=inversion,
         step_length=1.0,
         truncation=1.0,
@@ -472,27 +466,21 @@ def test_that_ies_runs_with_failed_realizations():
     obs_errors = 0.01 + np.abs(rng.normal(size=num_responses))  # Stds must be positive
     ens_mask = np.array([True] * ensemble_size)
     ens_mask[10:] = False
-    smoother = ies.SIES(seed=42)
+    smoother = ies.SIES(obs_errors, obs_values, ensemble_size, seed=42)
     smoother.fit(
         response_ensemble[:, ens_mask],
-        obs_errors,
-        obs_values,
         ensemble_mask=ens_mask,
     )
     param_ensemble = smoother.update(param_ensemble[:, ens_mask])
 
     smoother.fit(
         response_ensemble[:, ens_mask],
-        obs_errors,
-        obs_values,
         ensemble_mask=ens_mask,
     )
     param_ensemble = smoother.update(param_ensemble)
 
     smoother.fit(
         response_ensemble[:, ens_mask],
-        obs_errors,
-        obs_values,
         ensemble_mask=ens_mask,
     )
     param_ensemble = smoother.update(param_ensemble)
@@ -518,24 +506,24 @@ def test_that_diagonal_and_dense_covariance_return_the_same_result(inversion, se
     observation_errors_cov_mat = np.diag(observation_errors_diag_std**2)
 
     # 1D array of standard deviations
-    smoother_diag = ies.SIES(seed=1)
+    smoother_diag = ies.SIES(
+        observation_errors_diag_std, observation_values, ensemble_size, seed=1
+    )
     assert observation_errors_diag_std.ndim == 1
     smoother_diag.fit(
         response_ensemble=response_ensemble,
-        observation_errors=observation_errors_diag_std,
-        observation_values=observation_values,
         inversion=inversion,
         param_ensemble=param_ensemble,
     )
     X_post_diag = smoother_diag.update(param_ensemble)
 
     # 2D array of covariances (covariance matrix)
-    smoother_covar = ies.SIES(seed=1)
+    smoother_covar = ies.SIES(
+        observation_errors_diag_std, observation_values, ensemble_size, seed=1
+    )
     assert observation_errors_cov_mat.ndim == 2
     smoother_covar.fit(
         response_ensemble=response_ensemble,
-        observation_errors=observation_errors_cov_mat,
-        observation_values=observation_values,
         inversion=inversion,
         param_ensemble=param_ensemble,
     )

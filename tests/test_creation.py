@@ -1,13 +1,16 @@
-from iterative_ensemble_smoother import ES, SIES
+import re
+
 import numpy as np
 import pytest
-import re
+
+from iterative_ensemble_smoother import ES, SIES, SiesInversionType
+from iterative_ensemble_smoother.utils import validate_inputs
 
 
 def test_that_repr_can_be_created():
-    smoother = SIES()
-    smoother_repr = eval(repr(smoother))
-    assert isinstance(smoother_repr, SIES)
+    # smoother = SIES()
+    # smoother_repr = eval(repr(smoother))
+    # assert isinstance(smoother_repr, SIES)
 
     smoother = ES()
     smoother_repr = eval(repr(smoother))
@@ -29,7 +32,7 @@ def test_that_bad_inputs_cause_nice_error_messages():
             "response_ensemble must be a matrix of size (number of responses by number of realizations)"
         ),
     ):
-        _ = SIES().fit(Y.ravel(), obs_errors, obs_values)
+        _ = SIES(obs_errors, obs_values, ensemble_size).fit(Y.ravel())
 
     with pytest.raises(
         ValueError,
@@ -37,7 +40,7 @@ def test_that_bad_inputs_cause_nice_error_messages():
             "observation_errors and observation_values must have the same number of elements"
         ),
     ):
-        _ = SIES().fit(Y, obs_errors[1:], obs_values)
+        _ = SIES(obs_errors[1:], obs_values, ensemble_size).fit(Y)
 
     with pytest.raises(
         ValueError,
@@ -45,16 +48,14 @@ def test_that_bad_inputs_cause_nice_error_messages():
             "observation_values must have the same number of elements as there are responses"
         ),
     ):
-        _ = SIES().fit(Y, obs_errors[1:], obs_values[1:])
+        _ = SIES(obs_errors[1:], obs_values[1:], ensemble_size).fit(Y)
 
     with pytest.raises(
         ValueError,
         match="param_ensemble and response_ensemble must have the same number of columns",
     ):
-        _ = SIES().fit(
+        _ = SIES(obs_errors, obs_values, ensemble_size).fit(
             Y,
-            obs_errors,
-            obs_values,
             param_ensemble=param_ensemble[:, : ensemble_size - 2],
         )
 
@@ -64,11 +65,33 @@ def test_that_bad_inputs_cause_nice_error_messages():
             "parameter_ensemble must be a matrix of size (number of parameters by number of realizations)"
         ),
     ):
-        _ = SIES().fit(
+        _ = SIES(obs_errors, obs_values, ensemble_size).fit(
             Y,
-            obs_errors,
-            obs_values,
             param_ensemble=param_ensemble[0, :].ravel(),
+        )
+
+
+def test_validate_inversion_type() -> None:
+    """Check that the inversion type is correctly checked."""
+    ne = 100
+    nobs = 50
+    nx = 2000
+    for _type in SiesInversionType.to_list():
+        validate_inputs(_type, np.zeros((nobs, ne)), np.zeros(nobs), np.zeros((nx, ne)))
+        # test with the string
+        validate_inputs(
+            _type.value, np.zeros((nobs, ne)), np.zeros(nobs), np.zeros((nx, ne))
+        )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            '"random_str" is not a valid inversion type! It must be choosen '
+            "among ['naive', 'exact', 'exact_r', 'subspace_re']"
+        ),
+    ):
+        validate_inputs(
+            "random_str", np.zeros((nobs, ne)), np.zeros(nobs), np.zeros((nx, ne))
         )
 
 

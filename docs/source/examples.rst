@@ -5,5 +5,7 @@ Example Usage
    :maxdepth: 2
    :caption: Contents:
 
-   Polynomial
-   Oscillator
+   Polynomial <tutorials/Polynomial>
+   Oscillator <tutorials/Oscillator>
+
+* :ref:`genindex`

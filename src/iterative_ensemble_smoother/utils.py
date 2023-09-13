@@ -1,11 +1,44 @@
 from __future__ import annotations
-from typing import Tuple, Optional, TYPE_CHECKING
+
+from enum import Enum
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import numpy as np
-import scipy as sp  # type: ignore
 
 if TYPE_CHECKING:
     import numpy.typing as npt
+
+
+class SiesInversionType(str, Enum):
+    """
+    Inversion type for the computation of $(S @ S^T + E @ E^T)^{-1}$.
+
+    It is a hashable string enum and can be iterated.
+    """
+
+    NAIVE = "naive"  # direct inversion
+    EXACT = "exact"  # only if cdd is diagonal
+    EXACT_R = "exact_r"  # for big data assimilation this is the recommended method
+    SUBSPACE_RE = "subspace_re"  # using full Cdd
+
+    def __str__(self) -> str:
+        """Return instance value."""
+        return self.value
+
+    def __hash__(self) -> int:
+        """Return the hash of the value."""
+        return hash(self.value)
+
+    def __eq__(self, other: object) -> bool:
+        """Return if two instances are equal."""
+        if not isinstance(other, SiesInversionType) and not isinstance(other, str):
+            return False
+        return self.value == other
+
+    @classmethod
+    def to_list(cls) -> List[SiesInversionType]:
+        """Return all enums as a list."""
+        return list(cls)
 
 
 def steplength_exponential(
@@ -74,25 +107,11 @@ def response_projection(
     return ans
 
 
-def _validate_inputs(
-    response_ensemble: npt.NDArray[np.double],
+def validate_observations(
     observation_errors: npt.NDArray[np.double],
     observation_values: npt.NDArray[np.double],
-    param_ensemble: Optional[npt.NDArray[np.double]] = None,
 ) -> None:
-    if response_ensemble.ndim != 2:
-        raise ValueError(
-            "response_ensemble must be a matrix of size (number of responses by number of realizations)"
-        )
-
-    num_responses = response_ensemble.shape[0]
-    ensemble_size = response_ensemble.shape[1]
-
-    if response_ensemble.shape[1] != ensemble_size:
-        raise ValueError(
-            "response_ensemble and parameter_ensemble must have the same number of columns"
-        )
-
+    """Check that the observations and the associated errors have correct shapes."""
     if observation_errors.ndim == 2:
         if observation_errors.shape[0] != observation_errors.shape[1]:
             raise ValueError(
@@ -109,6 +128,31 @@ def _validate_inputs(
     elif len(observation_errors) != len(observation_values):
         raise ValueError(
             "observation_errors and observation_values must have the same number of elements"
+        )
+
+
+def validate_inputs(
+    inversion_type: SiesInversionType,
+    response_ensemble: npt.NDArray[np.double],
+    observation_values: npt.NDArray[np.double],
+    param_ensemble: Optional[npt.NDArray[np.double]] = None,
+) -> None:
+    if inversion_type not in SiesInversionType.to_list():
+        raise ValueError(
+            f'"{inversion_type}" is not a valid inversion type! It must be choosen'
+            f" among {[_.value for _ in SiesInversionType.to_list()]}."
+        )
+    if response_ensemble.ndim != 2:
+        raise ValueError(
+            "response_ensemble must be a matrix of size (number of responses by number of realizations)"
+        )
+
+    num_responses = response_ensemble.shape[0]
+    ensemble_size = response_ensemble.shape[1]
+
+    if response_ensemble.shape[1] != ensemble_size:
+        raise ValueError(
+            "response_ensemble and parameter_ensemble must have the same number of columns"
         )
 
     if len(observation_values) != num_responses:

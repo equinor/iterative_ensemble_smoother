@@ -1,24 +1,26 @@
 from __future__ import annotations
-from typing import Optional, TYPE_CHECKING, Callable
+
+from typing import TYPE_CHECKING, Callable, Optional
 
 import numpy as np
 
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-from iterative_ensemble_smoother.utils import (
-    _validate_inputs,
-    covariance_to_correlation,
-    steplength_exponential,
-    response_projection,
-)
-
 from iterative_ensemble_smoother.ies import create_coefficient_matrix
+from iterative_ensemble_smoother.utils import (
+    SiesInversionType,
+    covariance_to_correlation,
+    response_projection,
+    steplength_exponential,
+    validate_inputs,
+    validate_observations,
+)
 
 
 class SIES:
     """
-    Initialize a Subspace Iterative Ensemble Smoother (SIES) instance.
+    Subspace Iterative Ensemble Smoother (SIES).
 
     This is an implementation of the algorithm described in the paper:
     Efficient Implementation of an Iterative Ensemble Smoother for Data Assimilation and Reservoir History Matching
@@ -28,8 +30,19 @@ class SIES:
     Formulating the history matching problem with consistent error statistics
     written by Geir Evensen (2021), URL: https://link.springer.com/article/10.1007/s10596-021-10032-7
 
-    Parameters
+    Attributes
     ----------
+    observation_errors : npt.NDArray[np.double]
+        Either a 1D array of standard deviations, or a 2D covariance matrix.
+        This is C_dd in Evensen (2019), and represents observation or measurement
+        errors. We observe d from the real world, y from the model g(x), and
+        assume that d = y + e, where e is multivariate normal with covariance
+        or standard devaiations given by observation_errors.
+    observation_values : npt.NDArray[np.double]
+        A 1D array of observations, with shape (observations,).
+        This is d in Evensen (2019).
+    iteration: int
+        Current iteration number (starts at 1).
     steplength_schedule : Optional[Callable[[int], float]], optional
         A function that takes as input the iteration number (starting at 1) and
         returns steplength (a float in the range (0, 1]).
@@ -37,24 +50,110 @@ class SIES:
         See the references or the function `steplength_exponential`.
     seed : Optional[int], optional
         Integer used to seed the random number generator. The default is None.
+    rng: np.random.RandomState
+        Pseudorandom number generator state used to generate samples.
+    coefficient_matrix: npt.NDArray[np.double]
+        Transition matrix used for the update. This is W in Evensen (2019).
+    ensemble_mask: Optional[npt.NDArray[np.bool_]]
+        A 1D array of booleans describing which realizations in the ensemble
+        that are are active. The default is None, which means all realizations
+        are active. Inactive realizations are ignored (not updated).
+        Must be of shape (ensemble_size,).
+    E_: npt.NDArray[np.double]
+        Samples from N(0, Cdd) used to perturb the residuals D.
 
     Examples
     --------
+    >>> obs = np.random.random(50)
+    >>> obs_std = np.random.random(50)
+    >>> ensemble_size = 100
     >>> steplength_schedule = lambda iteration: 0.8 * 2**(-iteration - 1)
-    >>> smoother = SIES(steplength_schedule=steplength_schedule, seed=42)
+    >>> smoother = SIES(obs, obs_std, ensemble_size, steplength_schedule=steplength_schedule, seed=42)
     """
 
-    _inversion_methods = ("naive", "exact", "exact_r", "subspace_re")
+    __slots__ = [
+        "observation_values",
+        "observation_errors",
+        "iteration",
+        "steplength_schedule",
+        "rng",
+        "coefficient_matrix",
+        "ensemble_mask",
+        "E_",
+    ]
 
     def __init__(
         self,
+        observation_errors: npt.NDArray[np.double],
+        observation_values: npt.NDArray[np.double],
+        ensemble_size: int,
         *,
         steplength_schedule: Optional[Callable[[int], float]] = None,
         seed: Optional[int] = None,
-    ):
+    ) -> None:
+        """
+        Initialize the instance.
+
+        Parameters
+        ----------
+        observation_errors : npt.NDArray[np.double]
+            Either a 1D array of standard deviations, or a 2D covariance matrix.
+            This is C_dd in Evensen (2019), and represents observation or measurement
+            errors. We observe d from the real world, y from the model g(x), and
+            assume that d = y + e, where e is multivariate normal with covariance
+            or standard devaiations given by observation_errors.
+        observation_values : npt.NDArray[np.double]
+            A 1D array of observations, with shape (observations,).
+            This is d in Evensen (2019).
+        ensemble_size: int
+            Number of members in the ensemble (realizations).
+        steplength_schedule : Optional[Callable[[int], float]], optional
+            A function that takes as input the iteration number (starting at 1) and
+            returns steplength (a float in the range (0, 1]).
+            The default is None, which defaults to using an exponential decay.
+            See the references or the function `steplength_exponential`.
+        seed : Optional[int], optional
+            Integer used to seed the random number generator. The default is None.
+
+        """
         self.iteration = 1
         self.steplength_schedule = steplength_schedule
         self.rng = np.random.default_rng(seed)
+        self.coefficient_matrix: npt.NDArray[np.double] = np.zeros(
+            (ensemble_size, ensemble_size), dtype=np.double
+        )
+        self.ensemble_mask: Optional[npt.NDArray[np.bool_]] = None
+
+        # check the input shapes
+        validate_observations(
+            observation_errors,
+            observation_values,
+        )
+
+        self.observation_values = observation_values
+        self.observation_errors = observation_errors
+
+        # Draw samples from N(0, Cdd) that will be used for all the fit
+        self.E_: npt.NDArray[np.double] = self._get_E(
+            observation_values=observation_values,
+            observation_errors=observation_errors,
+            ensemble_size=ensemble_size,
+        )
+
+    @property
+    def num_obs(self) -> int:
+        """Return the number of observed values."""
+        return self.E_.shape[0]
+
+    @property
+    def ensemble_size(self) -> int:
+        """Return the number of members in the ensemble."""
+        return self.E_.shape[1]
+
+    @property
+    def D(self) -> npt.NDArray[np.double]:
+        """Perturbed observed values D,  as defined by Equation (14) in Evensen (2019)."""
+        return self.E_ + self.observation_values.reshape(self.num_obs, 1)
 
     def _get_E(
         self,
@@ -63,11 +162,7 @@ class SIES:
         observation_values: npt.NDArray[np.double],
         ensemble_size: int,
     ) -> npt.NDArray[np.double]:
-        """Draw samples from N(0, Cdd). Use cached values if already drawn."""
-
-        # Return cached values if they exist
-        if hasattr(self, "E_"):
-            return self.E_
+        """Draw samples from N(0, Cdd)."""
 
         # A covariance matrix was passed
         # Columns of E should be sampled from N(0, Cdd) and centered, Evensen 2019
@@ -87,24 +182,21 @@ class SIES:
             ).T
 
         # Center values, removing one degree of freedom
-        E -= E.mean(axis=1, keepdims=True)
-
-        self.E_: npt.NDArray[np.double] = E
-        return self.E_
+        return E - E.mean(axis=1, keepdims=True)
 
     def fit(
         self,
         response_ensemble: npt.NDArray[np.double],
-        observation_errors: npt.NDArray[np.double],
-        observation_values: npt.NDArray[np.double],
         *,
         truncation: float = 0.98,
         step_length: Optional[float] = None,
         ensemble_mask: Optional[npt.NDArray[np.bool_]] = None,
-        inversion: str = "exact",
+        inversion: SiesInversionType = SiesInversionType.EXACT,
         param_ensemble: Optional[npt.NDArray[np.double]] = None,
     ) -> None:
-        """Perform one Gauss-Newton step and update the coefficient matrix W.
+        """
+        Perform one Gauss-Newton step and update the coefficient matrix W.
+
         To apply the coefficient matrix W to the ensemble, call update() after fit().
 
         Parameters
@@ -112,15 +204,6 @@ class SIES:
         response_ensemble : npt.NDArray[np.double]
             A 2D array of reponses from the model g(X) of shape (observations, ensemble_size).
             This matrix is Y in Evensen (2019).
-        observation_errors : npt.NDArray[np.double]
-            Either a 1D array of standard deviations, or a 2D covariance matrix.
-            This is C_dd in Evensen (2019), and represents observation or measurement
-            errors. We observe d from the real world, y from the model g(x), and
-            assume that d = y + e, where e is multivariate normal with covariance
-            or standard devaiations given by observation_errors.
-        observation_values : npt.NDArray[np.double]
-            A 1D array of observations, with shape (observations,).
-            This is d in Evensen (2019).
         truncation : float, optional
             A value in the range [0, 1], used to determine the number of
             significant singular values. The default is 0.98.
@@ -147,15 +230,15 @@ class SIES:
         # ----------------- Input validation and setup ------------------------
         # ---------------------------------------------------------------------
 
-        _validate_inputs(
+        validate_inputs(
+            inversion,
             response_ensemble,
-            observation_errors,
-            observation_values,
+            self.observation_values,
             param_ensemble=param_ensemble,
         )
 
-        num_obs = len(observation_values)
-        ensemble_size = response_ensemble.shape[1]
+        # Some realization might be ignored
+        effective_ensemble_size: int = response_ensemble.shape[1]
 
         # Determine the step length
         if step_length is None:
@@ -167,31 +250,18 @@ class SIES:
         assert 0 < step_length <= 1, "Step length must be in (0, 1]"
 
         if ensemble_mask is None:
-            ensemble_mask = np.ones(ensemble_size, dtype=bool)
+            ensemble_mask = np.ones(effective_ensemble_size, dtype=np.bool_)
         self.ensemble_mask = ensemble_mask
-
-        # If it's the first time the method is called, create coeff matrix
-        if not hasattr(self, "coefficient_matrix"):
-            self.coefficient_matrix = np.zeros(shape=(ensemble_size, ensemble_size))
 
         # ---------------------------------------------------------------------
         # ----------- Computations corresponding to algorithm 1 ---------------
         # ---------------------------------------------------------------------
 
-        # Draw samples from N(0, C_dd)
-        E = self._get_E(
-            observation_errors=observation_errors,
-            observation_values=observation_values,
-            ensemble_size=ensemble_size,
-        )
-        assert E.shape == (num_obs, ensemble_size)
-
         # Transform covariance matrix to correlation matrix
-        R, observation_errors_std = covariance_to_correlation(observation_errors)
+        R, observation_errors_std = covariance_to_correlation(self.observation_errors)
 
-        # Store D as defined by Equation (14) in Evensen (2019)
-        self.D_ = E + observation_values.reshape(num_obs, 1)
-        D = self.D_ - response_ensemble
+        # Di - g(Xi + AWi)
+        residuals = self.D[:, self.ensemble_mask] - response_ensemble
 
         # Note on scaling
         # -------------------
@@ -220,31 +290,32 @@ class SIES:
         # S Sigma = L Y, instead of S Sigma = Y for S.
 
         # Scale D and E with observation error standard deviations.
-        D /= observation_errors_std.reshape(num_obs, 1)
+        residuals /= observation_errors_std.reshape(self.num_obs, 1)
 
         # Here we have to make a new copy of E, since if not we would
         # divide the same E by the standard deviations in every iteration
-        E = E / observation_errors_std.reshape(num_obs, 1)
+        E = self.E_ / observation_errors_std.reshape(self.num_obs, 1)
 
         # See section 2.4 in the paper
         if param_ensemble is not None:
             response_ensemble = response_ensemble @ response_projection(param_ensemble)
 
         _response_ensemble = response_ensemble / observation_errors_std.reshape(
-            num_obs, 1
+            self.num_obs, 1
         )
+
         _response_ensemble -= _response_ensemble.mean(axis=1, keepdims=True)
-        _response_ensemble /= np.sqrt(ensemble_size - 1)
+        _response_ensemble /= np.sqrt(effective_ensemble_size - 1)
 
         W: npt.NDArray[np.double] = create_coefficient_matrix(  # type: ignore
-            _response_ensemble,
-            R,  # Correlation matrix or None (if 1D array was passed)
-            E,  # Samples from multivariate normal
-            D,  # D - G(x) in line 7 in algorithm 1
-            inversion,
-            truncation,
-            self.coefficient_matrix[np.ix_(ensemble_mask, ensemble_mask)],
-            step_length,
+            Y=_response_ensemble,
+            R=R,  # Correlation matrix or None (if 1D array was passed)
+            E=E,  # Samples from multivariate normal
+            D=residuals,  # D - G(x) in line 7 in algorithm 1
+            inversion=inversion,
+            truncation=truncation,
+            W=self.coefficient_matrix[np.ix_(ensemble_mask, ensemble_mask)],
+            steplength=step_length,
         )
 
         if np.isnan(W).sum() != 0:
@@ -258,7 +329,8 @@ class SIES:
         self.coefficient_matrix[np.ix_(ensemble_mask, ensemble_mask)] = W
 
     def update(self, param_ensemble: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
-        """Update the parameter ensemble (X in Evensen (2019)).
+        """
+        Update the parameter ensemble (X in Evensen (2019)).
 
         Parameters
         ----------
@@ -272,13 +344,17 @@ class SIES:
             Updated parameter ensemble.
         """
         # Line 9 of Algorithm 1
-        ensemble_size = self.ensemble_mask.sum()
+        if self.ensemble_mask is not None:
+            ensemble_size: int = self.ensemble_mask.sum()
+            transition_matrix: npt.NDArray[np.double] = self.coefficient_matrix[
+                np.ix_(self.ensemble_mask, self.ensemble_mask)
+            ]
+        else:
+            ensemble_size = self.coefficient_matrix.shape[1]
+            transition_matrix = self.coefficient_matrix
 
         # First get W, then divide by square root, then add identity matrix
         # Equivalent to (I + W / np.sqrt(ensemble_size - 1))
-        transition_matrix: npt.NDArray[np.double] = self.coefficient_matrix[
-            np.ix_(self.ensemble_mask, self.ensemble_mask)
-        ]
         transition_matrix /= np.sqrt(ensemble_size - 1)
         transition_matrix.flat[:: ensemble_size + 1] += 1.0
 
@@ -289,10 +365,17 @@ class SIES:
 
 
 class ES:
+    """
+    Ensemble smoother.
+
+    Wrapper for :class:`SIES`.
+    """
+
     def __init__(
         self,
         seed: Optional[int] = None,
     ) -> None:
+        """Initialize the instance."""
         self.smoother: Optional[SIES] = None
         self.seed = seed
 
@@ -303,14 +386,17 @@ class ES:
         observation_values: npt.NDArray[np.double],
         *,
         truncation: float = 0.98,
-        inversion: str = "exact",
+        inversion: SiesInversionType = SiesInversionType.EXACT,
         param_ensemble: Optional[npt.NDArray[np.double]] = None,
     ) -> None:
-        self.smoother = SIES(seed=self.seed)
-        self.smoother.fit(
-            response_ensemble,
+        self.smoother = SIES(
             observation_errors,
             observation_values,
+            response_ensemble.shape[1],
+            seed=self.seed,
+        )
+        self.smoother.fit(
+            response_ensemble,
             truncation=truncation,
             step_length=1.0,
             ensemble_mask=None,

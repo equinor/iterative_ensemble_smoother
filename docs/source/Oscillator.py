@@ -143,7 +143,7 @@ import iterative_ensemble_smoother as ies
 def iterative_smoother():
     A_current = np.copy(A)
     iterations = 4
-    smoother = ies.SIES(seed=42)
+    smoother = ies.SIES(observation_errors, observation_values, realizations, seed=42)
 
     plot_result(A_current, response_x_axis, uniform, priors, title="Prior")
 
@@ -152,7 +152,7 @@ def iterative_smoother():
         responses_before = forward_model(A_current, priors, response_x_axis)
         Y = responses_before[observation_x_axis]
 
-        smoother.fit(Y, observation_errors, observation_values)
+        smoother.fit(Y)
         A_current = smoother.update(A_current)
 
         plot_result(
