@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 from typing import Optional
-from iterative_ensemble_smoother.utils import SiesInversionType
+
 import numpy as np
 import numpy.typing as npt
 import scipy as sp
+
+from iterative_ensemble_smoother.utils import SiesInversionType
 
 
 def calc_num_significant(singular_values, truncation):
@@ -174,7 +176,8 @@ def exact_inversion(
         )
     except np.linalg.LinAlgError:
         raise ValueError(
-            "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."
+            "Fit produces NaNs. Check your response matrix for outliers "
+            "or use an inversion type with truncation."
         )
 
     return W - steplength * (W - term)

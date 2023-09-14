@@ -285,7 +285,8 @@ def test_that_sies_converges_to_es_in_gauss_linear_case():
     smoother_es = ies.ES(seed=seed)
     smoother_es.fit(
         response_ensemble,
-        d.sd.values,  # Assume diagonal ensemble covariance matrix for the measurement perturbations.
+        # Assume diagonal ensemble covariance matrix for the measurement perturbations.
+        d.sd.values,
         d.value.values,
     )
     params_es = smoother_es.update(X)
@@ -550,7 +551,8 @@ def test_memory_usage():
     nbytes += noise.nbytes  # Creating D
     nbytes += (
         noise.nbytes
-    )  # scaling response_ensemble (can't scale in-place because response_ensemble is an input argument)
+    )  # scaling response_ensemble (can't scale in-place because response_ensemble
+    # is an input argument)
     nbytes += 80000 # Omega in C++ (ensemble_size, ensemble_size)
     nbytes += Y.nbytes # Solving for S^T needs Y^T which causes a copy in C++ code
     nbytes += Y.nbytes # Solving for S^T causes both Y^T and S^T to be in memory

@@ -51,8 +51,8 @@ def steplength_exponential(
     This is an implementation of Eq. (49), which calculates a suitable step length for
     the update step, from the book:
 
-    Geir Evensen, Formulating the history matching problem with consistent error statistics,
-    Computational Geosciences (2021) 25:945 –970
+    Geir Evensen, Formulating the history matching problem with consistent
+    error statistics, Computational Geosciences (2021) 25:945 –970
 
     Examples
     --------
@@ -119,7 +119,8 @@ def validate_observations(
             )
         if observation_errors.shape[0] != len(observation_values):
             raise ValueError(
-                "observation_errors covariance matrix must match size of observation_values"
+                "observation_errors covariance matrix must match size "
+                "of observation_values"
             )
         if not np.all(np.abs(observation_errors - observation_errors.T) < 1e-8):
             raise ValueError(
@@ -127,7 +128,8 @@ def validate_observations(
             )
     elif len(observation_errors) != len(observation_values):
         raise ValueError(
-            "observation_errors and observation_values must have the same number of elements"
+            "observation_errors and observation_values must have the "
+            "same number of elements"
         )
 
 
@@ -139,12 +141,13 @@ def validate_inputs(
 ) -> None:
     if inversion_type not in SiesInversionType.to_list():
         raise ValueError(
-            f'"{inversion_type}" is not a valid inversion type! It must be choosen'
+            f'"{inversion_type}" is not a valid inversion type! It must be chosen'
             f" among {[_.value for _ in SiesInversionType.to_list()]}."
         )
     if response_ensemble.ndim != 2:
         raise ValueError(
-            "response_ensemble must be a matrix of size (number of responses by number of realizations)"
+            "response_ensemble must be a matrix of size "
+            "(number of responses by number of realizations)"
         )
 
     num_responses = response_ensemble.shape[0]
@@ -152,17 +155,20 @@ def validate_inputs(
 
     if response_ensemble.shape[1] != ensemble_size:
         raise ValueError(
-            "response_ensemble and parameter_ensemble must have the same number of columns"
+            "response_ensemble and parameter_ensemble must "
+            "have the same number of columns"
         )
 
     if len(observation_values) != num_responses:
         raise ValueError(
-            "observation_values must have the same number of elements as there are responses"
+            "observation_values must have the same number of "
+            "elements as there are responses"
         )
 
     if param_ensemble is not None and param_ensemble.ndim != 2:
         raise ValueError(
-            "parameter_ensemble must be a matrix of size (number of parameters by number of realizations)"
+            "parameter_ensemble must be a matrix of size (number "
+            "of parameters by number of realizations)"
         )
 
     if param_ensemble is not None and param_ensemble.shape[1] != ensemble_size:

@@ -106,16 +106,19 @@ class ESMDA:
             isinstance(seed, (int, np.random._generator.Generator)) or seed is None
         ):
             raise TypeError(
-                "Argument `seed` must be an integer or numpy.random._generator.Generator."
+                "Argument `seed` must be an integer or "
+                "numpy.random._generator.Generator."
             )
 
         if not isinstance(inversion, str):
             raise TypeError(
-                f"Argument `inversion` must be a string in {tuple(self._inversion_methods.keys())}"
+                "Argument `inversion` must be a string in "
+                f"{tuple(self._inversion_methods.keys())}"
             )
         if inversion not in self._inversion_methods.keys():
             raise ValueError(
-                f"Argument `inversion` must be a string in {tuple(self._inversion_methods.keys())}"
+                "Argument `inversion` must be a string in "
+                f"{tuple(self._inversion_methods.keys())}"
             )
 
         # Store data

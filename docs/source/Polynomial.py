@@ -1,3 +1,4 @@
+# ruff: noqa: E501, E402
 # ---
 # jupyter:
 #   jupytext:
@@ -12,11 +13,12 @@
 #     language: python
 #     name: python3
 # ---
-
 # %% [markdown]
 # # Fitting a polynomial with Gaussian priors
 #
-# We fit a simple polynomial with Gaussian priors, which is an example of a Gauss-linear problem for which the results obtained using Subspace Iterative Ensemble Smoother (SIES) tend to those obtained using Ensemble Smoother (ES).
+# We fit a simple polynomial with Gaussian priors, which is an example of a Gauss-linear
+# problem for which the results obtained using Subspace Iterative Ensemble Smoother
+# (SIES) tend to those obtained using Ensemble Smoother (ES).
 # This notebook illustrated this property.
 # %%
 import numpy as np
@@ -29,9 +31,6 @@ import matplotlib.pyplot as plt
 
 plt.rcParams["figure.figsize"] = (6, 6)
 plt.rcParams.update({"font.size": 10})
-from ipywidgets import interact
-import ipywidgets as widgets
-
 from p_tqdm import p_map
 
 import iterative_ensemble_smoother as ies
@@ -107,7 +106,7 @@ fwd_runs = p_map(
     coeff_b,
     coeff_c,
     [np.arange(max(x_observations) + 1)] * ensemble_size,
-    desc=f"Running forward model.",
+    desc="Running forward model.",
 )
 
 # %% [markdown]

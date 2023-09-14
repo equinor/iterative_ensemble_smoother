@@ -17,18 +17,18 @@
 # relative to the documentation root, use os.path.abspath to make it
 # absolute, like shown here.
 
-import iterative_ensemble_smoother as ies
 import datetime
 
 # FIX: https://github.com/mgaitan/sphinxcontrib-mermaid/issues/72
 import errno
 import os
 import sys
+from subprocess import check_output
 
 import sphinx.util.osutil
 from sphinx.ext.napoleon.docstring import GoogleDocstring
 
-import pyesmda
+import iterative_ensemble_smoother as ies
 
 sphinx.util.osutil.ENOENT = errno.ENOENT
 
@@ -47,11 +47,9 @@ def setup(app):
     app.connect("autodoc-skip-member", skip)
 
 
-from subprocess import check_output
-
 project = "iterative_ensemble_smoother"
 author = "Equinor"
-copyright = "2022-{datetime.datetime.today().year}, {author}"
+copyright = f"2022-{datetime.datetime.today().year}, {author}"
 release = ies.__version__
 version = ies.__version__
 
@@ -84,6 +82,7 @@ extensions = [
     # of that code into the resulting document
     "jupyter_sphinx",
     "numpydoc",
+    "m2r2",  # compatibility with markdown
 ]
 
 # -----------------------------------------------------------------------------

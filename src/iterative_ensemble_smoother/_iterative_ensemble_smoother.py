@@ -23,7 +23,8 @@ class SIES:
     Subspace Iterative Ensemble Smoother (SIES).
 
     This is an implementation of the algorithm described in the paper:
-    Efficient Implementation of an Iterative Ensemble Smoother for Data Assimilation and Reservoir History Matching
+    Efficient Implementation of an Iterative Ensemble Smoother for Data Assimilation
+    and Reservoir History Matching
     written by :cite:t:`evensen2019efficient`.
 
     The default step length is described in equation (49) in the paper
@@ -34,9 +35,9 @@ class SIES:
     ----------
     observation_errors : npt.NDArray[np.double]
         Either a 1D array of standard deviations, or a 2D covariance matrix.
-        This is C_dd in :cite:t:`evensen2019efficient`, and represents observation or measurement
-        errors. We observe d from the real world, y from the model g(x), and
-        assume that d = y + e, where e is multivariate normal with covariance
+        This is C_dd in :cite:t:`evensen2019efficient`, and represents observation
+        or measurement errors. We observe d from the real world, y from the model g(x),
+        and assume that d = y + e, where e is multivariate normal with covariance
         or standard devaiations given by observation_errors.
     observation_values : npt.NDArray[np.double]
         A 1D array of observations, with shape (observations,).
@@ -69,7 +70,12 @@ class SIES:
     >>> obs_std = np.random.random(50)
     >>> ensemble_size = 100
     >>> steplength_schedule = lambda iteration: 0.8 * 2**(-iteration - 1)
-    >>> smoother = SIES(obs, obs_std, ensemble_size, steplength_schedule=steplength_schedule, seed=42)
+    >>> smoother = SIES(
+            obs, obs_std,
+            ensemble_size,
+            steplength_schedule=steplength_schedule,
+            seed=42
+        )
     """
 
     __slots__ = [
@@ -208,7 +214,7 @@ class SIES:
         Parameters
         ----------
         response_ensemble : npt.NDArray[np.double]
-            A 2D array of reponses from the model g(X) of shape
+            A 2D array of responses from the model g(X) of shape
             (observations, ensemble_size).
             This matrix is Y in :cite:t:`evensen2019efficient`.
         truncation : float, optional
@@ -327,7 +333,8 @@ class SIES:
 
         if np.isnan(W).sum() != 0:
             raise ValueError(
-                "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."
+                "Fit produces NaNs. Check your response matrix for outliers or "
+                "use an inversion type with truncation."
             )
 
         self.iteration += 1

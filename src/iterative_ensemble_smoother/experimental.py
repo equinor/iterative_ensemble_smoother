@@ -4,13 +4,10 @@ features of iterative_ensemble_smoother
 """
 import numpy as np
 
-rng = np.random.default_rng()
-
-from iterative_ensemble_smoother.utils import (
-    covariance_to_correlation,
-)
-
 from iterative_ensemble_smoother.ies import create_coefficient_matrix
+from iterative_ensemble_smoother.utils import covariance_to_correlation
+
+rng = np.random.default_rng()
 
 
 def ensemble_smoother_update_step_row_scaling(
@@ -56,6 +53,7 @@ def ensemble_smoother_update_step_row_scaling(
             np.zeros((ensemble_size, ensemble_size)),
             1.0,
         )
+        # ruff: noqa: E741
         I = np.identity(ensemble_size)
         transition_matrix = I + W / np.sqrt(ensemble_size - 1)
         row_scale.multiply(A, transition_matrix)

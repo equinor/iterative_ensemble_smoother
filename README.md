@@ -1,6 +1,8 @@
 Iterative Ensemble Smoother
 ===========================
 
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![docs](https://readthedocs.org/projects/iterative_ensemble_smoother/badge/?version=latest&style=plastic)](https://iterative-ensemble-smoother.readthedocs.io/)
 
@@ -8,6 +10,12 @@ Iterative Ensemble Smoother
 
 **iterative_ensemble_smoother** is a Python package that implements the subspace iterative ensemble smoother as described in [evensen2019](https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full).
 This algorithm is particularly effective for problems with a large number of parameters (e.g., millions) and a few realizations or samples (e.g., hundreds).
+
+Currently, two main algorithms are implemented:
+
+* :class:`SIES` - Subspace Iterative Ensemble Smoother - based on the method developed in :cite:t:`evensen2018analysis`.
+* :class:`ESMDA` - Ensemble Smoother with Multiple Data Assimilation - based on the method developed in :cite:t:`EMERICK2013`.
+
 
 ## Installation
 

@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 # ---
 # jupyter:
 #   jupytext:
@@ -12,7 +13,6 @@
 #     language: python
 #     name: python3
 # ---
-
 # %% [markdown]
 # # Estimating parameters of an anharmonic oscillator
 #
@@ -45,9 +45,10 @@ def plot_result(A, response_x_axis, trans_func=lambda x: x, priors=[], title=Non
 # ## Setup
 
 # %%
-# Oscilator example
-import numpy as np
+# Oscillator example
 from math import sqrt
+
+import numpy as np
 from scipy.special import erf
 
 
@@ -119,6 +120,7 @@ plot_result(A, response_x_axis, uniform, priors)
 
 # %%
 import numpy as np
+
 import iterative_ensemble_smoother as ies
 
 plot_result(A, response_x_axis, uniform, priors)
@@ -137,6 +139,7 @@ plot_result(new_A, response_x_axis, uniform, priors)
 
 # %%
 import numpy as np
+
 import iterative_ensemble_smoother as ies
 
 
