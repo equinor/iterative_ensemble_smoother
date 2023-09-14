@@ -17,8 +17,8 @@ Glossary
 
     forward model
          A forward model maps model parameters to predicted measurements
-         (:term:`prediction`). See, for instance, :cite:`evensen2018analysis` and
-         :cite:`evensen2019efficient`.
+         (:term:`prediction`). See, for instance, :cite:t:`evensen2018analysis` and
+         :cite:t:`evensen2019efficient`.
 
     error function
         The error function, or erf_, is a function that for a

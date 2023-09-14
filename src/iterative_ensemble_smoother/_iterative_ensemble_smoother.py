@@ -24,23 +24,23 @@ class SIES:
 
     This is an implementation of the algorithm described in the paper:
     Efficient Implementation of an Iterative Ensemble Smoother for Data Assimilation and Reservoir History Matching
-    written by Evensen et al (2019), URL: https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full
+    written by :cite:t:`evensen2019efficient`.
 
     The default step length is described in equation (49) in the paper
     Formulating the history matching problem with consistent error statistics
-    written by Geir Evensen (2021), URL: https://link.springer.com/article/10.1007/s10596-021-10032-7
+    written by :cite:t:`evensen2021formulating`.
 
     Attributes
     ----------
     observation_errors : npt.NDArray[np.double]
         Either a 1D array of standard deviations, or a 2D covariance matrix.
-        This is C_dd in Evensen (2019), and represents observation or measurement
+        This is C_dd in :cite:t:`evensen2019efficient`, and represents observation or measurement
         errors. We observe d from the real world, y from the model g(x), and
         assume that d = y + e, where e is multivariate normal with covariance
         or standard devaiations given by observation_errors.
     observation_values : npt.NDArray[np.double]
         A 1D array of observations, with shape (observations,).
-        This is d in Evensen (2019).
+        This is d in :cite:t:`evensen2019efficient`.
     iteration: int
         Current iteration number (starts at 1).
     steplength_schedule : Optional[Callable[[int], float]], optional
@@ -53,7 +53,8 @@ class SIES:
     rng: np.random.RandomState
         Pseudorandom number generator state used to generate samples.
     coefficient_matrix: npt.NDArray[np.double]
-        Transition matrix used for the update. This is W in Evensen (2019).
+        Transition matrix used for the update. This is W in
+        :cite:t:`evensen2019efficient`.
     ensemble_mask: Optional[npt.NDArray[np.bool_]]
         A 1D array of booleans describing which realizations in the ensemble
         that are are active. The default is None, which means all realizations
@@ -98,13 +99,14 @@ class SIES:
         ----------
         observation_errors : npt.NDArray[np.double]
             Either a 1D array of standard deviations, or a 2D covariance matrix.
-            This is C_dd in Evensen (2019), and represents observation or measurement
+            This is C_dd in :cite:t:`evensen2019efficient`,
+            and represents observation or measurement
             errors. We observe d from the real world, y from the model g(x), and
             assume that d = y + e, where e is multivariate normal with covariance
             or standard devaiations given by observation_errors.
         observation_values : npt.NDArray[np.double]
             A 1D array of observations, with shape (observations,).
-            This is d in Evensen (2019).
+            This is d in :cite:t:`evensen2019efficient`.
         ensemble_size: int
             Number of members in the ensemble (realizations).
         steplength_schedule : Optional[Callable[[int], float]], optional
@@ -152,7 +154,11 @@ class SIES:
 
     @property
     def D(self) -> npt.NDArray[np.double]:
-        """Perturbed observed values D,  as defined by Equation (14) in Evensen (2019)."""
+        """
+        Perturbed observed values.
+
+        This is D, as defined by Equation (14) in :cite:t:`evensen2019efficient`.
+        """
         return self.E_ + self.observation_values.reshape(self.num_obs, 1)
 
     def _get_E(
@@ -202,8 +208,9 @@ class SIES:
         Parameters
         ----------
         response_ensemble : npt.NDArray[np.double]
-            A 2D array of reponses from the model g(X) of shape (observations, ensemble_size).
-            This matrix is Y in Evensen (2019).
+            A 2D array of reponses from the model g(X) of shape
+            (observations, ensemble_size).
+            This matrix is Y in :cite:t:`evensen2019efficient`.
         truncation : float, optional
             A value in the range [0, 1], used to determine the number of
             significant singular values. The default is 0.98.
@@ -330,7 +337,7 @@ class SIES:
 
     def update(self, param_ensemble: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
         """
-        Update the parameter ensemble (X in Evensen (2019)).
+        Update the parameter ensemble (X in :cite:t:`evensen2019efficient`).
 
         Parameters
         ----------

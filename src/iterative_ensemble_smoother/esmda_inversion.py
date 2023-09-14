@@ -77,7 +77,7 @@ def empirical_cross_covariance(
 def normalize_alpha(alpha: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
     """Assure that sum_i (1/alpha_i) = 1.
 
-    This is Eqn (22) in the 2013 Emerick paper.
+    This is Eqn (22) in :cite:t:`EMERICK2013`.
 
     Examples
     --------
@@ -262,7 +262,9 @@ def inversion_exact_rescaled(
 ) -> npt.NDArray[np.double]:
     """Compute a rescaled inversion.
 
-    See Appendix A.1 in Emerick et al (2012) for details regarding this approach."""
+    See Appendix A.1 in :cite:t:`emerickHistoryMatchingTimelapse2012`
+    for details regarding this approach.
+    """
     C_DD = empirical_cross_covariance(Y, Y)
 
     if C_D.ndim == 2:
@@ -388,7 +390,7 @@ def inversion_subspace(
     X: npt.NDArray[np.double],
     truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
-    """See Appendix A.2 in Emerick et al (2012)
+    """See Appendix A.2 in :cite:t:`emerickHistoryMatchingTimelapse2012`.
 
     This is an approximate solution. The approximation is that when
     U, w, V.T = svd(D_delta)
@@ -473,7 +475,7 @@ def inversion_rescaled_subspace(
     X: npt.NDArray[np.double],
     truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
-    """See Appendix A.2 in Emerick et al (2012)
+    """See Appendix A.2 in :cite:t:`emerickHistoryMatchingTimelapse2012`.
 
     Subspace inversion with rescaling.
 
