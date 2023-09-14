@@ -194,7 +194,7 @@ class SIES:
             ).T
 
         # Center values, removing one degree of freedom
-        return E - E.mean(axis=1, keepdims=True)
+        return E - E.mean(axis=1, keepdims=True)  # type: ignore
 
     def fit(
         self,
@@ -320,7 +320,7 @@ class SIES:
         _response_ensemble -= _response_ensemble.mean(axis=1, keepdims=True)
         _response_ensemble /= np.sqrt(effective_ensemble_size - 1)
 
-        W: npt.NDArray[np.double] = create_coefficient_matrix(  # type: ignore
+        W: npt.NDArray[np.double] = create_coefficient_matrix(
             Y=_response_ensemble,
             R=R,  # Correlation matrix or None (if 1D array was passed)
             E=E,  # Samples from multivariate normal
