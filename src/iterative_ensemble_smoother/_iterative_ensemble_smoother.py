@@ -71,11 +71,12 @@ class SIES:
     >>> ensemble_size = 100
     >>> steplength_schedule = lambda iteration: 0.8 * 2**(-iteration - 1)
     >>> smoother = SIES(
-            obs, obs_std,
-            ensemble_size,
-            steplength_schedule=steplength_schedule,
-            seed=42
-        )
+    ...     obs,
+    ...     obs_std,
+    ...     ensemble_size,
+    ...     steplength_schedule=steplength_schedule,
+    ...     seed=42
+    ... )
     """
 
     __slots__ = [
