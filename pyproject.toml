@@ -40,8 +40,6 @@ text = "GPL-3.0"
 doc = [
     "sphinx",
     "pydata_sphinx_theme",
-    "nbsphinx",
-    "nbsphinx-link",
     "jupyter_sphinx",
     "sphinxcontrib.bibtex",
     "matplotlib",
@@ -54,7 +52,8 @@ doc = [
     "numpydoc",
     "scipy",
     "jinja2",
-    "m2r2"
+    "m2r2",
+    "myst_nb"
 ]
 dev = [
     "pytest",

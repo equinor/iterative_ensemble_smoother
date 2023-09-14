@@ -53,17 +53,19 @@ copyright = f"2022-{datetime.datetime.today().year}, {author}"
 release = ies.__version__
 version = ies.__version__
 
+# convert the python file to a notebook
 check_output(["jupytext", "Polynomial.py", "-o", "Polynomial.ipynb"])
 
+# Do the same for this file
 check_output(["jupytext", "Oscillator.py", "-o", "Oscillator.ipynb"])
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
 extensions = [
     "sphinx.ext.todo",  # Support for todo items
+    "sphinx.ext.napoleon",  # autodoc understands numpy docstrings
     "sphinx.ext.autodoc",  # Core library for html generation from docstrings
     "sphinx.ext.autosummary",  # Create neat summary tables
-    "sphinx.ext.napoleon",  # autodoc understands numpy docstrings
     "sphinx.ext.doctest",  # Test snippets in the documentation
     "sphinx.ext.viewcode",  # Add links to highlighted source code
     "sphinx.ext.intersphinx",  # Link to other projects’ documentation
@@ -73,16 +75,14 @@ extensions = [
     "sphinx.ext.viewcode",  # Add links to highlighted source code
     "sphinx.ext.intersphinx",  # Link to other projects’ documentation
     "sphinx.ext.autosectionlabel",  # Allow reference sections using its title
-    # 'sphinx.ext.mathjax',
-    "nbsphinx",  # provides a source parser for *.ipynb files.
-    # allows you to include Jupyter notebooks that sit outside your sphinx source
-    # directory in your documentation.
-    "nbsphinx_link",
-    # enables running code embedded in Sphinx documentation and embedding output
-    # of that code into the resulting document
     "jupyter_sphinx",
     "numpydoc",
     "m2r2",  # compatibility with markdown
+    "myst_nb",  # to include jupyter nteboo
+]
+
+suppress_warnings = [
+    "nbsphinx",
 ]
 
 # -----------------------------------------------------------------------------
@@ -126,7 +126,7 @@ intersphinx_mapping = {
 # The suffix(es) of source filenames.
 # You can specify multiple suffix as a list of string:
 # source_suffix = ['.rst', '.md']
-source_suffix = [".rst", ".ipynb"]
+source_suffix = [".rst", ".md", ".ipynb"]
 
 # The encoding of source files.
 # source_encoding = 'utf-8-sig'

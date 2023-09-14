@@ -1,4 +1,3 @@
-# ruff: noqa: E402
 # ---
 # jupyter:
 #   jupytext:
@@ -13,6 +12,7 @@
 #     language: python
 #     name: python3
 # ---
+# ruff: noqa: E402
 # %% [markdown]
 # # Estimating parameters of an anharmonic oscillator
 #

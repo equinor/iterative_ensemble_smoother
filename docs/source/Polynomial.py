@@ -1,4 +1,3 @@
-# ruff: noqa: E501, E402
 # ---
 # jupyter:
 #   jupytext:
@@ -13,6 +12,7 @@
 #     language: python
 #     name: python3
 # ---
+# ruff: noqa: E501, E402
 # %% [markdown]
 # # Fitting a polynomial with Gaussian priors
 #
