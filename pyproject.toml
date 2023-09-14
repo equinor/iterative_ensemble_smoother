@@ -41,6 +41,7 @@ doc = [
     "sphinx",
     "pydata_sphinx_theme",
     "nbsphinx",
+    "nbsphinx-link",
     "jupyter_sphinx",
     "sphinxcontrib.bibtex",
     "matplotlib",
@@ -56,8 +57,12 @@ doc = [
 ]
 dev = [
     "pytest",
+    "pytest-runner",
+    "pytest-cov",
+    "pytest-cookies",
     "pytest-snapshot",
     "pytest-memray",
+    "coverage",
     "tox",
     "pre-commit",
     "matplotlib",
