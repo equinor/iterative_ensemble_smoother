@@ -10,15 +10,6 @@
 
    {% block methods %}
    .. automethod:: __init__
-
-   {% if methods %}
-   .. rubric:: {{ _('Public methods summary') }}
-
-   .. autosummary::
-   {% for item in methods %}
-      ~{{ name }}.{{ item }}
-   {%- endfor %}
-   {% endif %}
    {% endblock %}
 
    .. rubric:: {{ _('Methods definition') }}
