@@ -17,25 +17,71 @@
 # # Estimating parameters of an anharmonic oscillator
 #
 # The anharnomic oscillator can be modelled by a non-linear partial differential
-# equation as described in section 6.4.3 of the book Fundamentals of Algorithms
-# and Data Assimilation by Mark Asch, Marc Bocquet and Maëlle Nodet.
+# equation as described in section 6.3.4 of the book [Fundamentals of Algorithms
+# and Data Assimilation](https://www.amazon.com/Data-Assimilation-Methods-Algorithms-Applications/dp/1611974534) by Mark Asch, Marc Bocquet and Maëlle Nodet.
+#
+# -------------
+#
+# The discrete two-parameter model is:
+#
+# $$x_{k+1} - 2 x_{k} + x_{k-1} = \omega^2 x_{k} - \lambda^2 x_{k}^3$$
+#
+# with initial conditions $x_0 = 0$ and $x_1 = 1$.
+#
+# In other words we have the following recurrence relationship:
+#
+# $x_{k+1} = \omega^2 x_{k} - \lambda^2 x_{k}^3 + 2 x_{k} - x_{k-1}$
+#
+#
+# -------------
+# The state vector can be written as:
+#
+# $$
+# \mathbf{u}_k = \begin{bmatrix}
+# x_{k} \\
+# x_{k-1}
+# \end{bmatrix}
+# \quad
+# \mathcal{M}_{k+1} =
+#  \begin{bmatrix}
+# 2 + \omega^2 - \lambda^2 x_k^2 & -1 \\
+# 1 & 0
+# \end{bmatrix}
+# $$
+#
+# so that $\mathbf{u}_{k+1} = \mathcal{M}_{k+1}(\mathbf{u}_k)$.
+#
+#
 
 # %%
-# Simple plotting of forward-model with a single response and parameters
 from matplotlib import pyplot as plt
+import numpy as np
+from scipy import stats
+from scipy.special import erf
+import iterative_ensemble_smoother as ies
+
+rng = np.random.default_rng(12345)
+
+plt.rcParams["figure.figsize"] = [8, 3]
 
 
-def plot_result(A, response_x_axis, trans_func=lambda x: x, priors=[], title=None):
-    responses = forward_model(A, priors, response_x_axis)
-    plt.rcParams["figure.figsize"] = [12, 4]
-    fig, axs = plt.subplots(1, 1 + len(A))
+# %%
+def plot_result(A, response_x_axis, title=None):
+    """Plot the anharmonic oscillator, as well as marginal
+    and joint distributions for the parameters."""
+
+    responses = forward_model(A, response_x_axis)
+
+    fig, axes = plt.subplots(1, 2 + len(A), figsize=(9, 2.25))
     if title:
         fig.suptitle(title)
 
-    axs[0].plot(response_x_axis, responses)
-    for i, param in enumerate(A):
-        A_trans = np.array([trans_func(v, *priors[i]) for v in param])
-        axs[i + 1].hist(A_trans, bins="fd")
+    axes[0].plot(response_x_axis, responses, color="black", alpha=0.1)
+    for ax, param, label in zip(axes[1:], A, ["omega", "lambda"]):
+        ax.hist(param, bins="fd")
+        ax.set_xlabel(label)
+
+    axes[-1].scatter(A[0, :], A[1, :], s=5)
 
     fig.tight_layout()
     plt.show()
@@ -45,131 +91,187 @@ def plot_result(A, response_x_axis, trans_func=lambda x: x, priors=[], title=Non
 # ## Setup
 
 # %%
-# Oscilator example
-import numpy as np
-from math import sqrt
-from scipy.special import erf
+def generate_observations(K):
+    """Run the model with true parameters, then generate observations."""
+    # Evaluate using true parameter values on a fine grid with K sample points
+    x = simulate_anharmonic(omega=3.5e-2, lmbda=3e-4, K=K)
 
-
-def _generate_observations(K):
-    x = _evaluate(omega=3.5e-2, lmbda=3e-4, K=K)
-    rng = np.random.default_rng(12345)
+    # Generate observations every `nobs` steps
     nobs = 50
-    obs_points = np.linspace(0, K, nobs, endpoint=False, dtype=int)
+    # Generate observation points [0, 50, 100, 150, ...] when `nobs` = 50
+    observation_x_axis = np.arange(K // nobs) * nobs
 
-    obs_with_std = np.zeros(shape=(len(obs_points), 2))
+    # Generate noisy observations, with value at least 5
+    observation_errors = np.maximum(5, 0.2 * np.abs(x[observation_x_axis]))
+    observation_values = rng.normal(loc=x[observation_x_axis], scale=observation_errors)
 
-    for obs_idx, obs_point in enumerate(obs_points):
-        # Set observation error's standard deviation to some
-        # percentage of the amplitude of x with a minimum of, e.g., 1.
-        obs_std = max(1, 0.02 * abs(x[obs_point]))
-        obs_with_std[obs_idx, 0] = x[obs_point] + rng.normal(loc=0.0, scale=obs_std)
-        obs_with_std[obs_idx, 1] = obs_std
-    return obs_with_std, obs_points
+    return observation_values, observation_errors, observation_x_axis
 
 
-def _evaluate(omega, lmbda, K):
+def simulate_anharmonic(omega, lmbda, K):
+    """Evaluate the anharmonic oscillator."""
     x = np.zeros(K)
     x[0] = 0
     x[1] = 1
 
     # Looping from 2 because we have initial conditions at k=0 and k=1.
-    for k in range(2, K - 1):
-        M = np.array([[2 + omega**2 - lmbda**2 * x[k] ** 2, -1], [1, 0]])
-        u = np.array([x[k], x[k - 1]])
-        u = M @ u
-        x[k + 1] = u[0]
-        x[k] = u[1]
+    for k in range(2, K):
+        x[k] = x[k - 1] * (2 + omega**2 - lmbda**2 * x[k - 1] ** 2) - x[k - 2]
 
     return x
 
 
-def uniform(x, min_x, max_x):
-    y = 0.5 * (1 + erf(x / sqrt(2.0)))
-    return y * (max_x - min_x) + min_x
-
-
-def forward_model(A, prior, response_x_axis):
-    responses = []
-    for [omega, lmbda] in A.T:
-        r = _evaluate(
-            omega=uniform(omega, *prior[0]),
-            lmbda=uniform(lmbda, *prior[1]),
-            K=len(response_x_axis),
-        )
-        responses.append(r)
-    return np.array(responses).T
+def forward_model(A, response_x_axis):
+    """Evaluate on each column (ensemble realization)."""
+    return np.vstack(
+        [simulate_anharmonic(*params, K=len(response_x_axis)) for params in A.T]
+    ).T
 
 
 response_x_axis = range(2500)
-realizations = 100
-
-observations, observation_x_axis = _generate_observations(len(response_x_axis))
-observation_values = observations[:, 0]
-observation_errors = observations[:, 1]
-
-A = np.random.normal(0, 1, size=(2, realizations))
-
-priors = [(2.5e-2, 4.5e-2), (2.0e-4, 4.0e-4)]
-plot_result(A, response_x_axis, uniform, priors)
+observation_values, observation_errors, observation_x_axis = generate_observations(
+    len(response_x_axis)
+)
 
 
 # %% [markdown]
-# ## Update step
+# ## Plot observations
 
 # %%
-import numpy as np
-import iterative_ensemble_smoother as ies
+fig, ax = plt.subplots(figsize=(8, 3))
+ax.set_title("Anharmonic Oscillator")
+ax.plot(
+    np.arange(2500),
+    simulate_anharmonic(omega=3.5e-2, lmbda=3e-4, K=2500),
+    label="Truth",
+    color="black",
+)
 
-plot_result(A, response_x_axis, uniform, priors)
+ax.scatter(observation_x_axis, observation_values, label="Observations")
 
-responses_before = forward_model(A, priors, response_x_axis)
+fig.tight_layout()
+plt.legend()
+plt.show()
+
+# %% [markdown]
+# ## Create and plot prior
+#
+#
+# This section shows a "trick" for working with non-normal priors.
+#
+# Let $g$ be the forward model, so that $y = g(x)$.
+# Assume for instance that $x$ must be a positive parameter.
+# If so, then we can for instance use an exponential prior on $x$.
+# But if we use samples from an exponential prior directly in an ensemble smoother,
+# there is no guarantee that the posterior samples will be positive.
+#
+# The trick is to sample $x \sim \mathcal{N}(0, 1)$,
+# then define a function $f$ that maps from standard normal to the
+# exponential distribution.
+# This funciton can be constructed by first mapping from standard normal to
+# the interval $[0, 1)$ using the CDF, then mapping to exponential using the
+# quantile function (inverse CDF) of the exponential distribution.
+#
+# In summary:
+#
+# - We send $x \sim \mathcal{N}(0, 1)$ into the ensemble smoother as before
+# - We use the composite function $g(f(x))$ as our forward model, instead of $g(x)$
+# - When we plot the prior and posterior, we plot $f(x)$ instead of $x$ directly
+
+# %%
+# Create Uniform prior distributions
+realizations = 100
+PRIORS = [stats.uniform(loc=0.025, scale=0.02), stats.uniform(loc=0.0002, scale=0.0002)]
+
+
+# %%
+def prior_to_standard_normal(A):
+    """Map prior to U(0, 1), then use inverse of CDF to map to N(0, 1)."""
+    return np.vstack(
+        [stats.norm().ppf(prior.cdf(A_param)) for (A_param, prior) in zip(A, PRIORS)]
+    )
+
+
+def standard_normal_to_prior(A):
+    """Reverse mapping."""
+    return np.vstack(
+        [prior.ppf(stats.norm().cdf(A_param)) for (A_param, prior) in zip(A, PRIORS)]
+    )
+
+
+# verify that mappings are invertible
+A_uniform = np.vstack([prior.rvs(realizations) for prior in PRIORS])
+assert np.allclose(
+    standard_normal_to_prior(prior_to_standard_normal(A_uniform)), A_uniform
+)
+assert np.allclose(
+    prior_to_standard_normal(standard_normal_to_prior(A_uniform)), A_uniform
+)
+
+# %%
+# Create a standard normal prior and plot it in transformed space
+A = rng.standard_normal(size=(2, realizations))
+plot_result(standard_normal_to_prior(A), response_x_axis)
+
+# %% [markdown]
+# ## A single update step
+
+# %%
+plot_result(standard_normal_to_prior(A), response_x_axis)
+
+# The forward model is composed with the transformation from N(0, 1) to uniform priors
+responses_before = forward_model(standard_normal_to_prior(A), response_x_axis)
 Y = responses_before[observation_x_axis]
 
+# Run smoother for one step
 smoother = ies.ES()
 smoother.fit(Y, observation_errors, observation_values)
 new_A = smoother.update(A)
 
-plot_result(new_A, response_x_axis, uniform, priors)
+plot_result(standard_normal_to_prior(new_A), response_x_axis)
+
 
 # %% [markdown]
 # ## Iterative smoother
 
 # %%
-import numpy as np
-import iterative_ensemble_smoother as ies
-
-
-def iterative_smoother():
+def iterative_smoother(A):
     A_current = np.copy(A)
     iterations = 4
     smoother = ies.SIES(seed=42)
 
-    plot_result(A_current, response_x_axis, uniform, priors, title="Prior")
+    plot_result(
+        standard_normal_to_prior(A_current),
+        response_x_axis,
+        title="Prior",
+    )
 
     for iteration in range(iterations):
-        # Evaluate model
-        responses_before = forward_model(A_current, priors, response_x_axis)
+
+        responses_before = forward_model(
+            standard_normal_to_prior(A_current), response_x_axis
+        )
+
         Y = responses_before[observation_x_axis]
 
         smoother.fit(Y, observation_errors, observation_values)
         A_current = smoother.update(A_current)
 
         plot_result(
-            A_current,
+            standard_normal_to_prior(A_current),
             response_x_axis,
-            uniform,
-            priors,
-            title=f"IES iteration {iteration+1}",
+            title=f"SIES iteration {iteration+1}",
         )
 
 
-iterative_smoother()
+iterative_smoother(A)
+
 
 # %% [markdown]
 # ## ES-MDA (Ensemble Smoother - Multiple Data Assimilation)
 
 # %%
+
 smoother = ies.ESMDA(
     # Here C_D is a covariance matrix. If a 1D array is passed,
     # it is interpreted as the diagonal of the covariance matrix,
@@ -185,11 +287,13 @@ smoother = ies.ESMDA(
 
 A_current = np.copy(A)
 
-plot_result(A_current, response_x_axis, uniform, priors, title="Prior")
+plot_result(standard_normal_to_prior(A_current), response_x_axis, title="Prior")
 
 for iteration in range(smoother.num_assimilations()):
     # Evaluate the model
-    responses_before = forward_model(A_current, priors, response_x_axis)
+    responses_before = forward_model(
+        standard_normal_to_prior(A_current), response_x_axis
+    )
     Y = responses_before[observation_x_axis]
 
     # Assimilate data
@@ -197,9 +301,7 @@ for iteration in range(smoother.num_assimilations()):
 
     # Plot
     plot_result(
-        A_current,
+        standard_normal_to_prior(A_current),
         response_x_axis,
-        uniform,
-        priors,
         title=f"ESMDA iteration {iteration+1}",
     )
