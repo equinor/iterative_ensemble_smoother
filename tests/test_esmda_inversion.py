@@ -6,12 +6,11 @@ from iterative_ensemble_smoother.esmda_inversion import (
     inversion_exact_lstsq,
     inversion_exact_naive,
     inversion_exact_rescaled,
+    inversion_exact_subspace_woodbury,
     inversion_rescaled_subspace,
     inversion_subspace,
-    inversion_exact_subspace_woodbury,
     normalize_alpha,
 )
-
 
 # If `truncation` is 1.0, then all of these produce the same result
 EXACT_INVERSIONS = [
@@ -111,7 +110,7 @@ class TestEsmdaInversion:
 
     @pytest.mark.parametrize("function", APPROX_INVERSIONS)
     @pytest.mark.parametrize("num_outputs", [10])
-    def test_that_approximate_inversions_do_not_compute_exact_answer_with_few_ensemble_members(
+    def test_that_approximate_inversions_do_not_compute_exact_answer_with_few_members(
         self, function, num_outputs
     ):
         """With few ensemble members, the approximate methods should not return

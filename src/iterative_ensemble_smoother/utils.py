@@ -1,8 +1,8 @@
 from __future__ import annotations
-from typing import Tuple, Optional, TYPE_CHECKING
+
+from typing import TYPE_CHECKING, Optional, Tuple
 
 import numpy as np
-import scipy as sp  # type: ignore
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -18,7 +18,8 @@ def steplength_exponential(
     This is an implementation of Eq. (49), which calculates a suitable step length for
     the update step, from the book:
 
-    Geir Evensen, Formulating the history matching problem with consistent error statistics,
+    Geir Evensen, Formulating the history matching problem with
+    consistent error statistics,
     Computational Geosciences (2021) 25:945 –970
 
     Examples
@@ -82,7 +83,8 @@ def _validate_inputs(
 ) -> None:
     if response_ensemble.ndim != 2:
         raise ValueError(
-            "response_ensemble must be a matrix of size (number of responses by number of realizations)"
+            "response_ensemble must be a matrix of size "
+            "(number of responses by number of realizations)"
         )
 
     num_responses = response_ensemble.shape[0]
@@ -90,7 +92,8 @@ def _validate_inputs(
 
     if response_ensemble.shape[1] != ensemble_size:
         raise ValueError(
-            "response_ensemble and parameter_ensemble must have the same number of columns"
+            "response_ensemble and parameter_ensemble "
+            "must have the same number of columns"
         )
 
     if observation_errors.ndim == 2:
@@ -100,7 +103,8 @@ def _validate_inputs(
             )
         if observation_errors.shape[0] != len(observation_values):
             raise ValueError(
-                "observation_errors covariance matrix must match size of observation_values"
+                "observation_errors covariance matrix "
+                "must match size of observation_values"
             )
         if not np.all(np.abs(observation_errors - observation_errors.T) < 1e-8):
             raise ValueError(
@@ -108,17 +112,20 @@ def _validate_inputs(
             )
     elif len(observation_errors) != len(observation_values):
         raise ValueError(
-            "observation_errors and observation_values must have the same number of elements"
+            "observation_errors and observation_values must "
+            "have the same number of elements"
         )
 
     if len(observation_values) != num_responses:
         raise ValueError(
-            "observation_values must have the same number of elements as there are responses"
+            "observation_values must have the same number "
+            "of elements as there are responses"
         )
 
     if param_ensemble is not None and param_ensemble.ndim != 2:
         raise ValueError(
-            "parameter_ensemble must be a matrix of size (number of parameters by number of realizations)"
+            "parameter_ensemble must be a matrix of size "
+            "(number of parameters by number of realizations)"
         )
 
     if param_ensemble is not None and param_ensemble.shape[1] != ensemble_size:

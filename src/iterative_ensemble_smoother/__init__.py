@@ -9,6 +9,7 @@ try:
 except ImportError:
     __version__ = "unknown version"
     version_tuple = (0, 0, "unknown version", "unknown commit")
+
 from iterative_ensemble_smoother._iterative_ensemble_smoother import ES, SIES
 from iterative_ensemble_smoother.esmda import ESMDA
 
