@@ -1,10 +1,6 @@
 name: precommit
 
-on:
-  push:
-    # on every branch
-    branches:
-      - '*'
+on: [push, pull_request]
 
 jobs:
   lint:
