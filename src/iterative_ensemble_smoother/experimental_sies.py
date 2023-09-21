@@ -8,24 +8,57 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
 
-# =============================================================================
-# MAIN CLASS
-# =============================================================================
+from iterative_ensemble_smoother.sies_inversion import inversion_exact
 
 
 class SIES:
+    """
+    Initialize a Subspace Iterative Ensemble Smoother (SIES) instance.
+
+    This is an implementation of the algorithm described in the paper:
+    Efficient Implementation of an Iterative Ensemble Smoother for Data Assimilation and Reservoir History Matching
+    written by Evensen et al (2019),
+    URL: https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full
+
+    Parameters
+    ----------
+    parameters : npt.NDArray[np.double]
+        A 2D array of shape (num_parameters, ensemble_size). Each row corresponds
+        to a parameter in the model, and each column corresponds to an ensemble
+        member (realization). This is X in Evensen (2019).
+    covariance : npt.NDArray[np.double]
+        Either a 1D array of diagonal covariances, or a 2D covariance matrix.
+        The shape is either (num_parameters,) or (num_parameters, num_parameters).
+        This is C_dd in Evensen (2019), and represents observation or measurement
+        errors. We observe d from the real world, y from the model g(x), and
+        assume that d = y + e, where e is multivariate normal with covariance
+        given by `covariance`.
+    observations : npt.NDArray[np.double]
+        A 1D array of observations, with shape (num_observations,).
+        This is d in Evensen (2019).
+    inversion : str
+        The type of subspace inversion used in the algorithm.
+        See the dictionary `SIES.inversion_funcs` for more information.
+    seed : Optional[int], optional
+        Integer used to seed the random number generator. The default is None.
+    """
+
+    inversion_funcs = {"exact": inversion_exact}
+
     def __init__(
         self,
-        param_ensemble: npt.NDArray[np.double],
-        observation_errors: npt.NDArray[np.double],
-        observation_values: npt.NDArray[np.double],
+        parameters: npt.NDArray[np.double],
+        covariance: npt.NDArray[np.double],
+        observations: npt.NDArray[np.double],
         *,
+        inversion="exact",
         seed: Optional[int] = None,
     ):
         self.rng = np.random.default_rng(seed)
-        self.X = param_ensemble
-        self.d = observation_values
-        self.C_dd = observation_errors
+        self.inversion = self.inversion_funcs[inversion]
+        self.X = parameters
+        self.d = observations
+        self.C_dd = covariance
         self.A = (self.X - self.X.mean(axis=1, keepdims=True)) / np.sqrt(
             self.X.shape[1] - 1
         )
@@ -50,15 +83,47 @@ class SIES:
 
         self.W = np.zeros(shape=(self.X.shape[1], self.X.shape[1]))
 
-    def objective(self, W, Y):
-        """Evaluate the objective function in Equation (18)."""
-        (prior, likelihood) = self.objective_elementwise(W, Y)
+    def evaluate_objective(self, W, Y):
+        """Evaluate the objective function in Equation (18), taking the mean
+        over each ensemble member.
+
+        Parameters
+        ----------
+        W : npt.NDArray[np.double]
+            Current weight matrix W, which represents the current X_i as a linear
+            combination of the prior. See equation (17) and line 9 in Algorithm 1.
+        Y : npt.NDArray[np.double]
+            Reponses when evaluating the model at X_i. In other words, Y = g(X_i).
+
+        Returns
+        -------
+        float
+            The objective function value. Lower objective is better.
+
+        """
+        (prior, likelihood) = self.evaluate_objective_elementwise(W, Y)
         return (prior + likelihood).mean()
 
-    def objective_elementwise(self, W, Y):
+    def evaluate_objective_elementwise(self, W, Y):
         """Equation (18) elementwise and termwise, returning a tuple of vectors
-        (prior, likelihood)."""
+        (prior, likelihood).
 
+        Parameters
+        ----------
+        W : npt.NDArray[np.double]
+            Current weight matrix W, which represents the current X_i as a linear
+            combination of the prior. See equation (17) and line 9 in Algorithm 1.
+        Y : npt.NDArray[np.double]
+            Reponses when evaluating the model at X_i. In other words, Y = g(X_i).
+
+        Returns
+        -------
+        prior : npt.NDArray[np.double]
+            A 1D array representing distance from prior for each ensemble member.
+        likelihood : npt.NDArray[np.double]
+            A 1D array representing distance from observations for each ensemble member.
+
+        """
         # Evaluate the elementwise prior term
         # Evaluate np.diag(W.T @ W) = (W**2).sum(axis=0)
         prior = (W**2).sum(axis=0)
@@ -98,7 +163,7 @@ class SIES:
 
         # Perform a Gauss-Newton iteration
         while True:
-            objective_before = self.objective(W=self.W, Y=Y_i)
+            objective_before = self.evaluate_objective(W=self.W, Y=Y_i)
 
             # Perform a line-search iteration
             for p in range(BACKTRACK_ITERATIONS):
@@ -111,7 +176,7 @@ class SIES:
                 # Evaluate at the new point
                 proposed_X = self.X + self.X @ proposed_W / np.sqrt(N - 1)
                 proposed_Y = g(proposed_X)
-                objective = self.objective(W=proposed_W, Y=proposed_Y)
+                objective = self.evaluate_objective(W=proposed_W, Y=proposed_Y)
 
                 # Accept the step
                 if objective <= objective_before:
@@ -133,11 +198,28 @@ class SIES:
 
             yield X_i
 
-    def sies_iteration(self, Y, step_length=0.5):
-        """Implementation of lines 4-9 in Algorithm 1.
+    def sies_iteration(self, responses, step_length=0.5):
+        """Perform a single SIES iteration (Gauss-Newton step).
 
-        Returns updated X and updates internal state W.
+        This method implements lines 4-9 in Algorithm 1.
+        It returns a updated X and updates internal state W.
+
+
+        Parameters
+        ----------
+        responses : npt.NDArray[np.double]
+            The model evaluated at X_i. In other words, responses = g(X_i).
+            This is Y in the paper.
+        step_length : float, optional
+            Step length for Gauss-Newton. The default is 0.5.
+
+        Returns
+        -------
+        npt.NDArray[np.double]
+            Updated parameter ensemble.
+
         """
+        Y = responses
 
         # Lines 4 through 8
         proposed_W = self.propose_W(Y, step_length)
@@ -147,10 +229,26 @@ class SIES:
         N = Y.shape[1]  # Ensemble members
         return self.X + self.X @ self.W / np.sqrt(N - 1)
 
-    def propose_W(self, Y, step_length=0.5):
-        """Implementation of lines 4-8 in Algorithm 1.
+    def propose_W(self, responses, step_length=0.5):
+        """Returns a proposal for W_i, without updating the internal W.
 
-        Returns a proposal for W_i, without updating any internal state."""
+        This is an implementation of lines 4-8 in Algorithm 1.
+
+        Parameters
+        ----------
+        responses : npt.NDArray[np.double]
+            The model evaluated at X_i. In other words, responses = g(X_i).
+            This is Y in the paper.
+        step_length : float, optional
+            Step length for Gauss-Newton. The default is 0.5.
+
+        Returns
+        -------
+        W_i : npt.NDArray[np.double]
+            A proposal for a new W in the algorithm.
+
+        """
+        Y = responses
         g_X = Y.copy()
 
         # Get shapes. Same notation as used in the paper.
@@ -194,7 +292,7 @@ class SIES:
         assert S.shape == (m, N)
         assert self.C_dd.shape in [(m, m), (m,)]
         assert H.shape == (m, N)
-        return inversion_exact(
+        return self.inversion(
             W=self.W,
             step_length=step_length,
             S=S,
@@ -219,8 +317,7 @@ def sample_mvnormal(*, C_dd_cholesky, rng, size):
         - numpy.random.multivariate_normal factors the covariance in every call
         - scipy.stats.Covariance.from_diagonal stores off diagonal zeros
 
-    So the best choice seems to be to write sampling from scratch.
-
+    So the best choice was to write sampling from scratch.
 
 
     Examples
@@ -247,168 +344,6 @@ def sample_mvnormal(*, C_dd_cholesky, rng, size):
     # A 1D diagonal of a covariance matrix was passed
     else:
         return C_dd_cholesky.reshape(-1, 1) * z
-
-
-def _verify_inversion_args(*, W, step_length, S, C_dd, H, C_dd_cholesky):
-    if C_dd_cholesky is not None:
-        assert C_dd.shape == C_dd_cholesky.shape
-
-    # Verify N
-    assert W.shape[0] == W.shape[1]
-    assert W.shape[0] == S.shape[1]
-    assert W.shape[0] == H.shape[1]
-
-    # Verify m
-    assert S.shape[0] == C_dd.shape[0]
-    assert S.shape[0] == H.shape[0]
-
-
-# =============================================================================
-# INVERSION FUNCTIONS
-# =============================================================================
-
-
-def inversion_naive(*, W, step_length, S, C_dd, H, C_dd_cholesky=None):
-    """Naive implementation of Equation (42)."""
-    _verify_inversion_args(
-        W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
-    )
-
-    # Since it's naive, we just create zeros here
-    if C_dd.ndim == 1:
-        C_dd = np.diag(C_dd)
-
-    to_invert = S @ S.T + C_dd
-    return W - step_length * (
-        W - np.linalg.multi_dot([S.T, sp.linalg.inv(to_invert), H])
-    )
-
-
-def inversion_direct(*, W, step_length, S, C_dd, H, C_dd_cholesky=None):
-    """Implementation of equation (42)."""
-    _verify_inversion_args(
-        W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
-    )
-
-    # We define K as the solution to
-    # (S @ S.T + C_dd) @ K = H, so that
-    # K = (S @ S.T + C_dd)^-1 H
-    # K = solve(S @ S.T + C_dd, H)
-    if C_dd.ndim == 1:
-        # Since S has shape (m, N), and m >> N, using BLAS is typically faster:
-        # >>> S = np.random.randn(10_000, 100)
-        # >>> %timeit S @ S.T
-        # 512 ms ± 14.4 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
-        # >>> %timeit sp.linalg.blas.dsyrk(alpha=1.0, a=S)
-        # 225 ms ± 37 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
-        # Here BLAS only computes the upper triangular part of S @ S.T, but
-        # that's all we need when we call the solver with "lower=False".
-        lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=S)  # Equivalent to S @ S.T
-        lhs.flat[:: lhs.shape[0] + 1] += C_dd
-    else:
-        lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=S, c=C_dd, beta=1.0)  # S @ S.T + C_dd
-
-    K = sp.linalg.solve(
-        lhs,
-        H,
-        lower=False,
-        overwrite_a=True,
-        overwrite_b=False,
-        check_finite=True,
-        assume_a="pos",
-    )
-    return W - step_length * (W - np.linalg.multi_dot([S.T, K]))
-
-
-def inversion_direct_corrscale(*, W, step_length, S, C_dd, H, C_dd_cholesky=None):
-    """Implementation of equation (42), with correlation matrix scaling."""
-    _verify_inversion_args(
-        W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
-    )
-
-    if C_dd.ndim == 2:
-        scale_factor = 1 / np.sqrt(np.diag(C_dd))
-        # Scale rows and columns by diagonal, creating correlation matrix R
-        R = (C_dd * scale_factor.reshape(1, -1)) * scale_factor.reshape(-1, 1)
-    else:
-        scale_factor = 1 / np.sqrt(C_dd)
-        # The correlation matrix R is simply the identity matrix in this case
-
-    # Scale rows
-    S = S * scale_factor.reshape(-1, 1)
-    H = H * scale_factor.reshape(-1, 1)
-
-    # We define K as the solution to
-    # (S @ S.T + C_dd) @ K = H, so that
-    # K = (S @ S.T + C_dd)^-1 H
-    # K = solve(S @ S.T + C_dd, H)
-    if C_dd.ndim == 1:
-        lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=S)  # S.T @ S
-        lhs.flat[:: lhs.shape[0] + 1] += 1
-    else:
-        lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=S, beta=1.0, c=R)  # S.T @ S + R
-
-    K = sp.linalg.solve(
-        lhs,
-        H,
-        lower=False,
-        overwrite_a=True,
-        overwrite_b=False,
-        check_finite=True,
-        assume_a="pos",
-    )
-    return W - step_length * (W - np.linalg.multi_dot([S.T, K]))
-
-
-def inversion_exact(*, W, step_length, S, C_dd, H, C_dd_cholesky):
-    """Implementation of equation (50)."""
-    _verify_inversion_args(
-        W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
-    )
-
-    # Special case for diagonal covariance matrix.
-    # See below for a more explanation of these computations.
-    if C_dd.ndim == 1:
-        K = S / C_dd_cholesky.reshape(-1, 1)
-        lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)  # K.T @ K
-        lhs.flat[:: lhs.shape[0] + 1] += 1
-        C_dd_inv_H = H / C_dd.reshape(-1, 1)
-        K = sp.linalg.solve(
-            lhs,
-            S.T @ C_dd_inv_H,
-            lower=False,
-            overwrite_a=True,
-            overwrite_b=True,
-            check_finite=True,
-            assume_a="pos",
-        )
-        return W - step_length * (W - K)
-
-    # Solve the equation: C_dd_cholesky @ K = S for K,
-    # which is equivalent to forming K := C_dd_cholesky^-1 @ S,
-    # exploiting the fact that C_dd_cholesky is lower triangular
-    K = sp.linalg.blas.dtrsm(alpha=1.0, a=C_dd_cholesky, b=S, lower=1)
-
-    # Form lhs := (S.T @ C_dd^-1 @ S + I)
-    lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)  # K.T @ K
-    lhs.flat[:: lhs.shape[0] + 1] += 1
-
-    # Compute C_dd^-1 @ H, exploiting the fact that we have the cholesky factor
-    C_dd_inv_H = sp.linalg.cho_solve((C_dd_cholesky, 1), H)
-
-    # Solve the following for K
-    # lhs @ K = S.T @ C_dd_inv_H
-    K = sp.linalg.solve(
-        lhs,
-        S.T @ C_dd_inv_H,
-        lower=False,
-        overwrite_a=True,
-        overwrite_b=True,
-        check_finite=True,
-        assume_a="pos",
-    )
-
-    return W - step_length * (W - K)
 
 
 if __name__ == "__main__":
