@@ -1,6 +1,10 @@
-name: Lint
+name: precommit
 
-on: [pull_request]
+on:
+  push:
+    # on every branch
+    branches:
+      - '*'
 
 jobs:
   lint:
@@ -15,5 +19,5 @@ jobs:
       - name: Install tox
         run: pip install tox
 
-      - name: Check style
-        run: tox -e style
+      - name: Check precommit
+        run: tox -e precommit
