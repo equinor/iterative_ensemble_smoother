@@ -60,5 +60,5 @@ pip install .
 ```bash
 apt install pandoc # Pandoc is required to build the documentation.
 pip install .[doc]
-spinx-build -c docs/source/ -b html docs/source/ docs/build/html/
+sphinx-build -c docs/source/ -b html docs/source/ docs/build/html/
 ```

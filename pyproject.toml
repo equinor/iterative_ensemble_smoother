@@ -45,10 +45,13 @@ doc = [
     "matplotlib",
     "jupytext",
     "pandas",
+    "scipy",
     "p_tqdm",
     "ipykernel",
-    "ipywidgets"
+    "ipywidgets",
+    "numpydoc",
 ]
+
 dev = [
     "pytest",
     "pytest-snapshot",
