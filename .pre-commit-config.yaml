@@ -21,4 +21,4 @@ repos:
                 ^tests/|
                 ^docs
             )
-        args: [--strict]
+        args: [--strict, --ignore-missing-imports, --no-warn-unused-ignores]

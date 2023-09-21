@@ -1,4 +1,4 @@
-name: precommit
+name: Pre-commit tests
 
 on: [push, pull_request]
 
