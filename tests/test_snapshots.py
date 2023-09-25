@@ -185,3 +185,14 @@ def test_get_steplength():
     # iterative_es = ies.SIES(0)
     steplengths = [steplength_exponential(i) for i in range(1, 10)]
     testing.assert_array_equal(expected, steplengths)
+
+
+if __name__ == "__main__":
+    import pytest
+
+    pytest.main(
+        args=[
+            __file__,
+            "-v",
+        ]
+    )

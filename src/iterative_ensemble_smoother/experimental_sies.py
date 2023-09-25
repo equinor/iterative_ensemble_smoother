@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
 
 from iterative_ensemble_smoother.sies_inversion import inversion_exact
+from iterative_ensemble_smoother.utils import _validate_inputs, sample_mvnormal
 
 
 class SIES:
@@ -54,6 +55,10 @@ class SIES:
         inversion="exact",
         seed: Optional[int] = None,
     ):
+        _validate_inputs(
+            parameters=parameters, covariance=covariance, observations=observations
+        )
+
         self.rng = np.random.default_rng(seed)
         self.inversion = self.inversion_funcs[inversion]
         self.X = parameters
@@ -198,7 +203,7 @@ class SIES:
 
             yield X_i
 
-    def sies_iteration(self, responses, step_length=0.5):
+    def sies_iteration(self, responses, step_length=0.5, ensemble_mask=None):
         """Perform a single SIES iteration (Gauss-Newton step).
 
         This method implements lines 4-9 in Algorithm 1.
@@ -221,13 +226,25 @@ class SIES:
         """
         Y = responses
 
-        # Lines 4 through 8
-        proposed_W = self.propose_W(Y, step_length)
-        self.W = proposed_W
+        if ensemble_mask is not None:
+            # Lines 4 through 8
+            proposed_W = self.propose_W_masked(
+                Y, ensemble_mask=ensemble_mask, step_length=step_length
+            )
+            self.W[:, ensemble_mask] = proposed_W
 
-        # Line 9
-        N = Y.shape[1]  # Ensemble members
-        return self.X + self.X @ self.W / np.sqrt(N - 1)
+            # Line 9
+            N = self.X.shape[1]  # Ensemble members
+            return self.X + self.X @ self.W / np.sqrt(N - 1)
+
+        else:
+            # Lines 4 through 8
+            proposed_W = self.propose_W(Y, step_length=step_length)
+            self.W = proposed_W
+
+            # Line 9
+            N = self.X.shape[1]  # Ensemble members
+            return self.X + self.X @ self.W / np.sqrt(N - 1)
 
     def propose_W(self, responses, step_length=0.5):
         """Returns a proposal for W_i, without updating the internal W.
@@ -249,10 +266,12 @@ class SIES:
 
         """
         Y = responses
+        assert Y.ndim == 2
+        assert Y.shape[0] == self.C_dd.shape[0]
         g_X = Y.copy()
 
         # Get shapes. Same notation as used in the paper.
-        N = Y.shape[1]  # Ensemble members
+        N = self.X.shape[1]  # Ensemble members
         n = self.X.shape[0]  # Parameters (inputs)
         m = self.C_dd.shape[0]  # Responses (outputs)
 
@@ -301,49 +320,105 @@ class SIES:
             C_dd_cholesky=self.C_dd_cholesky,
         )
 
+    def propose_W_masked(self, responses, ensemble_mask, step_length=0.5):
+        """Returns a proposal for W_i, without updating the internal W.
 
-# =============================================================================
-# UTILITY FUNCTIONS
-# =============================================================================
+        This is an implementation of lines 4-8 in Algorithm 1.
 
+        Parameters
+        ----------
+        responses : npt.NDArray[np.double]
+            The model evaluated at X_i. In other words, responses = g(X_i).
+            This is Y in the paper.
+        step_length : float, optional
+            Step length for Gauss-Newton. The default is 0.5.
 
-def sample_mvnormal(*, C_dd_cholesky, rng, size):
-    """Draw samples from the multivariate normal N(0, C_dd).
+        Returns
+        -------
+        W_i : npt.NDArray[np.double]
+            A proposal for a new W in the algorithm.
 
-    We write this function from scratch here we can to avoid factoring the
-    covariance matrix every time we sample, and we want to exploit diagonal
-    covariance matrices in terms of computation and memory. More specifically:
+        """
+        Y = responses
+        assert Y.ndim == 2
+        assert Y.shape[0] == self.C_dd.shape[0]
+        g_X = Y.copy()
+        if ensemble_mask is not None:
+            assert Y.shape[1] == ensemble_mask.sum()
 
-        - numpy.random.multivariate_normal factors the covariance in every call
-        - scipy.stats.Covariance.from_diagonal stores off diagonal zeros
+        # Get shapes. Same notation as used in the paper.
+        N = self.X.shape[1]  # Ensemble members in prior
+        n = self.X.shape[0]  # Parameters (inputs)
+        m = self.C_dd.shape[0]  # Responses (outputs)
+        k = Y.shape[1]  # Active ensemble members
 
-    So the best choice was to write sampling from scratch.
+        # Line 4 in Algorithm 1.
+        Y = (g_X - g_X.mean(axis=1, keepdims=True)) / np.sqrt(N - 1)
 
+        # Line 5
+        Omega = self.W.copy()
+        Omega -= Omega.mean(axis=1, keepdims=True)
+        Omega /= np.sqrt(N - 1)
+        Omega.flat[:: Omega.shape[0] + 1] += 1  # Add identity in place
+        Omega = Omega[:, ensemble_mask]
 
-    Examples
-    --------
-    >>> C_dd_cholesky = np.diag([5, 10, 15])
-    >>> rng = np.random.default_rng(42)
-    >>> sample_mvnormal(C_dd_cholesky=C_dd_cholesky, rng=rng, size=2)
-    array([[  1.5235854 ,  -5.19992053],
-           [  7.50451196,   9.40564716],
-           [-29.26552783, -19.5326926 ]])
-    >>> sample_mvnormal(C_dd_cholesky=np.diag(C_dd_cholesky), rng=rng, size=2)
-    array([[ 0.63920202, -1.58121296],
-           [-0.16801158, -8.53043928],
-           [13.19096962, 11.66687903]])
-    """
+        # Line 6
+        if n < k - 1:  # Here we use k instead of N
+            # There are fewer parameters than realizations. This means that the
+            # system of equations is overdetermined, and we must solve a least
+            # squares problem.
 
-    # Standard normal samples
-    z = rng.standard_normal(size=(C_dd_cholesky.shape[0], size))
+            # An alternative approach to producing A_i would be keeping the
+            # returned value from the previous Newton iteration (call it X_i),
+            # then computing:
+            # A_i = (self.X_i - self.X_i.mean(axis=1, keepdims=True)) / np.sqrt(N - 1)
+            A_i = self.A @ Omega
+            # S = sp.linalg.solve(
+            #     Omega.T, np.linalg.multi_dot([Y, sp.linalg.pinv(A_i), A_i]).T
+            # ).T
 
-    # A 2D covariance matrix was passed
-    if C_dd_cholesky.ndim == 2:
-        return C_dd_cholesky @ z
+            print(f"A shape: {Omega.T.shape}")
+            print(
+                f"B shape: {np.linalg.multi_dot([Y, sp.linalg.pinv(A_i), A_i]).T.shape}"
+            )
+            assert np.all(np.isfinite(Omega))
+            assert np.all(np.isfinite(sp.linalg.pinv(A_i)))
+            assert np.all(np.isfinite(Y))
+            assert np.all(
+                np.isfinite(np.linalg.multi_dot([Y, sp.linalg.pinv(A_i), A_i]).T)
+            )
+            K = np.linalg.multi_dot([Y, sp.linalg.pinv(A_i), A_i]).T
+            print(K.min(), K.max())
+            print(Omega.min(), Omega.max())
+            ST, *_ = sp.linalg.lstsq(
+                Omega.T, np.linalg.multi_dot([Y, sp.linalg.pinv(A_i), A_i]).T
+            )
+            S = ST.T
 
-    # A 1D diagonal of a covariance matrix was passed
-    else:
-        return C_dd_cholesky.reshape(-1, 1) * z
+        else:
+            # The system is not overdetermined
+            # S = sp.linalg.solve(Omega.T, Y.T).T
+            ST, *_ = sp.linalg.lstsq(Omega.T, Y.T)
+            S = ST.T
+
+        # Line 7
+        H = S @ self.W[:, ensemble_mask] + self.D[:, ensemble_mask] - g_X
+
+        # Line 8
+        # Some asserts to remind us what the shapes of the matrices are
+        assert self.W.shape == (N, N)
+        assert S.shape == (m, N)
+        assert self.C_dd.shape in [(m, m), (m,)]
+        assert H.shape == (m, k)
+
+        return self.inversion(
+            W=self.W[:, ensemble_mask],
+            step_length=step_length,
+            S=S,
+            C_dd=self.C_dd,
+            H=H,
+            C_dd_cholesky=self.C_dd_cholesky,
+        )
 
 
 if __name__ == "__main__":
@@ -351,3 +426,50 @@ if __name__ == "__main__":
 
     # --durations=10  <- May be used to show potentially slow tests
     pytest.main(args=[__file__, "--doctest-modules", "-v", "-v", "--maxfail=1"])
+
+    import matplotlib.pyplot as plt
+
+    rng = np.random.default_rng(42)
+    # Problem size
+    ensemble_size = 110
+    num_params = 20
+    num_responses = 100
+
+    A = rng.normal(size=(num_responses, num_params))
+
+    def g(X):
+        return A @ X
+
+    # Inputs and outputs
+    parameters = rng.normal(size=(num_params, ensemble_size))
+    observations = A @ np.linspace(-3, 3, num=num_params)
+    observations += rng.normal(size=(num_responses))
+    covariance = np.ones(num_responses)
+
+    # Create smoother
+    smoother = SIES(
+        parameters=parameters, covariance=covariance, observations=observations, seed=42
+    )
+
+    ensemble_mask = np.ones(ensemble_size, dtype=bool)
+    X_i = np.copy(parameters)
+    plt.plot(X_i.mean(axis=1), label="prior")
+    for iteration in range(10):
+        # Assume we do a model run, but some realizations (ensemble members)
+        # fail for some reason. We know which realizations failed.
+        simulation_ok = rng.choice([True, False], size=ensemble_size, p=[0.9, 0.1])
+        ensemble_mask = np.logical_and(ensemble_mask, simulation_ok)
+
+        responses = g(X_i)
+
+        X_i = smoother.sies_iteration(
+            responses[:, ensemble_mask], ensemble_mask=ensemble_mask, step_length=0.5
+        )
+
+        print(X_i.mean(axis=1))
+
+        plt.plot(X_i.mean(axis=1), label=iteration)
+
+    plt.legend()
+    plt.show()
+    assert np.all(np.diff(X_i.mean(axis=1)) >= 0)

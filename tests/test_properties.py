@@ -1,11 +1,13 @@
 import numpy as np
 import pytest
+from scipy.stats import linregress
 import pandas as pd
 from p_tqdm import p_map
 
+
 import iterative_ensemble_smoother as ies
 
-rng = np.random.default_rng()
+rng = np.random.default_rng(42)
 
 # The following tests follow the
 # posterior properties described in
@@ -48,101 +50,6 @@ def test_version_attribute() -> None:
     assert ies.version_tuple != (0, 0, "unknown version", "unknown commit")
 
 
-@pytest.mark.parametrize("N", [100, 200])
-def test_that_projection_is_better_for_nonlinear_forward_model_big_N_small_n(N):
-    # For non-linear forward model, g, and n<N,
-    # Eq.27 should provide a better update than Eq. 28.
-    # "Better" in terms of a better optimum, given by loss in Eq. 10
-    # We here solve using both Equations 27 and 28 (with/without projection)
-    # and then evaluate the loss function.
-
-    def loss_function(xj, xj_prior, dj, Cxx, Cdd, g):
-        """Equation 10 in Evensen 2019"""
-        return 0.5 * (
-            (xj - xj_prior).T @ np.linalg.inv(Cxx) @ (xj - xj_prior)
-            + (g(xj) - dj).T @ np.linalg.inv(Cdd) @ (g(xj) - dj)
-        )
-
-    N = 100
-    n = 1
-    m = 1
-    x_true = np.array([-1.0])
-
-    # sample parameters from prior
-    x_sd = 1.0
-    prior_bias = 0.5
-    X_prior = np.random.normal(x_true[0] + prior_bias, x_sd, size=(n, N))
-
-    # Evaluate response ensemble
-    gX = np.array([g(parvec) for parvec in X_prior.T]).reshape(m, N)
-
-    # define observations
-    d_sd = np.array([1.0])
-    d = np.array([g(x_true) + rng.normal(0.0, d_sd)])
-
-    # define noise to perturb observations
-    Cdd = np.diag([d_sd**2]).reshape(m, m)
-
-    # Property holds for small step-size and one iteration.
-    # Likely also holds for infinite iterations, or at convergence,
-    # but then for infinitessimal stepsize
-    step_length = 0.1
-
-    seed = 123
-    # find solutions with and without projection
-    model_projection = ies.SIES(seed=seed)
-    model_projection.fit(
-        gX,
-        d_sd,
-        d,
-        truncation=1.0,
-        step_length=step_length,
-        param_ensemble=X_prior,
-    )
-    X_posterior_projection = model_projection.update(X_prior)
-
-    model_no_projection = ies.SIES(seed=seed)
-    model_no_projection.fit(
-        gX,
-        d_sd,
-        d,
-        truncation=1.0,
-        step_length=step_length,
-    )
-    X_posterior_no_projection = model_no_projection.update(X_prior)
-
-    assert np.allclose(model_projection.D_, model_no_projection.D_)
-    D = model_projection.D_
-
-    # Assert projection solution better than no-projection
-    centering_matrix = (np.identity(N) - np.ones((N, N)) / N) / np.sqrt(N - 1)
-    A = X_prior @ centering_matrix
-    Cxx = A @ A.T
-    loss_proj = [
-        loss_function(
-            X_posterior_projection[:, j],
-            X_prior[:, j],
-            D[:, j],
-            Cxx,
-            Cdd,
-            g,
-        )
-        for j in range(N)
-    ]
-    loss_no_proj = [
-        loss_function(
-            X_posterior_no_projection[:, j],
-            X_prior[:, j],
-            D[:, j],
-            Cxx,
-            Cdd,
-            g,
-        )
-        for j in range(N)
-    ]
-    assert np.sum(loss_proj) < np.sum(loss_no_proj)
-
-
 @pytest.mark.parametrize("number_of_realizations", [100, 200])
 def test_that_es_update_for_a_linear_model_follows_theory(number_of_realizations):
     true_model = LinearModel(a_true, b_true)
@@ -175,14 +82,8 @@ def test_that_es_update_for_a_linear_model_follows_theory(number_of_realizations
     # Leading to fixed Maximum likelihood estimate.
     # It will equal true values when observations are sampled without noise.
     # It will also stay the same over beliefs.
-    mean_observations = np.mean(observations)
-    times_mean = np.mean(times)
-    times_square_sum = sum(np.square(times))
-    a_maximum_likelihood = sum(
-        t * (observations[t] - mean_observations) for t in times
-    ) / (times_square_sum - times_mean * sum(times))
-    b_maximum_likelihood = mean_observations - a_maximum_likelihood * times_mean
-    maximum_likelihood = np.array([a_maximum_likelihood, b_maximum_likelihood])
+    results = linregress(times, observations)
+    maximum_likelihood = np.array([results.slope, results.intercept])
 
     previous_mean_posterior = mean_prior
 
@@ -190,7 +91,7 @@ def test_that_es_update_for_a_linear_model_follows_theory(number_of_realizations
     epsilon = 1e-2
 
     # We iterate with an increased belief in the observations
-    for error in [10000.0, 100.0, 10.0, 1.0, 0.1]:
+    for error in [10000.0, 1000.0, 100.0, 10.0, 1.0, 0.1, 0.01]:
         # An important point here is that we do not iteratively
         # update A, but instead, observations stay the same and
         # we increase our belief in the observations
@@ -201,29 +102,31 @@ def test_that_es_update_for_a_linear_model_follows_theory(number_of_realizations
                 [realization.b for realization in ensemble],
             ]
         )
-        smoother = ies.ES()
-        smoother.fit(
-            S,
-            np.full(observations.shape, error),
-            observations,
+
+        smoother = ies.SIES(
+            parameters=A,
+            covariance=np.full(observations.shape, error) ** 2,
+            observations=observations,
         )
-        A_posterior = smoother.update(A)
+
+        A_posterior = smoother.sies_iteration(S, step_length=1.0)
+
         mean_posterior = np.mean(A_posterior, axis=1)
 
         # All posterior estimates lie between prior and maximum likelihood estimate
-        assert np.all(
+        assert (
             np.linalg.norm(mean_posterior - maximum_likelihood)
             - np.linalg.norm(mean_prior - maximum_likelihood)
             < epsilon
         )
-        assert np.all(
+        assert (
             np.linalg.norm(mean_prior - mean_posterior)
             - np.linalg.norm(mean_prior - maximum_likelihood)
             < epsilon
         )
 
         # Posterior parameter estimates improve with increased trust in observations
-        assert np.all(
+        assert (
             np.linalg.norm(mean_posterior - maximum_likelihood)
             - np.linalg.norm(previous_mean_posterior - maximum_likelihood)
             < epsilon
@@ -235,6 +138,69 @@ def test_that_es_update_for_a_linear_model_follows_theory(number_of_realizations
     assert np.all(
         np.linalg.norm(previous_mean_posterior - maximum_likelihood) < epsilon
     )
+
+
+@pytest.mark.parametrize("seed", list(range(1)))
+@pytest.mark.parametrize("ensemble_size", [100, 200])
+def test_that_posterior_is_between_prior_and_maximum_likelihood(ensemble_size, seed):
+    rng = np.random.default_rng(seed)
+
+    # Problem size
+    num_params = 10
+    num_responses = 100
+
+    # Create a linear mapping g
+    A = rng.normal(size=(num_responses, num_params))
+
+    def g(X):
+        return A @ X
+
+    # Inputs and outputs
+    # The prior is given by N(0, 1)
+    # The maximum likelihood estimate is N(10, 1)
+
+    prior = rng.normal(size=(num_params, ensemble_size))
+    x_true = rng.normal(size=num_params) + 10
+    observations = A @ x_true + rng.normal(size=(num_responses))
+
+    # Compute the maximum likelihood estimate using linear regression
+    x_max_likelihood, *_ = np.linalg.lstsq(A, observations, rcond=None)
+
+    # Iterate over increased belief in observations
+    distance_from_ml = 1e20
+    for standard_deviation in [1e4, 1e3, 1e2, 1e1, 1e0, 1e-1, 1e-2]:
+        covariance = np.ones(num_responses) * standard_deviation**2
+
+        # Create smoother
+        smoother = ies.SIES(
+            parameters=prior, covariance=covariance, observations=observations, seed=42
+        )
+
+        # Run through the model
+        responses = g(prior)
+
+        # Only the living simulations get passed
+        posterior = smoother.sies_iteration(responses, step_length=0.5)
+
+        posterior_mean = posterior.mean(axis=1)
+        prior_mean = prior.mean(axis=1)
+
+        # The posterior should be between the prior and the ML estimate
+        #     prior <----- d1 -----> posterior <------ d2 ------> ML
+        #           <------------------- d3 -------------------->
+        # In other words, for distances d1, d2 and d3: d3 >= d1 and d2 >= d1
+
+        distance_prior_ml = np.linalg.norm(prior_mean - x_max_likelihood)
+        distance_prior_posterior = np.linalg.norm(prior_mean - posterior_mean)
+        distance_posterior_ml = np.linalg.norm(posterior_mean - x_max_likelihood)
+
+        assert distance_prior_ml >= distance_prior_posterior
+        assert distance_prior_ml >= distance_posterior_ml
+
+        # As the observation belief increases, the posterior mean should converge
+        # to the maximum likelihood estimate
+        assert distance_posterior_ml <= distance_from_ml
+        distance_from_ml = distance_posterior_ml
 
 
 def test_that_sies_converges_to_es_in_gauss_linear_case():
@@ -286,22 +252,29 @@ def test_that_sies_converges_to_es_in_gauss_linear_case():
     ).T
 
     seed = 12345
-    smoother_es = ies.ES(seed=seed)
-    smoother_es.fit(
-        response_ensemble,
-        d.sd.values,  # Assume diagonal ensemble covariance matrix for the measurement perturbations.
-        d.value.values,
-    )
-    params_es = smoother_es.update(X)
 
+    smoother = ies.SIES(
+        parameters=X,
+        covariance=d.sd.values**2,
+        observations=d.value.values,
+        seed=seed,
+    )
+
+    params_es = smoother.sies_iteration(response_ensemble, step_length=1.0)
+
+    # We are more certain after assimilating, so the covariance decreases
     assert np.linalg.det(np.cov(X)) > np.linalg.det(np.cov(params_es))
 
     params_ies = X.copy()
     responses_ies = response_ensemble.copy()
-    smoother_ies = ies.SIES(seed=seed)
+    smoother_ies = ies.SIES(
+        parameters=X,
+        covariance=d.sd.values**2,
+        observations=d.value.values,
+        seed=seed,
+    )
     for _ in range(10):
-        smoother_ies.fit(responses_ies, d.sd.values, d.value.values)
-        params_ies = smoother_ies.update(params_ies)
+        params_ies = smoother_ies.sies_iteration(responses_ies, step_length=0.5)
 
         _coeff_a = params_ies[0, :]
         _coeff_b = params_ies[1, :]
@@ -327,27 +300,8 @@ def test_that_sies_converges_to_es_in_gauss_linear_case():
     )
 
 
-var = 2.0
-
-
-@pytest.mark.parametrize(
-    "inversion,errors",
-    [
-        ("exact", np.diag(np.array([var, var, var]))),
-        ("exact", np.array([np.sqrt(var), np.sqrt(var), np.sqrt(var)])),
-        ("exact_r", np.diag(np.array([var, var, var]))),
-        (
-            "exact_r",
-            np.array([np.sqrt(var), np.sqrt(var), np.sqrt(var)]),
-        ),
-        ("subspace_re", np.diag(np.array([var, var, var]))),
-        (
-            "subspace_re",
-            np.array([np.sqrt(var), np.sqrt(var), np.sqrt(var)]),
-        ),
-    ],
-)
-def test_that_update_correctly_multiples_gaussians(inversion, errors):
+@pytest.mark.parametrize("inversion", list(ies.SIES.inversion_funcs.keys()))
+def test_that_update_correctly_multiples_gaussians(inversion):
     """
     NB! This test is potentially flaky because of finite ensemble size.
 
@@ -364,6 +318,7 @@ def test_that_update_correctly_multiples_gaussians(inversion, errors):
     """
     N = 1500
     nparam = 3
+    var = 2
 
     A = rng.standard_normal(size=(nparam, N))
     A = np.linalg.cholesky(var * np.identity(nparam)) @ A
@@ -371,18 +326,16 @@ def test_that_update_correctly_multiples_gaussians(inversion, errors):
     Y = A
 
     obs_val = 10
-    observation_values = np.array([obs_val, obs_val, obs_val])
-    smoother = ies.SIES(seed=42)
-
-    smoother.fit(
-        Y,
-        errors,
-        observation_values,
-        inversion=inversion,
-        step_length=1.0,
-        truncation=1.0,
+    covariance = np.ones(3) * var
+    observations = np.array([obs_val, obs_val, obs_val])
+    smoother = ies.SIES(
+        parameters=A, covariance=covariance, observations=observations, seed=42
     )
-    A_ES = smoother.update(A)
+
+    A_ES = smoother.sies_iteration(
+        Y,
+        step_length=1.0,
+    )
 
     for i in range(nparam):
         assert np.isclose(A_ES[i, :].mean(), obs_val / 2, rtol=0.15)
@@ -412,96 +365,166 @@ def test_that_update_correctly_multiples_gaussians(inversion, errors):
 def test_that_global_es_update_is_identical_to_local(ensemble_size, num_params, linear):
     num_obs = num_params
     X = rng.normal(size=(num_params, ensemble_size))
-
     Y = X if linear else np.power(X, 2)
-
-    observation_errors = rng.uniform(size=num_obs)
-    observation_values = rng.normal(np.zeros(num_params), observation_errors)
-
-    param_ensemble = None
-    if not linear and num_params < ensemble_size - 1:
-        param_ensemble = X
-
-    smoother = ies.ES(seed=12345)
-    smoother.fit(
-        Y,
-        observation_errors,
-        observation_values,
-        param_ensemble=param_ensemble,
-    )
-    X_ES_global = smoother.update(X)
-
-    X_ES_local = np.zeros(shape=(num_params, ensemble_size))
+    covariance = rng.uniform(size=num_obs) ** 2 + 0.01
+    observations = rng.normal(np.zeros(num_params), covariance)
 
     # First update a subset or batch of parameters at once
     # and and then loop through each remaining parameter and
     # update it separately.
     # This is meant to emulate a configuration where users
     # want to update, say, a field parameter separately from scalar parameters.
-    batch = list(range(num_params // 3))
-    smoother.fit(
-        Y,
-        observation_errors,
-        observation_values,
-        param_ensemble=param_ensemble,
+
+    # A single global update
+    smoother = ies.SIES(
+        parameters=X, covariance=covariance, observations=observations, seed=42
     )
-    X_ES_local[batch, :] = smoother.update(X[batch])
+    X_ES_global = smoother.sies_iteration(Y, step_length=1.0)
 
-    for i in range(num_params // 3, num_params):
-        smoother.fit(
-            Y,
-            observation_errors,
-            observation_values,
-            param_ensemble=param_ensemble,
-        )
-        X_ES_local[i, :] = smoother.update(X[i, :])
-
-    assert np.isclose(X_ES_global, X_ES_local).all()
-
-
-def test_that_ies_runs_with_failed_realizations():
-    ensemble_size = 50
-    num_params = 100
-    num_responses = 5
-    param_ensemble = rng.normal(size=(num_params, ensemble_size))
-    response_ensemble = np.power(param_ensemble, 2)[:num_responses, :] + rng.normal(
-        size=(num_responses, ensemble_size)
+    # Update each parameter in turn
+    smoother = ies.SIES(
+        parameters=X, covariance=covariance, observations=observations, seed=42
     )
+    W = smoother.propose_W(Y, step_length=1.0)
 
-    obs_values = rng.normal(size=num_responses)
-    obs_errors = 0.01 + np.abs(rng.normal(size=num_responses))  # Stds must be positive
-    ens_mask = np.array([True] * ensemble_size)
-    ens_mask[10:] = False
-    smoother = ies.SIES(seed=42)
-    smoother.fit(
-        response_ensemble[:, ens_mask],
-        obs_errors,
-        obs_values,
-        ensemble_mask=ens_mask,
-    )
-    param_ensemble = smoother.update(param_ensemble[:, ens_mask])
+    # Create an empty matrix, then fill it in row-by-row
+    X_ES_local = np.empty(shape=(num_params, ensemble_size))
+    for i in range(X.shape[0]):
+        # This is line 9 in algorithm 1, using W
+        X_ES_local[i, :] = X[i, :] + X[i, :] @ W / np.sqrt(ensemble_size - 1)
 
-    smoother.fit(
-        response_ensemble[:, ens_mask],
-        obs_errors,
-        obs_values,
-        ensemble_mask=ens_mask,
-    )
-    param_ensemble = smoother.update(param_ensemble)
-
-    smoother.fit(
-        response_ensemble[:, ens_mask],
-        obs_errors,
-        obs_values,
-        ensemble_mask=ens_mask,
-    )
-    param_ensemble = smoother.update(param_ensemble)
-
-    assert param_ensemble.shape == (num_params, ens_mask.sum())
+    assert np.allclose(X_ES_global, X_ES_local)
 
 
 @pytest.mark.parametrize("seed", list(range(10)))
-@pytest.mark.parametrize("inversion", ["naive", "exact", "exact_r", "subspace_re"])
+def test_that_ies_runs_with_failed_realizations(seed):
+    """When the forward model is a simulation being run in parallel on clusters,
+    some of the jobs (realizations) might fail. In that case we know which
+    realizations have failed, and we wish to keep assimilating data with the
+    remaining realizations.
+
+    We assume that once a realization is "dead", it never wakes up again.
+    """
+
+    rng = np.random.default_rng(seed)
+
+    # Problem size
+    ensemble_size = 300
+    num_params = 20
+    num_responses = 200
+
+    # Create a linear mapping g
+    A = rng.normal(size=(num_responses, num_params))
+
+    def g(X):
+        return A @ X
+
+    # Inputs and outputs
+    parameters = rng.normal(size=(num_params, ensemble_size))
+    x_true = np.linspace(-5, 5, num=num_params)
+    observations = A @ x_true
+    observations += rng.normal(size=(num_responses))
+    covariance = np.ones(num_responses)
+
+    # Create smoother
+    smoother = ies.SIES(
+        parameters=parameters, covariance=covariance, observations=observations, seed=42
+    )
+
+    ensemble_mask = np.ones(ensemble_size, dtype=bool)
+    X_i = np.copy(parameters)
+    for iteration in range(10):
+        # Assume we do a model run, but some realizations (ensemble members)
+        # fail for some reason. We know which realizations failed.
+        # With 10 iterations and p=[0.9, 0.1], around 1/2 make it till the end.
+        simulation_ok = rng.choice([True, False], size=ensemble_size, p=[0.95, 0.05])
+        ensemble_mask = np.logical_and(ensemble_mask, simulation_ok)
+
+        # Run through the model
+        responses = g(X_i)
+
+        # Only the living simulations get passed
+        X_i = smoother.sies_iteration(
+            responses[:, ensemble_mask], ensemble_mask=ensemble_mask, step_length=0.05
+        )
+
+        # The full matrix is returned, but only X_i[:, ensemble_mask]
+        assert X_i.shape == parameters.shape
+
+    mean_posterior_all = X_i.mean(axis=1)
+    mean_posterior = X_i[:, ensemble_mask].mean(axis=1)
+
+    # Using only the realizations that lived through all iterations is better
+    # than using the ones who died along the way
+    assert np.linalg.norm(mean_posterior - x_true) < np.linalg.norm(
+        mean_posterior_all - x_true
+    )
+
+    # The posterior is closer to the true value than the prior
+    assert np.linalg.norm(mean_posterior - x_true) < np.linalg.norm(
+        parameters.mean(axis=1) - x_true
+    )
+
+    # The posterior mean is reasonably close - or at least nothing crazy happens
+    assert np.all(np.abs(mean_posterior - x_true) < 3)
+
+
+@pytest.mark.parametrize("seed", list(range(1)))
+def test_that_subspaces_are_still_used_as_original_realizations_fail(seed):
+    """When the forward model is a simulation being run parallel on clusters,
+    some of the jobs (realizations) might fail. In that case we know which
+    realizations have failed, and we wish to keep assimilating data with the
+    remaining realizations.
+
+    We assume that once a realization is "dead", it never wakes up again.
+    """
+
+    rng = np.random.default_rng(seed)
+
+    # Problem size
+    ensemble_size = num_params = 10
+    num_responses = 100
+
+    # Create a linear mapping g
+    A = rng.normal(size=(num_responses, num_params))
+
+    def g(X):
+        return A @ X
+
+    # Inputs and outputs
+    parameters = np.identity(num_params)  # Identity
+    x_true = np.arange(num_params)
+    observations = A @ x_true
+    observations += rng.normal(size=(num_responses))
+    covariance = np.ones(num_responses)
+
+    # Create smoother
+    smoother = ies.SIES(
+        parameters=parameters, covariance=covariance, observations=observations, seed=42
+    )
+
+    X_i = np.copy(parameters)
+    ensemble_mask = np.ones(ensemble_size, dtype=bool)
+    for iteration in range(1, 8):
+        ensemble_mask[:iteration] = False
+
+        # Only the living simulations get passed
+        responses = g(X_i)
+        X_i = smoother.sies_iteration(
+            responses[:, ensemble_mask], ensemble_mask=ensemble_mask, step_length=0.2
+        )
+
+    # First column is the identity
+    assert X_i[0, 0] == 1
+    assert np.allclose(X_i[1:, 0], 0)
+
+    assert not np.allclose(X_i[1, 1:], X_i[1, 1])
+    assert not np.allclose(X_i[2, 2:], X_i[2, 2])
+    assert not np.allclose(X_i[3, 3:], X_i[3, 3])
+
+
+@pytest.mark.parametrize("seed", list(range(10)))
+@pytest.mark.parametrize("inversion", ["exact"])
 def test_that_diagonal_and_dense_covariance_return_the_same_result(inversion, seed):
     rng = np.random.default_rng(seed)
 
@@ -510,39 +533,29 @@ def test_that_diagonal_and_dense_covariance_return_the_same_result(inversion, se
     num_params = rng.choice([5, 10, 50, 100])
     num_obs = rng.choice([5, 10, 50, 100])
 
-    param_ensemble = rng.normal(size=(num_params, ensemble_size))  # X
-    response_ensemble = rng.normal(size=(num_obs, ensemble_size))  # Y
-    observation_values = rng.normal(size=num_obs)  # d
+    X = rng.normal(size=(num_params, ensemble_size))  # X
+    responses = rng.normal(size=(num_obs, ensemble_size))  # Y
+    observations = rng.normal(size=num_obs)  # d
 
-    observation_errors_diag_std = np.exp(rng.normal(size=num_obs))
-    observation_errors_cov_mat = np.diag(observation_errors_diag_std**2)
+    covariance_1D = np.exp(rng.normal(size=num_obs))
+    covariance_2D = np.diag(covariance_1D)
 
     # 1D array of standard deviations
-    smoother_diag = ies.SIES(seed=1)
-    assert observation_errors_diag_std.ndim == 1
-    smoother_diag.fit(
-        response_ensemble=response_ensemble,
-        observation_errors=observation_errors_diag_std,
-        observation_values=observation_values,
-        inversion=inversion,
-        param_ensemble=param_ensemble,
+    smoother_diag = ies.SIES(
+        parameters=X, covariance=covariance_1D, observations=observations, seed=seed
     )
-    X_post_diag = smoother_diag.update(param_ensemble)
+    assert covariance_1D.ndim == 1
+    X_post_diag = smoother_diag.sies_iteration(responses)
 
     # 2D array of covariances (covariance matrix)
-    smoother_covar = ies.SIES(seed=1)
-    assert observation_errors_cov_mat.ndim == 2
-    smoother_covar.fit(
-        response_ensemble=response_ensemble,
-        observation_errors=observation_errors_cov_mat,
-        observation_values=observation_values,
-        inversion=inversion,
-        param_ensemble=param_ensemble,
+    smoother_covar = ies.SIES(
+        parameters=X, covariance=covariance_2D, observations=observations, seed=seed
     )
-    X_post_covar = smoother_covar.update(param_ensemble)
+    assert covariance_2D.ndim == 2
+    X_post_covar = smoother_covar.sies_iteration(responses)
 
     assert np.allclose(X_post_diag, X_post_covar)  # Same result
-    assert not np.allclose(param_ensemble, X_post_covar)  # Update happened
+    assert not np.allclose(X, X_post_covar)  # Update happened
 
 
 @pytest.mark.limit_memory("70 MB")
@@ -569,6 +582,8 @@ def test_memory_usage():
     nbytes += Y.nbytes # Creating H in C++
     nbytes /= 1e6
     """
+    rng = np.random.default_rng(42)
+
     ensemble_size = 100
     num_params = 1000
     num_obs = 10000
@@ -579,17 +594,23 @@ def test_memory_usage():
     observation_errors = rng.uniform(size=num_obs)
     observation_values = rng.normal(np.zeros(num_obs), observation_errors)
 
-    smoother = ies.ES()
-    smoother.fit(
-        Y,
-        observation_errors,
-        observation_values,
+    smoother = ies.SIES(
+        parameters=X,
+        covariance=observation_errors,
+        observations=observation_values,
     )
-    smoother.update(X)
+
+    smoother.sies_iteration(Y, 1.0)
 
 
 if __name__ == "__main__":
     import pytest
 
     # --durations=10  <- May be used to show potentially slow tests
-    pytest.main(args=[__file__, "--doctest-modules", "-v", "-v"])
+    pytest.main(
+        args=[
+            __file__,
+            "--doctest-modules",
+            "-v",
+        ]
+    )

@@ -16,6 +16,8 @@ from iterative_ensemble_smoother._iterative_ensemble_smoother import (
 )
 from iterative_ensemble_smoother.esmda import ESMDA
 
+from iterative_ensemble_smoother.experimental_sies import SIES
+
 __all__ = [
     "ES",
     "SIES",

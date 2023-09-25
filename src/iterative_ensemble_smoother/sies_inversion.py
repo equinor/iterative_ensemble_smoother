@@ -7,9 +7,9 @@ def _verify_inversion_args(*, W, step_length, S, C_dd, H, C_dd_cholesky):
         assert C_dd.shape == C_dd_cholesky.shape
 
     # Verify N
-    assert W.shape[0] == W.shape[1]
+    # assert W.shape[0] == W.shape[1]
     assert W.shape[0] == S.shape[1]
-    assert W.shape[0] == H.shape[1]
+    assert W.shape[1] == H.shape[1]
 
     # Verify m
     assert S.shape[0] == C_dd.shape[0]
@@ -17,7 +17,9 @@ def _verify_inversion_args(*, W, step_length, S, C_dd, H, C_dd_cholesky):
 
 
 def inversion_naive(*, W, step_length, S, C_dd, H, C_dd_cholesky=None):
-    """Naive implementation of Equation (42)."""
+    """A naive implementation, used for benchmarking and testing only.
+
+    Naive implementation of Equation (42)."""
     _verify_inversion_args(
         W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
     )
@@ -33,7 +35,7 @@ def inversion_naive(*, W, step_length, S, C_dd, H, C_dd_cholesky=None):
 
 
 def inversion_direct(*, W, step_length, S, C_dd, H, C_dd_cholesky=None):
-    """Implementation of equation (42)."""
+    """A more optimized implementation of Equation (42)."""
     _verify_inversion_args(
         W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
     )
@@ -69,7 +71,7 @@ def inversion_direct(*, W, step_length, S, C_dd, H, C_dd_cholesky=None):
 
 
 def inversion_direct_corrscale(*, W, step_length, S, C_dd, H, C_dd_cholesky=None):
-    """Implementation of equation (42), with correlation matrix scaling."""
+    """Implementation of Equation (42), with correlation matrix scaling."""
     _verify_inversion_args(
         W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
     )
@@ -109,7 +111,8 @@ def inversion_direct_corrscale(*, W, step_length, S, C_dd, H, C_dd_cholesky=None
 
 
 def inversion_exact(*, W, step_length, S, C_dd, H, C_dd_cholesky):
-    """Implementation of equation (50)."""
+    """Implementation of Equation (50), which does inversion in the ensemble
+    space (size N) instead doing it in the output space (size m >> N)."""
     _verify_inversion_args(
         W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
     )

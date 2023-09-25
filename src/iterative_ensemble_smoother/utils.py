@@ -75,56 +75,22 @@ def response_projection(
 
 
 def _validate_inputs(
-    response_ensemble: npt.NDArray[np.double],
-    observation_errors: npt.NDArray[np.double],
-    observation_values: npt.NDArray[np.double],
-    param_ensemble: Optional[npt.NDArray[np.double]] = None,
+    parameters: npt.NDArray[np.double],
+    covariance: npt.NDArray[np.double],
+    observations: npt.NDArray[np.double],
 ) -> None:
-    if response_ensemble.ndim != 2:
-        raise ValueError(
-            "response_ensemble must be a matrix of size (number of responses by number of realizations)"
-        )
+    # Check types
+    inputs = [parameters, covariance, observations]
+    names = ["parameters", "covariances", "observations"]
+    for input_, name in zip(inputs, names):
+        if not isinstance(input_, np.ndarray):
+            raise TypeError(f"Argument '{name}' must be numpy nd.array")
 
-    num_responses = response_ensemble.shape[0]
-    ensemble_size = response_ensemble.shape[1]
+    assert covariance.ndim in (1, 2)
+    assert parameters.ndim == 2
 
-    if response_ensemble.shape[1] != ensemble_size:
-        raise ValueError(
-            "response_ensemble and parameter_ensemble must have the same number of columns"
-        )
-
-    if observation_errors.ndim == 2:
-        if observation_errors.shape[0] != observation_errors.shape[1]:
-            raise ValueError(
-                "observation_errors as covariance matrix must be a square matrix"
-            )
-        if observation_errors.shape[0] != len(observation_values):
-            raise ValueError(
-                "observation_errors covariance matrix must match size of observation_values"
-            )
-        if not np.all(np.abs(observation_errors - observation_errors.T) < 1e-8):
-            raise ValueError(
-                "observation_errors as covariance matrix must be symmetric"
-            )
-    elif len(observation_errors) != len(observation_values):
-        raise ValueError(
-            "observation_errors and observation_values must have the same number of elements"
-        )
-
-    if len(observation_values) != num_responses:
-        raise ValueError(
-            "observation_values must have the same number of elements as there are responses"
-        )
-
-    if param_ensemble is not None and param_ensemble.ndim != 2:
-        raise ValueError(
-            "parameter_ensemble must be a matrix of size (number of parameters by number of realizations)"
-        )
-
-    if param_ensemble is not None and param_ensemble.shape[1] != ensemble_size:
-        raise ValueError(
-            "param_ensemble and response_ensemble must have the same number of columns"
-        )
+    assert covariance.shape[0] == observations.shape[0]
+    assert covariance.shape[0] == observations.shape[0]
 
 
 def covariance_to_correlation(
@@ -168,6 +134,45 @@ def covariance_to_correlation(
     correlation_matrix = None
     standard_deviations = C
     return None, standard_deviations
+
+
+def sample_mvnormal(*, C_dd_cholesky, rng, size):
+    """Draw samples from the multivariate normal N(0, C_dd).
+
+    We write this function from scratch here we can to avoid factoring the
+    covariance matrix every time we sample, and we want to exploit diagonal
+    covariance matrices in terms of computation and memory. More specifically:
+
+        - numpy.random.multivariate_normal factors the covariance in every call
+        - scipy.stats.Covariance.from_diagonal stores off diagonal zeros
+
+    So the best choice was to write sampling from scratch.
+
+
+    Examples
+    --------
+    >>> C_dd_cholesky = np.diag([5, 10, 15])
+    >>> rng = np.random.default_rng(42)
+    >>> sample_mvnormal(C_dd_cholesky=C_dd_cholesky, rng=rng, size=2)
+    array([[  1.5235854 ,  -5.19992053],
+           [  7.50451196,   9.40564716],
+           [-29.26552783, -19.5326926 ]])
+    >>> sample_mvnormal(C_dd_cholesky=np.diag(C_dd_cholesky), rng=rng, size=2)
+    array([[ 0.63920202, -1.58121296],
+           [-0.16801158, -8.53043928],
+           [13.19096962, 11.66687903]])
+    """
+
+    # Standard normal samples
+    z = rng.standard_normal(size=(C_dd_cholesky.shape[0], size))
+
+    # A 2D covariance matrix was passed
+    if C_dd_cholesky.ndim == 2:
+        return C_dd_cholesky @ z
+
+    # A 1D diagonal of a covariance matrix was passed
+    else:
+        return C_dd_cholesky.reshape(-1, 1) * z
 
 
 if __name__ == "__main__":
