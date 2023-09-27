@@ -170,9 +170,17 @@ class SIES:
             ensemble_mask = np.ones(ensemble_size, dtype=bool)
         self.ensemble_mask = ensemble_mask
 
+        use_float32_dtype = (
+            observation_errors.dtype == np.float32
+            or observation_values.dtype == np.float32
+        )
+        dtype = np.float32 if use_float32_dtype else np.float64
+
         # If it's the first time the method is called, create coeff matrix
         if not hasattr(self, "coefficient_matrix"):
-            self.coefficient_matrix = np.zeros(shape=(ensemble_size, ensemble_size))
+            self.coefficient_matrix = np.zeros(
+                shape=(ensemble_size, ensemble_size), dtype=dtype
+            )
 
         # ---------------------------------------------------------------------
         # ----------- Computations corresponding to algorithm 1 ---------------
@@ -184,6 +192,7 @@ class SIES:
             observation_values=observation_values,
             ensemble_size=ensemble_size,
         )
+        E = E.astype(dtype)
         assert E.shape == (num_obs, ensemble_size)
 
         # Transform covariance matrix to correlation matrix

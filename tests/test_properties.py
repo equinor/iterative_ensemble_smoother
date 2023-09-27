@@ -545,6 +545,49 @@ def test_that_diagonal_and_dense_covariance_return_the_same_result(inversion, se
     assert not np.allclose(param_ensemble, X_post_covar)  # Update happened
 
 
+@pytest.mark.parametrize("inversion", ["naive", "exact", "exact_r", "subspace_re"])
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+@pytest.mark.parametrize("diagonal", [True, False])
+def test_that_float_dtypes_are_preserved(inversion, dtype, diagonal):
+    """If every matrix passed is of a certain dtype, then the output
+    should also be of the same dtype. Float16 does not work with linalg,
+    and float128 is probably too high-precision."""
+
+    rng = np.random.default_rng(42)
+
+    # Create a random problem instance
+    ensemble_size = 25
+    num_params = 10
+    num_obs = 20
+
+    param_ensemble = rng.normal(size=(num_params, ensemble_size))  # X
+    response_ensemble = rng.normal(size=(num_obs, ensemble_size))  # Y
+    observation_values = rng.normal(size=num_obs)  # d
+
+    observation_errors = np.exp(rng.normal(size=num_obs))
+    if not diagonal:
+        observation_errors = np.diag(observation_errors)
+
+    # Convert dtypes
+    param_ensemble = param_ensemble.astype(dtype)
+    response_ensemble = response_ensemble.astype(dtype)
+    observation_values = observation_values.astype(dtype)
+    observation_errors = observation_errors.astype(dtype)
+
+    # 1D array of standard deviations
+    smoother_diag = ies.SIES(seed=1)
+    smoother_diag.fit(
+        response_ensemble=response_ensemble,
+        observation_errors=observation_errors,
+        observation_values=observation_values,
+        inversion=inversion,
+        param_ensemble=param_ensemble,
+    )
+    X_posterior = smoother_diag.update(param_ensemble)
+
+    assert X_posterior.dtype == dtype
+
+
 @pytest.mark.limit_memory("70 MB")
 def test_memory_usage():
     """Estimate expected memory usage and make sure ES does not waste memory
@@ -592,4 +635,12 @@ if __name__ == "__main__":
     import pytest
 
     # --durations=10  <- May be used to show potentially slow tests
-    pytest.main(args=[__file__, "--doctest-modules", "-v", "-v"])
+    pytest.main(
+        args=[
+            __file__,
+            "--doctest-modules",
+            "-v",
+            "-v",
+            "-k test_that_float_dtypes_are_preserved",
+        ]
+    )
