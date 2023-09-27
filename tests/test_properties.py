@@ -550,8 +550,8 @@ def test_that_diagonal_and_dense_covariance_return_the_same_result(inversion, se
 @pytest.mark.parametrize("diagonal", [True, False])
 def test_that_float_dtypes_are_preserved(inversion, dtype, diagonal):
     """If every matrix passed is of a certain dtype, then the output
-    should also be of the same dtype. Float16 does not work with linalg,
-    and float128 is probably too high-precision."""
+    should also be of the same dtype. 'linalg' does not support float16
+    nor float128."""
 
     rng = np.random.default_rng(42)
 
