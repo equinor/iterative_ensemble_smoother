@@ -203,6 +203,84 @@ def test_that_posterior_is_between_prior_and_maximum_likelihood(ensemble_size, s
         distance_from_ml = distance_posterior_ml
 
 
+@pytest.mark.parametrize("seed", list(range(25)))
+@pytest.mark.parametrize("ensemble_size", [5, 25])
+def test_that_sies_converges_to_es_in_gauss_linear_case2(seed, ensemble_size):
+    rng = np.random.default_rng(seed)
+
+    # Problem size
+    num_params = 10
+    num_responses = 100
+
+    # Create a linear mapping g
+    A = rng.normal(size=(num_responses, num_params))
+
+    def g(X):
+        return A @ X
+
+    # Inputs and outputs
+    parameters = rng.normal(size=(num_params, ensemble_size))
+    x_true = np.linspace(-5, 5, num=num_params)
+    observations = A @ x_true + rng.normal(size=num_responses)
+    covariance = np.ones(num_responses)
+
+    # Smoother - single step with full step length
+    smoother = ies.SIES(
+        parameters=parameters,
+        covariance=covariance,
+        observations=observations,
+        seed=seed,
+    )
+    X_posterior_ES = smoother.sies_iteration(g(parameters), step_length=1.0)
+
+    # Smoother - Many smaller steps
+    smoother = ies.SIES(
+        parameters=parameters,
+        covariance=covariance,
+        observations=observations,
+        seed=seed,
+    )
+    X_i = np.copy(parameters)
+    for iteration in range(18):
+        X_i = smoother.sies_iteration(g(X_i), step_length=0.66)
+
+    # The posterior is the same for a linear model
+    # This is not true for non-linear models, where many small steps are better
+    assert np.allclose(X_posterior_ES, X_i)
+
+
+@pytest.mark.parametrize("seed", list(range(25)))
+def test_that_posterior_covariance_is_smaller_than_prior(seed):
+    rng = np.random.default_rng(seed)
+    covariance_inflation = seed + 1
+
+    # Problem size
+    num_params = 10
+    num_responses = 100
+    ensemble_size = 25
+
+    # Create a linear mapping g
+    A = rng.normal(size=(num_responses, num_params))
+
+    def g(X):
+        return A @ X
+
+    # Inputs and outputs
+    prior = rng.normal(size=(num_params, ensemble_size))
+    x_true = np.linspace(-5, 5, num=num_params)
+    observations = A @ x_true + rng.normal(size=num_responses)
+    covariance = np.ones(num_responses) * covariance_inflation
+
+    # Smoother - single step with full step length
+    smoother = ies.SIES(
+        parameters=prior, covariance=covariance, observations=observations, seed=seed
+    )
+    posterior = smoother.sies_iteration(g(prior), step_length=1.0)
+
+    # Posterior covariance is smaller than prior covariance
+    assert np.linalg.det(np.cov(posterior)) < np.linalg.det(np.cov(prior))
+
+
 def test_that_sies_converges_to_es_in_gauss_linear_case():
     def poly(a, b, c, x):
         return a * x**2 + b * x + c
@@ -612,5 +690,6 @@ if __name__ == "__main__":
             __file__,
             "--doctest-modules",
             "-v",
+            "-k test_that_posterior_covariance_is_smaller_than_prior",
         ]
     )

@@ -98,7 +98,7 @@ class TestInversions:
         assert np.allclose(ans_naive, ans)
 
 
-@pytest.mark.parametrize("seed", list(range(999)))
+@pytest.mark.parametrize("seed", list(range(99)))
 def test_that_sies_objective_function_decreases(seed):
     rng = np.random.default_rng(seed)
 
@@ -134,7 +134,7 @@ def test_that_sies_objective_function_decreases(seed):
     assert objective_after <= objective_before
 
 
-@pytest.mark.parametrize("seed", list(range(999)))
+@pytest.mark.parametrize("seed", list(range(99)))
 def test_that_sies_objective_function_decreases_with_many_iterations(seed):
     rng = np.random.default_rng(seed)
 

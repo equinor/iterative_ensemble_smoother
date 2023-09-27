@@ -115,26 +115,6 @@ def to_csv(nparray):
     return buffer.getvalue()
 
 
-def test_iterative_ensemble_smoother_update_step(snapshot, initial_A, initial_S):
-    # performing an update step gives us a new A matrix with updated parameters
-    # for the ensemble
-    seed = 12345
-    smoother = ies.SIES(seed=seed)
-    smoother.fit(
-        initial_S,
-        observation_errors,
-        observation_values,
-        step_length=1.0,
-        param_ensemble=initial_A,
-    )
-    new_A = smoother.update(initial_A)
-    assert new_A.shape == initial_A.shape
-    assert new_A.dtype == initial_A.dtype
-    snapshot.assert_match(
-        to_csv(new_A), "test_iterative_ensemble_smoother_update_step.csv"
-    )
-
-
 class RowScaling:
     def multiply(self, A, _):
         return A
@@ -149,6 +129,7 @@ def test_ensemble_smoother_update_step_with_rowscaling(snapshot, initial_A, init
     )
     assert new_A.shape == initial_A.shape
     assert new_A.dtype == initial_A.dtype
+
     snapshot.assert_match(to_csv(new_A), "test_ensemble_smoother_update_step.csv")
 
 
@@ -156,17 +137,61 @@ def test_ensemble_smoother_update_step(snapshot, initial_A, initial_S):
     # performing an update step gives us a new A matrix with updated parameters
     # for the ensemble
     seed = 12345
-    smoother = ies.SIES(seed=seed)
-    smoother.fit(
-        initial_S,
-        observation_errors,
-        observation_values,
-        step_length=1.0,
-        param_ensemble=initial_A,
+    smoother = ies.SIES(
+        parameters=initial_S,
+        covariance=observation_errors,
+        observations=observation_values,
+        seed=seed,
     )
-    new_A = smoother.update(initial_A)
+
+    new_A = smoother.sies_iteration(initial_A, step_length=1.0)
     assert new_A.shape == initial_A.shape
     assert new_A.dtype == initial_A.dtype
+
+    assert np.allclose(
+        new_A,
+        np.array(
+            [
+                [
+                    10.43981093,
+                    10.98504825,
+                    11.41863545,
+                    11.23831766,
+                    11.57907991,
+                    10.32373051,
+                    9.88967102,
+                    11.28419305,
+                    13.12889639,
+                    11.95800661,
+                ],
+                [
+                    21.26030354,
+                    21.77843163,
+                    21.40203307,
+                    21.89144589,
+                    20.97583625,
+                    18.41191477,
+                    19.98400893,
+                    21.82266071,
+                    23.37140665,
+                    21.11871301,
+                ],
+                [
+                    42.46145147,
+                    45.22641972,
+                    41.74368376,
+                    42.51869381,
+                    41.73530891,
+                    34.92109197,
+                    40.55597836,
+                    44.16476759,
+                    45.71856127,
+                    40.54437362,
+                ],
+            ]
+        ),
+    )
+
     snapshot.assert_match(to_csv(new_A), "test_ensemble_smoother_update_step.csv")
 
 
@@ -190,9 +215,4 @@ def test_get_steplength():
 if __name__ == "__main__":
     import pytest
 
-    pytest.main(
-        args=[
-            __file__,
-            "-v",
-        ]
-    )
+    pytest.main(args=[__file__, "-v"])
