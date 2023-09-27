@@ -370,7 +370,7 @@ def test_that_update_correctly_multiples_gaussians(inversion, errors):
     # Assuming forward model is the identity
     Y = A
 
-    obs_val = 10
+    obs_val = 10.0
     observation_values = np.array([obs_val, obs_val, obs_val])
     smoother = ies.SIES(seed=42)
 
