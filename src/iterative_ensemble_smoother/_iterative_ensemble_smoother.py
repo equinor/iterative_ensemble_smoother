@@ -170,11 +170,7 @@ class SIES:
             ensemble_mask = np.ones(ensemble_size, dtype=bool)
         self.ensemble_mask = ensemble_mask
 
-        use_float32_dtype = (
-            observation_errors.dtype == np.float32
-            or observation_values.dtype == np.float32
-        )
-        dtype = np.float32 if use_float32_dtype else np.float64
+        dtype = observation_values.dtype
 
         # If it's the first time the method is called, create coeff matrix
         if not hasattr(self, "coefficient_matrix"):
