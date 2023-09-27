@@ -161,6 +161,8 @@ def sample_mvnormal(*, C_dd_cholesky, rng, size):
     array([[ 0.63920202, -1.58121296],
            [-0.16801158, -8.53043928],
            [13.19096962, 11.66687903]])
+
+
     """
 
     # Standard normal samples

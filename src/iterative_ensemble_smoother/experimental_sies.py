@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
 
-from iterative_ensemble_smoother.sies_inversion import inversion_exact
+from iterative_ensemble_smoother.sies_inversion import inversion_exact, inversion_naive
 from iterative_ensemble_smoother.utils import _validate_inputs, sample_mvnormal
 
 
@@ -44,7 +44,7 @@ class SIES:
         Integer used to seed the random number generator. The default is None.
     """
 
-    inversion_funcs = {"exact": inversion_exact}
+    inversion_funcs = {"exact": inversion_exact, "naive": inversion_naive}
 
     def __init__(
         self,
@@ -82,11 +82,16 @@ class SIES:
             self.C_dd_cholesky = np.sqrt(self.C_dd)
 
         # Equation (14)
-        self.D = self.d.reshape(-1, 1) + sample_mvnormal(
-            C_dd_cholesky=self.C_dd_cholesky, rng=self.rng, size=self.X.shape[1]
-        )
+        self.D = (
+            self.d.reshape(-1, 1)
+            + sample_mvnormal(
+                C_dd_cholesky=self.C_dd_cholesky, rng=self.rng, size=self.X.shape[1]
+            )
+        ).astype(parameters.dtype, copy=False)
 
-        self.W = np.zeros(shape=(self.X.shape[1], self.X.shape[1]))
+        self.W = np.zeros(
+            shape=(self.X.shape[1], self.X.shape[1]), dtype=parameters.dtype
+        )
 
     def evaluate_objective(self, W, Y):
         """Evaluate the objective function in Equation (18), taking the mean
@@ -244,6 +249,7 @@ class SIES:
 
             # Line 9
             N = self.X.shape[1]  # Ensemble members
+
             return self.X + self.X @ self.W / np.sqrt(N - 1)
 
     def propose_W(self, responses, step_length=0.5):
@@ -311,6 +317,7 @@ class SIES:
         assert S.shape == (m, N)
         assert self.C_dd.shape in [(m, m), (m,)]
         assert H.shape == (m, N)
+
         return self.inversion(
             W=self.W,
             step_length=step_length,

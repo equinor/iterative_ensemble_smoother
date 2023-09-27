@@ -121,7 +121,7 @@ def inversion_exact(*, W, step_length, S, C_dd, H, C_dd_cholesky):
     # See below for a more explanation of these computations.
     if C_dd.ndim == 1:
         K = S / C_dd_cholesky.reshape(-1, 1)
-        lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)  # K.T @ K
+        lhs = K.T @ K  # sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)
         lhs.flat[:: lhs.shape[0] + 1] += 1
         C_dd_inv_H = H / C_dd.reshape(-1, 1)
         K = sp.linalg.solve(
@@ -138,10 +138,11 @@ def inversion_exact(*, W, step_length, S, C_dd, H, C_dd_cholesky):
     # Solve the equation: C_dd_cholesky @ K = S for K,
     # which is equivalent to forming K := C_dd_cholesky^-1 @ S,
     # exploiting the fact that C_dd_cholesky is lower triangular
-    K = sp.linalg.blas.dtrsm(alpha=1.0, a=C_dd_cholesky, b=S, lower=1)
+    # K = sp.linalg.blas.dtrsm(alpha=1.0, a=C_dd_cholesky, b=S, lower=1)
+    K = sp.linalg.solve(C_dd_cholesky, S)
 
     # Form lhs := (S.T @ C_dd^-1 @ S + I)
-    lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)  # K.T @ K
+    lhs = K.T @ K  # sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)
     lhs.flat[:: lhs.shape[0] + 1] += 1
 
     # Compute C_dd^-1 @ H, exploiting the fact that we have the cholesky factor

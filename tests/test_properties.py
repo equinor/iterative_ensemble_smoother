@@ -7,7 +7,6 @@ from p_tqdm import p_map
 
 import iterative_ensemble_smoother as ies
 
-rng = np.random.default_rng(42)
 
 # The following tests follow the
 # posterior properties described in
@@ -18,6 +17,8 @@ number_of_observations = 45
 
 
 class LinearModel:
+    rng = np.random.default_rng(42)
+
     def __init__(self, a, b):
         self.a = a
         self.b = b
@@ -31,8 +32,8 @@ class LinearModel:
         b_bias = -0.5 * b_std
 
         return cls(
-            rng.normal(a_true + a_bias, a_std),
-            rng.normal(b_true + b_bias, b_std),
+            cls.rng.normal(a_true + a_bias, a_std),
+            cls.rng.normal(b_true + b_bias, b_std),
         )
 
     def eval(self, x):
@@ -50,7 +51,7 @@ def test_version_attribute() -> None:
     assert ies.version_tuple != (0, 0, "unknown version", "unknown commit")
 
 
-@pytest.mark.parametrize("number_of_realizations", [100, 200])
+@pytest.mark.parametrize("number_of_realizations", [300, 500])
 def test_that_es_update_for_a_linear_model_follows_theory(number_of_realizations):
     true_model = LinearModel(a_true, b_true)
 
@@ -282,6 +283,8 @@ def test_that_posterior_covariance_is_smaller_than_prior(seed):
 
 
 def test_that_sies_converges_to_es_in_gauss_linear_case():
+    rng = np.random.default_rng(42)
+
     def poly(a, b, c, x):
         return a * x**2 + b * x + c
 
@@ -379,7 +382,8 @@ def test_that_sies_converges_to_es_in_gauss_linear_case():
 
 
 @pytest.mark.parametrize("inversion", list(ies.SIES.inversion_funcs.keys()))
-def test_that_update_correctly_multiples_gaussians(inversion):
+@pytest.mark.parametrize("variance", [1, 2, 5, 9])
+def test_that_update_correctly_multiples_gaussians_in_1D(inversion, variance):
     """
     NB! This test is potentially flaky because of finite ensemble size.
 
@@ -394,31 +398,85 @@ def test_that_update_correctly_multiples_gaussians(inversion):
     Here we use this property, and assume that the forward model is the identity
     to test analysis steps.
     """
-    N = 1500
-    nparam = 3
-    var = 2
+    N = 1000
 
-    A = rng.standard_normal(size=(nparam, N))
-    A = np.linalg.cholesky(var * np.identity(nparam)) @ A
+    rng = np.random.default_rng(42)
+
+    # X ~ N(0, I * var)
+    X = rng.standard_normal(size=(1, N)) * np.sqrt(variance)
+    assert np.isclose(np.var(X), variance, rtol=0.1)
+
     # Assuming forward model is the identity
-    Y = A
+    Y = np.copy(X)
 
-    obs_val = 10
-    covariance = np.ones(3) * var
-    observations = np.array([obs_val, obs_val, obs_val])
+    obs_val = 10.0
+    covariance = np.ones(1) * variance
+    observations = np.ones(1) * obs_val
     smoother = ies.SIES(
-        parameters=A, covariance=covariance, observations=observations, seed=42
+        parameters=X, covariance=covariance, observations=observations, seed=rng
     )
 
-    A_ES = smoother.sies_iteration(
+    X_posterior = smoother.sies_iteration(
         Y,
         step_length=1.0,
     )
 
-    for i in range(nparam):
-        assert np.isclose(A_ES[i, :].mean(), obs_val / 2, rtol=0.15)
+    # Posterior mean should end up in the middle
+    posterior_mean = X_posterior.mean(axis=1)
+    assert np.allclose(posterior_mean, obs_val / 2, rtol=0.1)
 
-    assert (np.abs(np.cov(A_ES) - np.identity(nparam)) < 0.15).all()
+    # Posterior covariance
+    assert np.allclose(np.var(X_posterior), 1 / (1 / variance + 1 / variance), rtol=0.1)
+
+
+@pytest.mark.parametrize("inversion", list(ies.SIES.inversion_funcs.keys()))
+@pytest.mark.parametrize("variance", [1, 2, 5, 9])
+def test_that_update_correctly_multiples_gaussians(inversion, variance):
+    """
+    NB! This test is potentially flaky because of finite ensemble size.
+
+    Bayes' theorem states that
+    p(x|y) is proportional to p(y|x)p(x)
+
+    Assume p(x) is N(mu=0, Sigma=2I) and p(y|x) is N(mu=y, Sigma=2I).
+    Multiplying these together (see 8.1.8 of the matrix cookbook) we get
+    that p(x|y) is N(mu=y/2, Sigma=I).
+    Note that Sigma is a covariance matrix.
+
+    Here we use this property, and assume that the forward model is the identity
+    to test analysis steps.
+    """
+    N = 3000
+    nparam = 3
+
+    rng = np.random.default_rng(42)
+
+    # X ~ N(0, I * var)
+    X = rng.standard_normal(size=(nparam, N)) * np.sqrt(variance)
+
+    # Assuming forward model is the identity
+    Y = np.copy(X)
+
+    obs_val = 10.0
+    covariance = np.ones(nparam) * variance
+    observations = np.ones(nparam) * obs_val
+    smoother = ies.SIES(
+        parameters=X, covariance=covariance, observations=observations, seed=rng
+    )
+
+    X_posterior = smoother.sies_iteration(
+        Y,
+        step_length=1.0,
+    )
+
+    # Posterior mean should end up in the middle
+    posterior_mean = X_posterior.mean(axis=1)
+    assert np.allclose(posterior_mean, obs_val / 2, rtol=0.1)
+
+    theoretical_variance = 1 / (1 / variance + 1 / variance)
+    assert np.allclose(
+        np.cov(X_posterior), np.eye(nparam) * theoretical_variance, atol=0.2
+    )
 
 
 @pytest.mark.parametrize(
@@ -441,6 +499,8 @@ def test_that_update_correctly_multiples_gaussians(inversion):
     ],
 )
 def test_that_global_es_update_is_identical_to_local(ensemble_size, num_params, linear):
+    rng = np.random.default_rng(42)
+
     num_obs = num_params
     X = rng.normal(size=(num_params, ensemble_size))
     Y = X if linear else np.power(X, 2)
@@ -636,6 +696,47 @@ def test_that_diagonal_and_dense_covariance_return_the_same_result(inversion, se
     assert not np.allclose(X, X_post_covar)  # Update happened
 
 
+@pytest.mark.parametrize("inversion", ["naive", "exact", "exact_r", "subspace_re"])
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+@pytest.mark.parametrize("diagonal", [True, False])
+def test_that_float_dtypes_are_preserved(inversion, dtype, diagonal):
+    """If every matrix passed is of a certain dtype, then the output
+    should also be of the same dtype. 'linalg' does not support float16
+    nor float128."""
+
+    rng = np.random.default_rng(42)
+
+    # Create a random problem instance
+    ensemble_size = 25
+    num_params = 10
+    num_obs = 20
+
+    parameters = rng.normal(size=(num_params, ensemble_size))  # X
+    responses = rng.normal(size=(num_obs, ensemble_size))  # Y
+    observations = rng.normal(size=num_obs)  # d
+
+    covariance = np.exp(rng.normal(size=num_obs))
+    if not diagonal:
+        covariance = np.diag(covariance)
+
+    # Convert dtypes
+    parameters = parameters.astype(dtype)
+    responses = responses.astype(dtype)
+    observations = observations.astype(dtype)
+    covariance = covariance.astype(dtype)
+
+    smoother = ies.SIES(
+        parameters=parameters,
+        covariance=covariance,
+        observations=observations,
+        seed=rng,
+    )
+
+    X_posterior = smoother.sies_iteration(responses)
+
+    assert X_posterior.dtype == dtype
+
+
 @pytest.mark.limit_memory("70 MB")
 def test_memory_usage():
     """Estimate expected memory usage and make sure ES does not waste memory
@@ -685,11 +786,12 @@ if __name__ == "__main__":
     import pytest
 
     # --durations=10  <- May be used to show potentially slow tests
+
     pytest.main(
         args=[
             __file__,
             "--doctest-modules",
             "-v",
-            "-k test_that_posterior_covariance_is_smaller_than_prior",
+            "-k test_that_update_correctly_multiples_gaussians",
         ]
     )

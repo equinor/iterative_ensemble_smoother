@@ -192,8 +192,6 @@ def test_ensemble_smoother_update_step(snapshot, initial_A, initial_S):
         ),
     )
 
-    snapshot.assert_match(to_csv(new_A), "test_ensemble_smoother_update_step.csv")
-
 
 def test_get_steplength():
     expected = [

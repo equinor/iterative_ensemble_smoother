@@ -371,6 +371,47 @@ class TestESMDAMemory:
         for _ in range(esmda.num_assimilations()):
             esmda.assimilate(X_prior, Y_prior)
 
+    @pytest.mark.parametrize("inversion", ["exact", "subspace"])
+    @pytest.mark.parametrize("dtype", [np.float32, np.float64])
+    @pytest.mark.parametrize("diagonal", [True, False])
+    def test_that_float_dtypes_are_preserved(self, inversion, dtype, diagonal):
+        """If every matrix passed is of a certain dtype, then the output
+        should also be of the same dtype. 'linalg' does not support float16
+        nor float128."""
+
+        rng = np.random.default_rng(42)
+
+        num_outputs = 20
+        num_inputs = 10
+        num_ensemble = 25
+
+        # Prior is N(0, 1)
+        X_prior = rng.normal(size=(num_inputs, num_ensemble))
+        Y_prior = rng.normal(size=(num_outputs, num_ensemble))
+
+        # Measurement errors
+        C_D = np.exp(rng.normal(size=num_outputs))
+        if not diagonal:
+            C_D = np.diag(C_D)
+
+        # Observations
+        observations = rng.normal(size=num_outputs, loc=1)
+
+        # Convert types
+        X_prior = X_prior.astype(dtype)
+        Y_prior = Y_prior.astype(dtype)
+        C_D = C_D.astype(dtype)
+        observations = observations.astype(dtype)
+
+        # Create ESMDA instance from an integer `alpha` and run it
+        esmda = ESMDA(C_D, observations, alpha=1, seed=1, inversion=inversion)
+
+        for _ in range(esmda.num_assimilations()):
+            X_posterior = esmda.assimilate(X_prior, Y_prior)
+
+        # Check that dtype of returned array matches input dtype
+        assert X_posterior.dtype == dtype
+
 
 if __name__ == "__main__":
     import pytest
@@ -379,6 +420,6 @@ if __name__ == "__main__":
         args=[
             __file__,
             "-v",
-            "-k test_that_diagonal_covariance_gives_same_answer_as_dense",
+            "-k test_that_float_dtypes_are_preserved",
         ]
     )
