@@ -1,6 +1,6 @@
-name: Lint
+name: Pre-commit tests
 
-on: [pull_request]
+on: [push, pull_request]
 
 jobs:
   lint:
@@ -15,5 +15,5 @@ jobs:
       - name: Install tox
         run: pip install tox
 
-      - name: Check style
-        run: tox -e style
+      - name: Check precommit
+        run: tox -e precommit
