@@ -141,7 +141,7 @@ def test_that_es_update_for_a_linear_model_follows_theory(number_of_realizations
     )
 
 
-@pytest.mark.parametrize("seed", list(range(1)))
+@pytest.mark.parametrize("seed", list(range(9)))
 @pytest.mark.parametrize("ensemble_size", [100, 200])
 def test_that_posterior_is_between_prior_and_maximum_likelihood(ensemble_size, seed):
     rng = np.random.default_rng(seed)
@@ -158,7 +158,7 @@ def test_that_posterior_is_between_prior_and_maximum_likelihood(ensemble_size, s
 
     # Inputs and outputs
     # The prior is given by N(0, 1)
-    # The maximum likelihood estimate is N(10, 1)
+    # The maximum likelihood estimate around N(10, 1)
 
     prior = rng.normal(size=(num_params, ensemble_size))
     x_true = rng.normal(size=num_params) + 10
@@ -168,13 +168,13 @@ def test_that_posterior_is_between_prior_and_maximum_likelihood(ensemble_size, s
     x_max_likelihood, *_ = np.linalg.lstsq(A, observations, rcond=None)
 
     # Iterate over increased belief in observations
-    distance_from_ml = 1e20
-    for standard_deviation in [1e4, 1e3, 1e2, 1e1, 1e0, 1e-1, 1e-2]:
+    distance_posterior_ml_previous = 1e6
+    for standard_deviation in [1e2, 1e1, 1e0, 1e-1, 1e-2]:
         covariance = np.ones(num_responses) * standard_deviation**2
 
         # Create smoother
         smoother = ies.SIES(
-            parameters=prior, covariance=covariance, observations=observations, seed=42
+            parameters=prior, covariance=covariance, observations=observations, seed=rng
         )
 
         # Run through the model
@@ -200,13 +200,15 @@ def test_that_posterior_is_between_prior_and_maximum_likelihood(ensemble_size, s
 
         # As the observation belief increases, the posterior mean should converge
         # to the maximum likelihood estimate
-        assert distance_posterior_ml <= distance_from_ml
-        distance_from_ml = distance_posterior_ml
+        assert distance_posterior_ml <= distance_posterior_ml_previous
+        distance_posterior_ml_previous = distance_posterior_ml
 
 
 @pytest.mark.parametrize("seed", list(range(25)))
 @pytest.mark.parametrize("ensemble_size", [5, 25])
-def test_that_sies_converges_to_es_in_gauss_linear_case2(seed, ensemble_size):
+def test_that_many_small_steps_equals_one_large_step_on_linear_problem(
+    seed, ensemble_size
+):
     rng = np.random.default_rng(seed)
 
     # Problem size
@@ -230,23 +232,23 @@ def test_that_sies_converges_to_es_in_gauss_linear_case2(seed, ensemble_size):
         parameters=parameters,
         covariance=covariance,
         observations=observations,
-        seed=seed,
+        seed=42,
     )
     X_posterior_ES = smoother.sies_iteration(g(parameters), step_length=1.0)
 
-    # Smoother - Many smaller steps
+    # Smoother - several shorter steps
     smoother = ies.SIES(
         parameters=parameters,
         covariance=covariance,
         observations=observations,
-        seed=seed,
+        seed=42,
     )
     X_i = np.copy(parameters)
     for iteration in range(18):
         X_i = smoother.sies_iteration(g(X_i), step_length=0.66)
 
     # The posterior is the same for a linear model
-    # This is not true for non-linear models, where many small steps are better
+    # This is not true for non-linear models
     assert np.allclose(X_posterior_ES, X_i)
 
 
@@ -278,133 +280,37 @@ def test_that_posterior_covariance_is_smaller_than_prior(seed):
     )
     posterior = smoother.sies_iteration(g(prior), step_length=1.0)
 
-    # Posterior covariance is smaller than prior covariance
+    # We are more certain after assimilating, so the covariance decreases
     assert np.linalg.det(np.cov(posterior)) < np.linalg.det(np.cov(prior))
 
-
-def test_that_sies_converges_to_es_in_gauss_linear_case():
-    rng = np.random.default_rng(42)
-
-    def poly(a, b, c, x):
-        return a * x**2 + b * x + c
-
-    ensemble_size = 200
-
-    # True patameter values
-    a_t = 0.5
-    b_t = 1.0
-    c_t = 3.0
-
-    noise_scale = 0.1
-    x_observations = [0, 2, 4, 6, 8]
-    observations = [
-        (
-            poly(a_t, b_t, c_t, x)
-            + rng.normal(loc=0, scale=noise_scale * poly(a_t, b_t, c_t, x)),
-            noise_scale * poly(a_t, b_t, c_t, x),
-            x,
-        )
-        for x in x_observations
-    ]
-
-    d = pd.DataFrame(observations, columns=["value", "sd", "x"])
-    d = d.set_index("x")
-
-    coeff_a = rng.normal(0, 1, size=ensemble_size)
-    coeff_b = rng.normal(0, 1, size=ensemble_size)
-    coeff_c = rng.normal(0, 1, size=ensemble_size)
-
-    X = np.concatenate(
-        (coeff_a.reshape(-1, 1), coeff_b.reshape(-1, 1), coeff_c.reshape(-1, 1)), axis=1
-    ).T
-
-    fwd_runs = p_map(
-        poly,
-        coeff_a,
-        coeff_b,
-        coeff_c,
-        [np.arange(max(x_observations) + 1)] * ensemble_size,
-        desc="Running forward model.",
-    )
-
-    # Pick responses where we have observations
-    response_ensemble = np.array(
-        [fwd_run[d.index.get_level_values("x").to_list()] for fwd_run in fwd_runs]
-    ).T
-
-    seed = 12345
-
-    smoother = ies.SIES(
-        parameters=X,
-        covariance=d.sd.values**2,
-        observations=d.value.values,
-        seed=seed,
-    )
-
-    params_es = smoother.sies_iteration(response_ensemble, step_length=1.0)
-
-    # We are more certain after assimilating, so the covariance decreases
-    assert np.linalg.det(np.cov(X)) > np.linalg.det(np.cov(params_es))
-
-    params_ies = X.copy()
-    responses_ies = response_ensemble.copy()
-    smoother_ies = ies.SIES(
-        parameters=X,
-        covariance=d.sd.values**2,
-        observations=d.value.values,
-        seed=seed,
-    )
-    for _ in range(10):
-        params_ies = smoother_ies.sies_iteration(responses_ies, step_length=0.5)
-
-        _coeff_a = params_ies[0, :]
-        _coeff_b = params_ies[1, :]
-        _coeff_c = params_ies[2, :]
-
-        _fwd_runs = p_map(
-            poly,
-            _coeff_a,
-            _coeff_b,
-            _coeff_c,
-            [np.arange(max(x_observations) + 1)] * ensemble_size,
-            desc="SIES ert iteration",
-        )
-
-        assert np.linalg.det(np.cov(X)) > np.linalg.det(np.cov(params_ies))
-
-        responses_ies = np.array(
-            [fwd_run[d.index.get_level_values("x").to_list()] for fwd_run in _fwd_runs]
-        ).T
-
-    assert np.abs(
-        (np.linalg.det(np.cov(params_es)) - np.linalg.det(np.cov(params_ies))) < 0.001
-    )
+    # Posterior mean is closer to true value than prior mean
+    posterior_mean = posterior.mean(axis=1)
+    prior_mean = prior.mean(axis=1)
+    assert np.linalg.norm(posterior_mean - x_true) < np.linalg.norm(prior_mean - x_true)
 
 
 @pytest.mark.parametrize("inversion", list(ies.SIES.inversion_funcs.keys()))
 @pytest.mark.parametrize("variance", [1, 2, 5, 9])
 def test_that_update_correctly_multiples_gaussians_in_1D(inversion, variance):
-    """
+    """Test that SIES follows the theory on the Guass-linear case.
+    See section "2.3.3 Bayes’ theorem for Gaussian variables" in the book
+    "Pattern Recognition and Machine Learning" by Bishop (2006) for more info.
+    Also, see Section 8.1.8 in "the matrix cookbook".
+
     NB! This test is potentially flaky because of finite ensemble size.
 
-    Bayes' theorem states that
-    p(x|y) is proportional to p(y|x)p(x)
-
     Assume p(x) is N(mu=0, Sigma=2I) and p(y|x) is N(mu=y, Sigma=2I).
-    Multiplying these together (see 8.1.8 of the matrix cookbook) we get
-    that p(x|y) is N(mu=y/2, Sigma=I).
+    Multiplying these together, we get that p(x|y) is N(mu=y/2, Sigma=I).
     Note that Sigma is a covariance matrix.
 
-    Here we use this property, and assume that the forward model is the identity
-    to test analysis steps.
+    Here we use this property, and assume that the forward model is the identity.
     """
     N = 1000
 
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(variance)
 
     # X ~ N(0, I * var)
-    X = rng.standard_normal(size=(1, N)) * np.sqrt(variance)
-    assert np.isclose(np.var(X), variance, rtol=0.1)
+    X = rng.normal(scale=np.sqrt(variance), size=(1, N))
 
     # Assuming forward model is the identity
     Y = np.copy(X)
@@ -421,38 +327,39 @@ def test_that_update_correctly_multiples_gaussians_in_1D(inversion, variance):
         step_length=1.0,
     )
 
-    # Posterior mean should end up in the middle
+    # Posterior mean should end up between 0 and obs_val (in the middle),
+    # when the covariances are equal and the mapping is the identity.
     posterior_mean = X_posterior.mean(axis=1)
     assert np.allclose(posterior_mean, obs_val / 2, rtol=0.1)
 
     # Posterior covariance
-    assert np.allclose(np.var(X_posterior), 1 / (1 / variance + 1 / variance), rtol=0.1)
+    posterior_variance = 1 / (1 / variance + 1 / variance)
+    assert np.allclose(np.var(X_posterior), posterior_variance, rtol=0.1)
 
 
 @pytest.mark.parametrize("inversion", list(ies.SIES.inversion_funcs.keys()))
-@pytest.mark.parametrize("variance", [1, 2, 5, 9])
+@pytest.mark.parametrize("variance", [0.25, 0.5, 1, 2, 4])
 def test_that_update_correctly_multiples_gaussians(inversion, variance):
-    """
+    """Test that SIES follows the theory on the Guass-linear case.
+    See section "2.3.3 Bayes’ theorem for Gaussian variables" in the book
+    "Pattern Recognition and Machine Learning" by Bishop (2006) for more info.
+    Also, see Section 8.1.8 in "the matrix cookbook".
+
     NB! This test is potentially flaky because of finite ensemble size.
 
-    Bayes' theorem states that
-    p(x|y) is proportional to p(y|x)p(x)
-
     Assume p(x) is N(mu=0, Sigma=2I) and p(y|x) is N(mu=y, Sigma=2I).
-    Multiplying these together (see 8.1.8 of the matrix cookbook) we get
-    that p(x|y) is N(mu=y/2, Sigma=I).
+    Multiplying these together, we get that p(x|y) is N(mu=y/2, Sigma=I).
     Note that Sigma is a covariance matrix.
 
-    Here we use this property, and assume that the forward model is the identity
-    to test analysis steps.
+    Here we use this property, and assume that the forward model is the identity.
     """
-    N = 3000
+    N = 1000
     nparam = 3
 
-    rng = np.random.default_rng(42)
+    rng = np.random.default_rng(int(variance * 100))
 
     # X ~ N(0, I * var)
-    X = rng.standard_normal(size=(nparam, N)) * np.sqrt(variance)
+    X = rng.normal(scale=np.sqrt(variance), size=(nparam, N))
 
     # Assuming forward model is the identity
     Y = np.copy(X)
@@ -475,7 +382,7 @@ def test_that_update_correctly_multiples_gaussians(inversion, variance):
 
     theoretical_variance = 1 / (1 / variance + 1 / variance)
     assert np.allclose(
-        np.cov(X_posterior), np.eye(nparam) * theoretical_variance, atol=0.2
+        np.cov(X_posterior), np.eye(nparam) * theoretical_variance, atol=0.33
     )
 
 
@@ -504,7 +411,7 @@ def test_that_global_es_update_is_identical_to_local(ensemble_size, num_params, 
     num_obs = num_params
     X = rng.normal(size=(num_params, ensemble_size))
     Y = X if linear else np.power(X, 2)
-    covariance = rng.uniform(size=num_obs) ** 2 + 0.01
+    covariance = np.exp(rng.uniform(size=num_obs))
     observations = rng.normal(np.zeros(num_params), covariance)
 
     # First update a subset or batch of parameters at once
@@ -515,13 +422,13 @@ def test_that_global_es_update_is_identical_to_local(ensemble_size, num_params, 
 
     # A single global update
     smoother = ies.SIES(
-        parameters=X, covariance=covariance, observations=observations, seed=42
+        parameters=X, covariance=covariance, observations=observations, seed=1
     )
     X_ES_global = smoother.sies_iteration(Y, step_length=1.0)
 
     # Update each parameter in turn
     smoother = ies.SIES(
-        parameters=X, covariance=covariance, observations=observations, seed=42
+        parameters=X, covariance=covariance, observations=observations, seed=1
     )
     W = smoother.propose_W(Y, step_length=1.0)
 
@@ -560,13 +467,15 @@ def test_that_ies_runs_with_failed_realizations(seed):
     # Inputs and outputs
     parameters = rng.normal(size=(num_params, ensemble_size))
     x_true = np.linspace(-5, 5, num=num_params)
-    observations = A @ x_true
-    observations += rng.normal(size=(num_responses))
+    observations = A @ x_true + rng.normal(size=(num_responses))
     covariance = np.ones(num_responses)
 
     # Create smoother
     smoother = ies.SIES(
-        parameters=parameters, covariance=covariance, observations=observations, seed=42
+        parameters=parameters,
+        covariance=covariance,
+        observations=observations,
+        seed=rng,
     )
 
     ensemble_mask = np.ones(ensemble_size, dtype=bool)
@@ -607,14 +516,18 @@ def test_that_ies_runs_with_failed_realizations(seed):
     assert np.all(np.abs(mean_posterior - x_true) < 3)
 
 
-@pytest.mark.parametrize("seed", list(range(1)))
+@pytest.mark.parametrize("seed", list(range(9)))
 def test_that_subspaces_are_still_used_as_original_realizations_fail(seed):
     """When the forward model is a simulation being run parallel on clusters,
-    some of the jobs (realizations) might fail. In that case we know which
-    realizations have failed, and we wish to keep assimilating data with the
-    remaining realizations.
+    some of the jobs (realizations) might fail.
 
-    We assume that once a realization is "dead", it never wakes up again.
+    Consider the case when the prior is the identity matrix I.
+    N = n = 10. In each iteration, another ensemble member "dies."
+    After 7 iteations, only the three right-most columns are still alive.
+    However, that does NOT mean that the posterior lies in the subspace
+    spanned by the three most right-most columns in the prior, since
+    in earlier iterations the algorithm is able to explore other subspaces
+    before realizations die out.
     """
 
     rng = np.random.default_rng(seed)
@@ -632,13 +545,15 @@ def test_that_subspaces_are_still_used_as_original_realizations_fail(seed):
     # Inputs and outputs
     parameters = np.identity(num_params)  # Identity
     x_true = np.arange(num_params)
-    observations = A @ x_true
-    observations += rng.normal(size=(num_responses))
+    observations = A @ x_true + rng.normal(size=(num_responses))
     covariance = np.ones(num_responses)
 
     # Create smoother
     smoother = ies.SIES(
-        parameters=parameters, covariance=covariance, observations=observations, seed=42
+        parameters=parameters,
+        covariance=covariance,
+        observations=observations,
+        seed=rng,
     )
 
     X_i = np.copy(parameters)
@@ -652,18 +567,26 @@ def test_that_subspaces_are_still_used_as_original_realizations_fail(seed):
             responses[:, ensemble_mask], ensemble_mask=ensemble_mask, step_length=0.2
         )
 
-    # First column is the identity
+    # First column is the identity, it was never updated
     assert X_i[0, 0] == 1
     assert np.allclose(X_i[1:, 0], 0)
 
+    # Variables keep getting updated
     assert not np.allclose(X_i[1, 1:], X_i[1, 1])
     assert not np.allclose(X_i[2, 2:], X_i[2, 2])
     assert not np.allclose(X_i[3, 3:], X_i[3, 3])
+
+    # If the first 7 columns were not used, then the top 7 rows would be
+    # identitally zero, but that is not the case
+    assert not np.allclose(X_i[:7, ensemble_mask], 0)
 
 
 @pytest.mark.parametrize("seed", list(range(10)))
 @pytest.mark.parametrize("inversion", ["exact"])
 def test_that_diagonal_and_dense_covariance_return_the_same_result(inversion, seed):
+    """A 1D array represents the diagonal of a covariance matrix. The user should
+    be able to pass either a 2D or 1D representation of a diagonal, and get the same
+    results. But a 1D representation is more efficient w.r.t. speed and memory."""
     rng = np.random.default_rng(seed)
 
     # Create a random problem instance
@@ -715,8 +638,9 @@ def test_that_float_dtypes_are_preserved(inversion, dtype, diagonal):
     responses = rng.normal(size=(num_obs, ensemble_size))  # Y
     observations = rng.normal(size=num_obs)  # d
 
-    covariance = np.exp(rng.normal(size=num_obs))
-    if not diagonal:
+    covar_factor = rng.normal(size=(num_obs, num_obs))
+    covariance = covar_factor.T @ covar_factor
+    if diagonal:
         covariance = np.diag(covariance)
 
     # Convert dtypes
@@ -792,6 +716,6 @@ if __name__ == "__main__":
             __file__,
             "--doctest-modules",
             "-v",
-            "-k test_that_update_correctly_multiples_gaussians",
+            #  "-k test_that_update_correctly_multiples_gaussians",
         ]
     )

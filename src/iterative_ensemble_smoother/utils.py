@@ -2,7 +2,6 @@ from __future__ import annotations
 from typing import Tuple, Optional, TYPE_CHECKING
 
 import numpy as np
-import scipy as sp  # type: ignore
 
 if TYPE_CHECKING:
     import numpy.typing as npt
