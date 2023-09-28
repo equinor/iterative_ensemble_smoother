@@ -224,21 +224,34 @@ responses_before = forward_model(standard_normal_to_prior(A), response_x_axis)
 Y = responses_before[observation_x_axis]
 
 # Run smoother for one step
-smoother = ies.ES()
-smoother.fit(Y, observation_errors, observation_values)
-new_A = smoother.update(A)
+smoother = ies.SIES(
+    parameters=A,
+    covariance=observation_errors**2,
+    observations=observation_values,
+    seed=42,
+)
+
+new_A = smoother.sies_iteration(Y, step_length=1.0)
+
 
 plot_result(standard_normal_to_prior(new_A), response_x_axis)
-
 
 # %% [markdown]
 # ## Iterative smoother
 
 # %%
+from iterative_ensemble_smoother.utils import steplength_exponential
+
+
 def iterative_smoother(A):
     A_current = np.copy(A)
     iterations = 4
-    smoother = ies.SIES(seed=42)
+    smoother = ies.SIES(
+        parameters=A,
+        covariance=observation_errors**2,
+        observations=observation_values,
+        seed=42,
+    )
 
     plot_result(
         standard_normal_to_prior(A_current),
@@ -247,15 +260,15 @@ def iterative_smoother(A):
     )
 
     for iteration in range(iterations):
-
         responses_before = forward_model(
             standard_normal_to_prior(A_current), response_x_axis
         )
 
         Y = responses_before[observation_x_axis]
 
-        smoother.fit(Y, observation_errors, observation_values)
-        A_current = smoother.update(A_current)
+        A_current = smoother.sies_iteration(
+            Y, step_length=steplength_exponential(iteration + 1)
+        )
 
         plot_result(
             standard_normal_to_prior(A_current),
@@ -271,7 +284,6 @@ iterative_smoother(A)
 # ## ES-MDA (Ensemble Smoother - Multiple Data Assimilation)
 
 # %%
-
 smoother = ies.ESMDA(
     # Here C_D is a covariance matrix. If a 1D array is passed,
     # it is interpreted as the diagonal of the covariance matrix,

@@ -132,19 +132,32 @@ assert Y.shape == (
 # ## Condition on observations to calculate posterior using both `ES` and `SIES`
 
 # %%
+from iterative_ensemble_smoother.utils import steplength_exponential
+
 X_ES_ert = X.copy()
 Y_ES_ert = Y.copy()
-smoother_es = ies.ES(seed=42)
-smoother_es.fit(Y_ES_ert, d.sd.values, d.value.values)
-X_ES_ert = smoother_es.update(X_ES_ert)
+smoother_es = ies.SIES(
+    parameters=X_ES_ert,
+    covariance=d.sd.values**2,
+    observations=d.value.values,
+    seed=42,
+)
+X_ES_ert = smoother_es.sies_iteration(Y_ES_ert, step_length=1.0)
+
 
 X_IES_ert = X.copy()
 Y_IES_ert = Y.copy()
-smoother_ies = ies.SIES(seed=42)
+smoother_ies = ies.SIES(
+    parameters=X_IES_ert,
+    covariance=d.sd.values**2,
+    observations=d.value.values,
+    seed=42,
+)
 n_ies_iter = 7
 for i in range(n_ies_iter):
-    smoother_ies.fit(Y_IES_ert, d.sd.values, d.value.values)
-    X_IES_ert = smoother_ies.update(X_IES_ert)
+
+    step_length = steplength_exponential(i + 1)
+    X_IES_ert = smoother_ies.sies_iteration(Y_IES_ert, step_length=step_length)
 
     _coeff_a, _coeff_b, _coeff_c = X_IES_ert
 

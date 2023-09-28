@@ -22,6 +22,8 @@ def steplength_exponential(
 
     Examples
     --------
+    >>> [steplength_exponential(i) for i in [1, 2, 3, 4]]
+    [0.6, 0.48898815748423097, 0.41905507889761495, 0.375]
     >>> [steplength_exponential(i, 0.0, 1.0, 1.0) for i in [1, 2, 3, 4]]
     [1.0, 0.5, 0.25, 0.125]
     >>> [steplength_exponential(i, 0.0, 1.0, 0.5) for i in [1, 2, 3, 4]]
