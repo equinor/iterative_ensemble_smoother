@@ -4,9 +4,11 @@ from iterative_ensemble_smoother import SIES
 
 from iterative_ensemble_smoother.sies_inversion import (
     inversion_naive,
-    inversion_exact,
+    inversion_subspace_exact,
     inversion_direct,
     inversion_direct_corrscale,
+    inversion_subspace_projected,
+    inversion_subspace_projected_corrscale,
 )
 
 import pytest
@@ -20,13 +22,19 @@ class TestSIESInversions:
             inversion_naive,
             inversion_direct,
             inversion_direct_corrscale,
-            inversion_exact,
+            inversion_subspace_exact,
+            inversion_subspace_projected,
+            inversion_subspace_projected_corrscale,
         ],
     )
-    def test_that_inversions_are_equal_diagonal_or_dense_covariance(self, seed, func):
+    @pytest.mark.parametrize("truncation", [1.0, 0.99, 0.95, 0.9])
+    def test_that_inversions_are_equal_diagonal_or_dense_covariance(
+        self, seed, func, truncation
+    ):
         """Every inversion function should return the same result whether a
         1D array or 2D array is used to represent a diagonal covariance."""
-        rng = np.random.default_rng(seed)
+        rng = np.random.default_rng(seed + int(truncation * 10000))
+
         m, N = 100, 10  # Output, realizations
         W = rng.standard_normal(size=(N, N))
         step_length = 0.33
@@ -50,6 +58,7 @@ class TestSIESInversions:
             C_dd=C_dd_1D,
             H=H,
             C_dd_cholesky=C_dd_cholesky_1D,
+            truncation=truncation,
         )
         ans_2D = func(
             W=W,
@@ -58,12 +67,59 @@ class TestSIESInversions:
             C_dd=C_dd_2D,
             H=H,
             C_dd_cholesky=C_dd_cholesky_2D,
+            truncation=truncation,
         )
 
         assert np.allclose(ans_1D, ans_2D)
 
     @pytest.mark.parametrize(
-        "func", [inversion_direct, inversion_direct_corrscale, inversion_exact]
+        "func",
+        [
+            inversion_direct,
+            inversion_direct_corrscale,
+            inversion_subspace_exact,
+            inversion_subspace_projected,
+            inversion_subspace_projected_corrscale,
+        ],
+    )
+    def test_that_inversions_are_all_equal_with_many_realizations(self, func):
+        """With N >= m, all inversions are equal as long as the truncation is 1.0.
+        This is also true for projected inversions.
+        """
+
+        rng = np.random.default_rng(42)
+        m, N = 10, 20  # Output, realizations
+        W = rng.standard_normal(size=(N, N))
+        step_length = 0.33
+        S = rng.standard_normal(size=(m, N))
+        C_dd_factor = rng.standard_normal(size=(m, m))
+        C_dd = C_dd_factor @ C_dd_factor.T
+        C_dd_cholesky = sp.linalg.cholesky(
+            C_dd, lower=True
+        )  # Lower triangular cholesky
+        H = rng.standard_normal(size=(m, N))
+
+        ans_naive = inversion_naive(
+            W=W,
+            step_length=step_length,
+            S=S,
+            C_dd=C_dd,
+            H=H,
+            C_dd_cholesky=C_dd_cholesky,
+        )
+        ans = func(
+            W=W,
+            step_length=step_length,
+            S=S,
+            C_dd=C_dd,
+            H=H,
+            C_dd_cholesky=C_dd_cholesky,
+        )
+
+        assert np.allclose(ans_naive, ans)
+
+    @pytest.mark.parametrize(
+        "func", [inversion_direct, inversion_direct_corrscale, inversion_subspace_exact]
     )
     def test_that_exact_inversions_are_all_equal(self, func):
         rng = np.random.default_rng(42)
@@ -100,7 +156,8 @@ class TestSIESInversions:
 
 class TestSIESObjective:
     @pytest.mark.parametrize("seed", list(range(99)))
-    def test_that_sies_objective_function_decreases(self, seed):
+    @pytest.mark.parametrize("inversion", SIES.inversion_funcs.keys())
+    def test_that_sies_objective_function_decreases(self, seed, inversion):
         rng = np.random.default_rng(seed)
 
         ensemble_size = 50
@@ -122,6 +179,8 @@ class TestSIESObjective:
             parameters=X,
             covariance=covariance,
             observations=observations,
+            inversion=inversion,
+            seed=rng,
         )
 
         Y = G(X)

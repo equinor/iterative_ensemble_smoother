@@ -12,6 +12,54 @@ import numbers
 import scipy as sp  # type: ignore
 
 
+def calc_num_significant(
+    singular_values: npt.NDArray[np.double], truncation: float
+) -> int:
+    """Determine the number of singular values by enforcing that less than a
+    fraction truncation of the total variance be accounted for.
+
+    Note: In e.g., scipy.linalg.pinv the following criteria is used:
+        atol + rtol * max(singular_values) <= truncation
+    Here we use cumsum(normalize(singular_values**2)) <= truncation
+
+    Parameters
+    ----------
+    singular_values : np.ndarray
+        Array with singular values, sorted in decreasing order.
+    truncation : float
+        Fraction of energy squared singular values to keep.
+
+    Returns
+    -------
+    int
+        Last index to be included in singular values array.
+
+    Examples
+    --------
+    >>> singular_values = np.array([2, 2, 1, 1])
+    >>> calc_num_significant(singular_values, 1.0)
+    4
+    >>> calc_num_significant(singular_values, 0.8)
+    2
+    >>> calc_num_significant(singular_values, 0.01)
+    1
+
+    >>> singular_values = np.array([3, 2, 1, 0, 0, 0])
+    >>> i = calc_num_significant(singular_values, 1.0)
+    >>> singular_values[:i]
+    array([3, 2, 1])
+
+    """
+    assert np.all(np.diff(singular_values) <= 0), "Must be sorted decreasing"
+    assert 0 < truncation <= 1
+
+    sigma = np.cumsum(singular_values**2)
+    total_sigma = sigma[-1]  # Sum of all squared singular values
+
+    relative_energy = sigma / total_sigma
+    return int(np.searchsorted(relative_energy, truncation, side="left") + 1)
+
+
 def _verify_inversion_args(
     *,
     W: npt.NDArray[np.double],
@@ -20,12 +68,16 @@ def _verify_inversion_args(
     C_dd: npt.NDArray[np.double],
     H: npt.NDArray[np.double],
     C_dd_cholesky: Optional[npt.NDArray[np.double]],
+    truncation: float,
 ) -> None:
     if C_dd_cholesky is not None:
         assert C_dd.shape == C_dd_cholesky.shape
 
     assert isinstance(step_length, numbers.Real)
     assert 0 < step_length <= 1.0
+
+    assert isinstance(truncation, numbers.Real)
+    assert 0 < truncation <= 1.0
 
     # Verify N
     # assert W.shape[0] == W.shape[1]
@@ -45,12 +97,19 @@ def inversion_naive(
     C_dd: npt.NDArray[np.double],
     H: npt.NDArray[np.double],
     C_dd_cholesky: Optional[npt.NDArray[np.double]],
+    truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
     """A naive implementation, used for benchmarking and testing only.
 
     Naive implementation of Equation (42)."""
     _verify_inversion_args(
-        W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
+        W=W,
+        step_length=step_length,
+        S=S,
+        C_dd=C_dd,
+        H=H,
+        C_dd_cholesky=C_dd_cholesky,
+        truncation=truncation,
     )
 
     # Since it's naive, we just create zeros here
@@ -72,10 +131,17 @@ def inversion_direct(
     C_dd: npt.NDArray[np.double],
     H: npt.NDArray[np.double],
     C_dd_cholesky: Optional[npt.NDArray[np.double]],
+    truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
     """A more optimized implementation of Equation (42)."""
     _verify_inversion_args(
-        W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
+        W=W,
+        step_length=step_length,
+        S=S,
+        C_dd=C_dd,
+        H=H,
+        C_dd_cholesky=C_dd_cholesky,
+        truncation=truncation,
     )
 
     # We define K as the solution to
@@ -117,10 +183,17 @@ def inversion_direct_corrscale(
     C_dd: npt.NDArray[np.double],
     H: npt.NDArray[np.double],
     C_dd_cholesky: Optional[npt.NDArray[np.double]],
+    truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
     """Implementation of Equation (42), with correlation matrix scaling."""
     _verify_inversion_args(
-        W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
+        W=W,
+        step_length=step_length,
+        S=S,
+        C_dd=C_dd,
+        H=H,
+        C_dd_cholesky=C_dd_cholesky,
+        truncation=truncation,
     )
 
     if C_dd.ndim == 2:
@@ -158,7 +231,7 @@ def inversion_direct_corrscale(
     return ans
 
 
-def inversion_exact(
+def inversion_subspace_exact(
     *,
     W: npt.NDArray[np.double],
     step_length: float,
@@ -166,11 +239,18 @@ def inversion_exact(
     C_dd: npt.NDArray[np.double],
     H: npt.NDArray[np.double],
     C_dd_cholesky: npt.NDArray[np.double],
+    truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
-    """Implementation of Equation (50), which does inversion in the ensemble
+    """Implementation of Equation (50), which performs inversion in the ensemble
     space (size N) instead doing it in the output space (size m >> N)."""
     _verify_inversion_args(
-        W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
+        W=W,
+        step_length=step_length,
+        S=S,
+        C_dd=C_dd,
+        H=H,
+        C_dd_cholesky=C_dd_cholesky,
+        truncation=truncation,
     )
 
     # Special case for diagonal covariance matrix.
@@ -207,4 +287,149 @@ def inversion_exact(
         assume_a="pos",
     )
 
+    return W - step_length * (W - F)
+
+
+def inversion_subspace_projected(
+    *,
+    W: npt.NDArray[np.double],
+    step_length: float,
+    S: npt.NDArray[np.double],
+    C_dd: npt.NDArray[np.double],
+    H: npt.NDArray[np.double],
+    C_dd_cholesky: npt.NDArray[np.double],
+    truncation: float = 1.0,
+) -> npt.NDArray[np.double]:
+    """Implementation of section 3.3 : 'Ensemble Subspace Inversion Using Full C_dd'
+
+    Note that this is an APPROXIMATE inversion in general.
+    When N >= m and truncation is 1.0, then there is no approximation.
+
+    """
+    _verify_inversion_args(
+        W=W,
+        step_length=step_length,
+        S=S,
+        C_dd=C_dd,
+        H=H,
+        C_dd_cholesky=C_dd_cholesky,
+        truncation=truncation,
+    )
+    assert 0 < truncation <= 1.0
+
+    # Equation (58)
+    U, Sigma, VT = sp.linalg.svd(
+        S,
+        full_matrices=False,
+        compute_uv=True,
+        overwrite_a=False,
+        check_finite=True,
+        lapack_driver="gesdd",
+    )
+
+    # Compute Sigma^+
+    num_significant = calc_num_significant(Sigma, truncation)
+    Sigma_inv = 1 / Sigma[:num_significant]
+    U = U[:, :num_significant]
+    VT = VT[:num_significant, :]
+
+    # Equation (59), using the cholesky factor: C_dd_cholesky @ C_dd_cholesky.T = C_dd
+    if C_dd_cholesky.ndim == 2:
+        K = np.linalg.multi_dot([U.T, C_dd_cholesky]) * Sigma_inv.reshape(-1, 1)
+    else:
+        K = (U.T * C_dd_cholesky) * Sigma_inv.reshape(-1, 1)
+    # Compute SVD, which is equivalent to taking eigendecomposition
+    # since C_tilde is PSD. Using eigh() is faster than svd().
+    # Note that svd() returns eigenvalues in decreasing order, while eigh()
+    # returns eigenvalues in increasing order.
+    # driver="evr" => fastest option
+    Lambda, Z = sp.linalg.eigh(K @ K.T, driver="evr", overwrite_a=True)
+
+    # Equation (60)
+    K = np.linalg.multi_dot([U * Sigma_inv, Z])
+    K *= 1 / (1 + Lambda) ** 0.5
+
+    # Equation (42), but with (S @ S.T + C_dd)^{-1} expressed as K @ K.T
+    F: npt.NDArray[np.double] = np.linalg.multi_dot([S.T, K, K.T, H])
+    return W - step_length * (W - F)
+
+
+def inversion_subspace_projected_corrscale(
+    *,
+    W: npt.NDArray[np.double],
+    step_length: float,
+    S: npt.NDArray[np.double],
+    C_dd: npt.NDArray[np.double],
+    H: npt.NDArray[np.double],
+    C_dd_cholesky: npt.NDArray[np.double],
+    truncation: float = 1.0,
+) -> npt.NDArray[np.double]:
+    """Implementation of section 3.3 : 'Ensemble Subspace Inversion Using Full C_dd'
+    with correlation scaling. This scales the covariance matrix to a correlation
+    matrix. The idea is that the relative importance of the variables, not the magnitude
+    of the numbers in the variables, will determine the truncation.
+
+    Note that this is an APPROXIMATE inversion in general.
+    When N >= m and truncation is 1.0, then there is no approximation.
+
+    """
+    _verify_inversion_args(
+        W=W,
+        step_length=step_length,
+        S=S,
+        C_dd=C_dd,
+        H=H,
+        C_dd_cholesky=C_dd_cholesky,
+        truncation=truncation,
+    )
+    assert 0 < truncation <= 1.0
+
+    # Correlation scaling
+    if C_dd.ndim == 2:
+        scale_factor = 1 / np.sqrt(np.diag(C_dd))
+        # Scale rows and columns by diagonal, creating correlation matrix R
+        # R = (C_dd * scale_factor.reshape(1, -1)) * scale_factor.reshape(-1, 1)
+        R_chol = C_dd_cholesky * scale_factor.reshape(-1, 1)
+    else:
+        scale_factor = 1 / np.sqrt(C_dd)
+        # The correlation matrix R is simply the identity matrix in this case
+
+    # Scale rows
+    S = S * scale_factor.reshape(-1, 1)
+    H = H * scale_factor.reshape(-1, 1)
+
+    # Equation (58)
+    U, Sigma, VT = sp.linalg.svd(
+        S,
+        full_matrices=False,
+        compute_uv=True,
+        overwrite_a=False,
+        check_finite=True,
+        lapack_driver="gesdd",
+    )
+
+    # Compute Sigma^+
+    num_significant = calc_num_significant(Sigma, truncation)
+    Sigma_inv = 1 / Sigma[:num_significant]
+    U = U[:, :num_significant]
+    VT = VT[:num_significant, :]
+
+    # Equation (59), using the cholesky factor: C_dd_cholesky @ C_dd_cholesky.T = C_dd
+    if C_dd_cholesky.ndim == 2:
+        K = np.linalg.multi_dot([U.T, R_chol]) * Sigma_inv.reshape(-1, 1)
+    else:
+        K = U.T * Sigma_inv.reshape(-1, 1)
+    # Compute SVD, which is equivalent to taking eigendecomposition
+    # since C_tilde is PSD. Using eigh() is faster than svd().
+    # Note that svd() returns eigenvalues in decreasing order, while eigh()
+    # returns eigenvalues in increasing order.
+    # driver="evr" => fastest option
+    Lambda, Z = sp.linalg.eigh(K @ K.T, driver="evr", overwrite_a=True)
+
+    # Equation (60)
+    K = np.linalg.multi_dot([U * Sigma_inv, Z])
+    K *= 1 / (1 + Lambda) ** 0.5
+
+    # Equation (42), but with (S @ S.T + C_dd)^{-1} expressed as K @ K.T
+    F: npt.NDArray[np.double] = np.linalg.multi_dot([S.T, K, K.T, H])
     return W - step_length * (W - F)

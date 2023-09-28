@@ -8,7 +8,12 @@ import scipy as sp  # type: ignore
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-from iterative_ensemble_smoother.sies_inversion import inversion_exact, inversion_naive
+from iterative_ensemble_smoother.sies_inversion import (
+    inversion_subspace_exact,
+    inversion_naive,
+    inversion_subspace_projected,
+    inversion_subspace_projected_corrscale,
+)
 from iterative_ensemble_smoother.utils import _validate_inputs, sample_mvnormal
 
 
@@ -44,7 +49,12 @@ class SIES:
         Integer used to seed the random number generator. The default is None.
     """
 
-    inversion_funcs = {"exact": inversion_exact, "naive": inversion_naive}
+    inversion_funcs = {
+        "exact": inversion_subspace_exact,
+        "naive": inversion_naive,
+        "subspace_projected": inversion_subspace_projected,
+        "subspace_projected_corrscale": inversion_subspace_projected_corrscale,
+    }
 
     def __init__(
         self,
@@ -53,6 +63,7 @@ class SIES:
         observations: npt.NDArray[np.double],
         *,
         inversion: str = "exact",
+        truncation: float = 1.0,
         seed: Union[None, int, np.random._generator.Generator] = None,
     ):
         _validate_inputs(
@@ -61,6 +72,7 @@ class SIES:
 
         self.rng = np.random.default_rng(seed)
         self.inversion = self.inversion_funcs[inversion]
+        self.truncation = truncation
         self.X = parameters
         self.d = observations
         self.C_dd = covariance
@@ -287,6 +299,7 @@ class SIES:
             C_dd=self.C_dd,
             H=H,
             C_dd_cholesky=self.C_dd_cholesky,
+            truncation=self.truncation,
         )
         return proposed_W
 
@@ -379,6 +392,7 @@ class SIES:
             C_dd=self.C_dd,
             H=H,
             C_dd_cholesky=self.C_dd_cholesky,
+            truncation=self.truncation,
         )
         return proposed_W
 
