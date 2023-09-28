@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -59,49 +59,6 @@ def _validate_inputs(
 
     assert covariance.shape[0] == observations.shape[0]
     assert covariance.shape[0] == observations.shape[0]
-
-
-def covariance_to_correlation(
-    C: npt.NDArray[np.double],
-) -> Tuple[Optional[npt.NDArray[np.double]], npt.NDArray[np.double]]:
-    """The input C is either (1) a 2D covariance matrix or (2) a 1D array of
-    standard deviations. This function normalizes the covariance matrix to a
-    correlation matrix (unit diagonal).
-
-    Examples
-    --------
-    >>> C = np.array([[4., 1., 0.],
-    ...               [1., 4., 1.],
-    ...               [0., 1., 4.]])
-    >>> corr_mat, stds = covariance_to_correlation(C)
-    >>> corr_mat
-    array([[1.  , 0.25, 0.  ],
-           [0.25, 1.  , 0.25],
-           [0.  , 0.25, 1.  ]])
-    >>> stds
-    array([2., 2., 2.])
-    """
-    assert isinstance(C, np.ndarray) and C.ndim in (1, 2)
-
-    # A covariance matrix was passed
-    if C.ndim == 2:
-        standard_deviations = np.sqrt(C.diagonal())
-
-        # Create a correlation matrix from a covariance matrix
-        # https://en.wikipedia.org/wiki/Covariance_matrix#Relation_to_the_correlation_matrix
-
-        # Divide every column
-        correlation_matrix = C / standard_deviations.reshape(1, -1)
-
-        # Divide every row
-        correlation_matrix /= standard_deviations.reshape(-1, 1)
-
-        return correlation_matrix, standard_deviations
-
-    # A vector of standard deviations was passed
-    correlation_matrix = None
-    standard_deviations = C
-    return None, standard_deviations
 
 
 def sample_mvnormal(

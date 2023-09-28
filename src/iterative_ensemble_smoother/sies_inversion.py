@@ -1,11 +1,61 @@
-from __future__ import annotations
+"""
 
-from typing import TYPE_CHECKING, Optional
+SIES inversions
+---------------
+
+This file contains functions for solving Equation (42) in 2019 Evensen paper.
+Another useful reference is the appendix of the 2012 Emerick paper.
+
+We wish to compute
+
+    W - step_length * (W - S.T @ inv(S @ S.T + C_dd) @ H)             eqn (42)
+
+and the paper outlines four ways to do so. The main implementations are:
+
+- Section 3.1 - Direct inversion
+- Section 3.2 - Exact inversion (in the ensemble subspace)
+- Section 3.3 - Projected inversion (in the ensemble subspace)
+
+
+Scaling
+-------
+
+In line 8 in Algorithm 1, we have to compute (S S^T + E E^T)^-1 H, where
+H := (SW + D - g(X)). This is equivalent to solving the following
+equation for an unknown matrix M:
+    (S S^T + E E^T) M = (SW + D - g(X))
+Afterward we compute S.T @ M. If we scale the rows (observed variables)
+of these equations using the standard deviations, we can obtain better
+conditioning numbers on the equation. This corresponds to left-multiplying
+with a diagonal matrix L := sqrt(diag(C_dd)). In an experiment with
+random covariance matrices, this improved the condition number ~90%
+of the time (results may depend on how random covariance matrices are
+generated --- I generated covariances C as E ~ stdnorm(), then C = E.T @ E).
+
+To see the equality, note that if we scale S, E and H := (SW + D - g(X))
+we obtain:
+    (L S) (L S)^T + (L E) (L E)^T M_2 = L H
+              L (S S^T + E E^T) L M_2 = L H
+            L (S S^T + E E^T) L L^-1 M = L H
+so the new solution is M_2 := L^-1 M, expressed in terms of the original M.
+But when we left-multiply M_2 with S^T, we do so with a transformed S,
+so we obtain S_2^T M_2 = (L S)^T (L^-1 M) = S^T M, so the solution
+to the transformed system is equal to the solution of the original system.
+In the implementation of scaling the right hand side (SW + D - g(X))
+we first scale D - g(X), then we scale S implicitly by solving
+S Sigma = L Y, instead of S Sigma = Y for S.
+
+Another scaling technique, using the cholesky factorization, is explained in
+the appendix of the 2012 Emerick paper. When C_dd is diagonal, both scaling
+techniques (scaling using correlation or cholesky factors) coincide.
+
+"""
+
+from typing import Optional
 
 import numpy as np
 
-if TYPE_CHECKING:
-    import numpy.typing as npt
+import numpy.typing as npt
 
 import numbers
 
@@ -54,7 +104,7 @@ def calc_num_significant(
     assert 0 < truncation <= 1
 
     sigma = np.cumsum(singular_values**2)
-    total_sigma = sigma[-1]  # Sum of all squared singular values
+    total_sigma = sigma[-1]  # Sum of squared singular values
 
     relative_energy = sigma / total_sigma
     return int(np.searchsorted(relative_energy, truncation, side="left") + 1)
@@ -70,6 +120,7 @@ def _verify_inversion_args(
     C_dd_cholesky: Optional[npt.NDArray[np.double]],
     truncation: float,
 ) -> None:
+    """Verify shapes of arguments."""
     if C_dd_cholesky is not None:
         assert C_dd.shape == C_dd_cholesky.shape
 
@@ -80,7 +131,6 @@ def _verify_inversion_args(
     assert 0 < truncation <= 1.0
 
     # Verify N
-    # assert W.shape[0] == W.shape[1]
     assert W.shape[0] == S.shape[1]
     assert W.shape[1] == H.shape[1]
 
@@ -112,7 +162,7 @@ def inversion_naive(
         truncation=truncation,
     )
 
-    # Since it's naive, we just create zeros here
+    # Since it's a naive approach, we just create a diagonal matrix
     if C_dd.ndim == 1:
         C_dd = np.diag(C_dd)
 
@@ -133,7 +183,7 @@ def inversion_direct(
     C_dd_cholesky: Optional[npt.NDArray[np.double]],
     truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
-    """A more optimized implementation of Equation (42)."""
+    """A more optimized implementation of Equation (42), implementing Section 3.1."""
     _verify_inversion_args(
         W=W,
         step_length=step_length,
@@ -144,23 +194,16 @@ def inversion_direct(
         truncation=truncation,
     )
 
-    # We define K as the solution to
+    # We define K as the solution to:
     # (S @ S.T + C_dd) @ K = H, so that
     # K = (S @ S.T + C_dd)^-1 H
     # K = solve(S @ S.T + C_dd, H)
     if C_dd.ndim == 1:
-        # Since S has shape (m, N), and m >> N, using BLAS is typically faster:
-        # >>> S = np.random.randn(10_000, 100)
-        # >>> %timeit S @ S.T
-        # 512 ms ± 14.4 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
-        # >>> %timeit sp.linalg.blas.dsyrk(alpha=1.0, a=S)
-        # 225 ms ± 37 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)
-        # Here BLAS only computes the upper triangular part of S @ S.T, but
-        # that's all we need when we call the solver with "lower=False".
-        lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=S)  # Equivalent to S @ S.T
+        # Using BLAS to only create the upper-triangular part is around 2x faster
+        lhs = S @ S.T  # sp.linalg.blas.dsyrk(alpha=1.0, a=S)
         lhs.flat[:: lhs.shape[0] + 1] += C_dd
     else:
-        lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=S, c=C_dd, beta=1.0)  # S @ S.T + C_dd
+        lhs = S @ S.T + C_dd  # sp.linalg.blas.dsyrk(alpha=1.0, a=S, c=C_dd, beta=1.0)
 
     K = sp.linalg.solve(
         lhs,
@@ -169,9 +212,9 @@ def inversion_direct(
         overwrite_a=True,
         overwrite_b=False,
         check_finite=True,
-        assume_a="pos",
+        assume_a="pos",  # Exploit the fact that lhs is PSD
     )
-    ans: npt.NDArray[np.double] = W - step_length * (W - np.linalg.multi_dot([S.T, K]))
+    ans: npt.NDArray[np.double] = W - step_length * (W - S.T @ K)
     return ans
 
 
@@ -213,10 +256,10 @@ def inversion_direct_corrscale(
     # K = (S @ S.T + C_dd)^-1 H
     # K = solve(S @ S.T + C_dd, H)
     if C_dd.ndim == 1:
-        lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=S)  # S.T @ S
+        lhs = S @ S.T  # sp.linalg.blas.dsyrk(alpha=1.0, a=S)
         lhs.flat[:: lhs.shape[0] + 1] += 1
     else:
-        lhs = sp.linalg.blas.dsyrk(alpha=1.0, a=S, beta=1.0, c=R)  # S.T @ S + R
+        lhs = S @ S.T + R  # sp.linalg.blas.dsyrk(alpha=1.0, a=S, beta=1.0, c=R)
 
     K = sp.linalg.solve(
         lhs,
@@ -258,7 +301,7 @@ def inversion_subspace_exact(
     if C_dd.ndim == 1:
         K = S / C_dd_cholesky.reshape(-1, 1)
         lhs = K.T @ K  # sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)
-        lhs.flat[:: lhs.shape[0] + 1] += 1  # type: ignore
+        lhs.flat[:: lhs.shape[0] + 1] += 1  # type: ignore # Add identity
         C_dd_inv_H = H / C_dd.reshape(-1, 1)
 
     else:

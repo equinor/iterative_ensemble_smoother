@@ -1,8 +1,6 @@
 import numpy as np
 import pytest
 from scipy.stats import linregress
-import pandas as pd
-from p_tqdm import p_map
 
 
 import iterative_ensemble_smoother as ies
