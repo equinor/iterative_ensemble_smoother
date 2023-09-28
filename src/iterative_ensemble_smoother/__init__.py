@@ -11,9 +11,11 @@ except ImportError:
     version_tuple = (0, 0, "unknown version", "unknown commit")
 
 from iterative_ensemble_smoother.esmda import ESMDA
-from iterative_ensemble_smoother.experimental_sies import SIES
+from iterative_ensemble_smoother.sies import SIES
+from iterative_ensemble_smoother.utils import steplength_exponential
 
 __all__ = [
     "SIES",
     "ESMDA",
+    "steplength_exponential",
 ]

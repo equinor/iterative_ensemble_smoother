@@ -42,40 +42,6 @@ def steplength_exponential(
     return min_steplength + delta * 2**exponent
 
 
-def response_projection(
-    param_ensemble: npt.NDArray[np.double],
-) -> npt.NDArray[np.double]:
-    """A^+A projection is necessary when the parameter matrix has fewer rows than
-    columns, and when the forward model is non-linear. Section 2.4.3
-
-    Examples
-    --------
-    >>> A = np.arange(9, dtype=float).reshape(3,3)
-    >>> response_projection(A)
-    array([[ 0.5,  0. , -0.5],
-           [ 0. ,  0. ,  0. ],
-           [-0.5,  0. ,  0.5]])
-
-    Equivalent to:
-
-    >>> C = (A - A.mean(axis=1, keepdims=True)) / np.sqrt(3 - 1)
-    >>> np.linalg.pinv(C) @ C
-    array([[ 0.5,  0. , -0.5],
-           [ 0. ,  0. ,  0. ],
-           [-0.5,  0. ,  0.5]])
-    """
-    ensemble_size = param_ensemble.shape[1]
-    A = param_ensemble - param_ensemble.mean(axis=1, keepdims=True)
-    A /= np.sqrt(ensemble_size - 1)
-
-    # TODO: Since pinv(A) takes the SVD, it seems like using the SVD directly
-    # to compute pinv(A) @ A directly without forming pinv(A) explicitly should
-    # be faster, but a quick timing showed no such result. Might be worth
-    # looking into.
-    ans: npt.NDArray[np.double] = np.linalg.pinv(A) @ A
-    return ans
-
-
 def _validate_inputs(
     parameters: npt.NDArray[np.double],
     covariance: npt.NDArray[np.double],

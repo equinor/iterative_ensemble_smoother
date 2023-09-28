@@ -11,9 +11,7 @@ from iterative_ensemble_smoother.experimental import (
     ensemble_smoother_update_step_row_scaling,
 )
 
-from iterative_ensemble_smoother._iterative_ensemble_smoother import (
-    steplength_exponential,
-)
+from iterative_ensemble_smoother.utils import steplength_exponential
 
 
 # We fix the random seed in the tests for convenience
