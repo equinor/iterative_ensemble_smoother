@@ -16,7 +16,7 @@ def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
         parameters=parameters,
         covariance=covariance,
         observations=observations,
-        inversion="exact",
+        inversion="subspace",
     )
 
     # Exact inversion does not work
@@ -24,6 +24,17 @@ def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
         np.linalg.LinAlgError,
         match="Matrix is singular.",
     ):
+        smoother.sies_iteration(responses, step_length=1.0)
+
+    for inversion in ["exact", "subspace_projected"]:
+        smoother = SIES(
+            parameters=parameters,
+            covariance=covariance,
+            observations=observations,
+            inversion="subspace_projected",
+        )
+
+        # Exact inversion does not work
         smoother.sies_iteration(responses, step_length=1.0)
 
 

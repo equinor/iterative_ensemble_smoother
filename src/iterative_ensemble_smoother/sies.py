@@ -9,10 +9,11 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
 from iterative_ensemble_smoother.sies_inversion import (
-    inversion_subspace_exact,
+    inversion_direct_corrscale,
     inversion_naive,
     inversion_subspace_projected,
     inversion_subspace_projected_corrscale,
+    inversion_subspace_exact_corrscale,
 )
 from iterative_ensemble_smoother.utils import _validate_inputs, sample_mvnormal
 
@@ -43,17 +44,30 @@ class SIES:
         A 1D array of observations, with shape (num_observations,).
         This is d in Evensen (2019).
     inversion : str
-        The type of subspace inversion used in the algorithm.
-        See the dictionary `SIES.inversion_funcs` for more information.
-    seed : Optional[int], optional
+        The type of inversion used in the algorithm. Every inversion method
+        scales the variables. The default is `subspace.`
+        The options are:
+
+            - `direct`: Solve Eqn (42) directly, which involves inverting a
+               matrix of shape (num_parameters, num_parameters)
+            - `subspace` : Solve Eqn (42) using Eqn (50), i.e., the Woodbury
+               lemma to invert a matrix of size (ensemble_size, ensemble_size)
+            - `subspace_projected` : Solve Eqn (42) using Section 3.3, i.e.,
+               by projecting the covariance onto S. This approach utilizes the
+               truncation factor `truncation`.
+
+    truncation : float
+        How much of the total energy (singular values squared) to keep in the
+        SVD when `inversion` equals `subspace_projected`. Choosing 1.0
+        retains the most information, while 0.0 removes all information.
+    seed : Union[None, int, np.random._generator.Generator], optional
         Integer used to seed the random number generator. The default is None.
     """
 
     inversion_funcs = {
-        "exact": inversion_subspace_exact,
-        "naive": inversion_naive,
-        "subspace_projected": inversion_subspace_projected,
-        "subspace_projected_corrscale": inversion_subspace_projected_corrscale,
+        "direct": inversion_direct_corrscale,
+        "subspace_projected": inversion_subspace_projected_corrscale,
+        "subspace": inversion_subspace_exact_corrscale,
     }
 
     def __init__(
@@ -62,7 +76,7 @@ class SIES:
         covariance: npt.NDArray[np.double],
         observations: npt.NDArray[np.double],
         *,
-        inversion: str = "exact",
+        inversion: str = "subspace",
         truncation: float = 1.0,
         seed: Union[None, int, np.random._generator.Generator] = None,
     ):

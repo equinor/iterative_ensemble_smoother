@@ -290,6 +290,78 @@ def inversion_subspace_exact(
     return W - step_length * (W - F)
 
 
+def inversion_subspace_exact_corrscale(
+    *,
+    W: npt.NDArray[np.double],
+    step_length: float,
+    S: npt.NDArray[np.double],
+    C_dd: npt.NDArray[np.double],
+    H: npt.NDArray[np.double],
+    C_dd_cholesky: npt.NDArray[np.double],
+    truncation: float = 1.0,
+) -> npt.NDArray[np.double]:
+    """Implementation of Equation (50), which performs inversion in the ensemble
+    space (size N) instead doing it in the output space (size m >> N)."""
+    _verify_inversion_args(
+        W=W,
+        step_length=step_length,
+        S=S,
+        C_dd=C_dd,
+        H=H,
+        C_dd_cholesky=C_dd_cholesky,
+        truncation=truncation,
+    )
+
+    # Correlation scaling
+    if C_dd.ndim == 2:
+        scale_factor = 1 / np.sqrt(np.diag(C_dd))
+        # Scale rows and columns by diagonal, creating correlation matrix R
+        # R = (C_dd * scale_factor.reshape(1, -1)) * scale_factor.reshape(-1, 1)
+        R_cholesky = C_dd_cholesky * scale_factor.reshape(-1, 1)
+    else:
+        scale_factor = 1 / np.sqrt(C_dd)
+        # The correlation matrix R is simply the identity matrix in this case
+
+    # Scale rows
+    S = S * scale_factor.reshape(-1, 1)
+    H = H * scale_factor.reshape(-1, 1)
+
+    # Special case for diagonal covariance matrix.
+    # See below for a more explanation of these computations.
+    if C_dd.ndim == 1:
+        lhs = S.T @ S  # sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)
+        lhs.flat[:: lhs.shape[0] + 1] += 1
+        C_dd_inv_H = H
+
+    else:
+        # Solve the equation: C_dd_cholesky @ K = S for K,
+        # which is equivalent to forming K := C_dd_cholesky^-1 @ S,
+        # exploiting the fact that C_dd_cholesky is lower triangular
+        # K = sp.linalg.blas.dtrsm(alpha=1.0, a=C_dd_cholesky, b=S, lower=1)
+        K = sp.linalg.solve(R_cholesky, S)
+
+        # Form lhs := (S.T @ C_dd^-1 @ S + I)
+        lhs = K.T @ K  # sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)
+        lhs.flat[:: lhs.shape[0] + 1] += 1
+
+        # Compute C_dd^-1 @ H, exploiting the fact that we have the cholesky factor
+        C_dd_inv_H = sp.linalg.cho_solve((R_cholesky, 1), H)
+
+    # Solve the following for F
+    # lhs @ F = S.T @ C_dd_inv_H
+    F: npt.NDArray[np.double] = sp.linalg.solve(
+        lhs,
+        S.T @ C_dd_inv_H,
+        lower=False,
+        overwrite_a=True,
+        overwrite_b=True,
+        check_finite=True,
+        assume_a="pos",
+    )
+
+    return W - step_length * (W - F)
+
+
 def inversion_subspace_projected(
     *,
     W: npt.NDArray[np.double],

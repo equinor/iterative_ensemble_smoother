@@ -5,6 +5,7 @@ from iterative_ensemble_smoother import SIES
 from iterative_ensemble_smoother.sies_inversion import (
     inversion_naive,
     inversion_subspace_exact,
+    inversion_subspace_exact_corrscale,
     inversion_direct,
     inversion_direct_corrscale,
     inversion_subspace_projected,
@@ -23,6 +24,7 @@ class TestSIESInversions:
             inversion_direct,
             inversion_direct_corrscale,
             inversion_subspace_exact,
+            inversion_subspace_exact_corrscale,
             inversion_subspace_projected,
             inversion_subspace_projected_corrscale,
         ],
@@ -78,6 +80,7 @@ class TestSIESInversions:
             inversion_direct,
             inversion_direct_corrscale,
             inversion_subspace_exact,
+            inversion_subspace_exact_corrscale,
             inversion_subspace_projected,
             inversion_subspace_projected_corrscale,
         ],
@@ -119,7 +122,13 @@ class TestSIESInversions:
         assert np.allclose(ans_naive, ans)
 
     @pytest.mark.parametrize(
-        "func", [inversion_direct, inversion_direct_corrscale, inversion_subspace_exact]
+        "func",
+        [
+            inversion_direct,
+            inversion_direct_corrscale,
+            inversion_subspace_exact,
+            inversion_subspace_exact_corrscale,
+        ],
     )
     def test_that_exact_inversions_are_all_equal(self, func):
         rng = np.random.default_rng(42)
