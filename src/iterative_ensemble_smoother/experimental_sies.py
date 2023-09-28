@@ -1,12 +1,12 @@
 from __future__ import annotations
-from typing import Optional, TYPE_CHECKING, Union
+
+from typing import TYPE_CHECKING, Optional, Union
 
 import numpy as np
 import scipy as sp  # type: ignore
 
 if TYPE_CHECKING:
     import numpy.typing as npt
-
 
 from iterative_ensemble_smoother.sies_inversion import inversion_exact, inversion_naive
 from iterative_ensemble_smoother.utils import _validate_inputs, sample_mvnormal

@@ -1,7 +1,6 @@
-from iterative_ensemble_smoother import ES, SIES
+from iterative_ensemble_smoother import SIES
 import numpy as np
 import pytest
-import re
 
 
 def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
@@ -31,5 +30,4 @@ def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
 if __name__ == "__main__":
     import pytest
 
-    # --durations=10  <- May be used to show potentially slow tests
     pytest.main(args=[__file__, "--doctest-modules", "-v", "-v"])

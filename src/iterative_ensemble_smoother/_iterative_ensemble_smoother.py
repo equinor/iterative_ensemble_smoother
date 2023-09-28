@@ -1,19 +1,19 @@
 from __future__ import annotations
-from typing import Optional, TYPE_CHECKING, Callable
+
+from typing import TYPE_CHECKING, Callable, Optional
 
 import numpy as np
 
 if TYPE_CHECKING:
     import numpy.typing as npt
 
+from iterative_ensemble_smoother.ies import create_coefficient_matrix
 from iterative_ensemble_smoother.utils import (
     _validate_inputs,
     covariance_to_correlation,
-    steplength_exponential,
     response_projection,
+    steplength_exponential,
 )
-
-from iterative_ensemble_smoother.ies import create_coefficient_matrix
 
 
 class SIES:

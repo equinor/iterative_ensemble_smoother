@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import Tuple, Optional, TYPE_CHECKING, Union
+
+from typing import TYPE_CHECKING, Optional, Tuple, Union
 
 import numpy as np
 

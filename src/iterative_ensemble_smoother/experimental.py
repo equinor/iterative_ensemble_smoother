@@ -6,11 +6,8 @@ import numpy as np
 
 rng = np.random.default_rng()
 
-from iterative_ensemble_smoother.utils import (
-    covariance_to_correlation,
-)
-
 from iterative_ensemble_smoother.ies import create_coefficient_matrix
+from iterative_ensemble_smoother.utils import covariance_to_correlation
 
 
 def ensemble_smoother_update_step_row_scaling(

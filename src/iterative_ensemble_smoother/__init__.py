@@ -4,14 +4,13 @@ for Data Assimilation and Reservoir History Matching"
 https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full
 """
 try:
-    from ._version import version as __version__  # type: ignore
+    from ._version import version as __version__
     from ._version import version_tuple
 except ImportError:
     __version__ = "unknown version"
     version_tuple = (0, 0, "unknown version", "unknown commit")
 
 from iterative_ensemble_smoother.esmda import ESMDA
-
 from iterative_ensemble_smoother.experimental_sies import SIES
 
 __all__ = [

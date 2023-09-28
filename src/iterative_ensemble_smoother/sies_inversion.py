@@ -1,13 +1,15 @@
 from __future__ import annotations
-from typing import Optional, TYPE_CHECKING
+
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-import scipy as sp  # type: ignore
 import numbers
+
+import scipy as sp  # type: ignore
 
 
 def _verify_inversion_args(
