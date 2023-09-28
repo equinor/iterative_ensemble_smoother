@@ -1,10 +1,29 @@
+from __future__ import annotations
+from typing import Optional, TYPE_CHECKING
+
 import numpy as np
-import scipy as sp
+
+if TYPE_CHECKING:
+    import numpy.typing as npt
+
+import scipy as sp  # type: ignore
+import numbers
 
 
-def _verify_inversion_args(*, W, step_length, S, C_dd, H, C_dd_cholesky):
+def _verify_inversion_args(
+    *,
+    W: npt.NDArray[np.double],
+    step_length: float,
+    S: npt.NDArray[np.double],
+    C_dd: npt.NDArray[np.double],
+    H: npt.NDArray[np.double],
+    C_dd_cholesky: Optional[npt.NDArray[np.double]],
+) -> None:
     if C_dd_cholesky is not None:
         assert C_dd.shape == C_dd_cholesky.shape
+
+    assert isinstance(step_length, numbers.Real)
+    assert 0 < step_length <= 1.0
 
     # Verify N
     # assert W.shape[0] == W.shape[1]
@@ -16,7 +35,15 @@ def _verify_inversion_args(*, W, step_length, S, C_dd, H, C_dd_cholesky):
     assert S.shape[0] == H.shape[0]
 
 
-def inversion_naive(*, W, step_length, S, C_dd, H, C_dd_cholesky=None):
+def inversion_naive(
+    *,
+    W: npt.NDArray[np.double],
+    step_length: float,
+    S: npt.NDArray[np.double],
+    C_dd: npt.NDArray[np.double],
+    H: npt.NDArray[np.double],
+    C_dd_cholesky: Optional[npt.NDArray[np.double]],
+) -> npt.NDArray[np.double]:
     """A naive implementation, used for benchmarking and testing only.
 
     Naive implementation of Equation (42)."""
@@ -29,12 +56,21 @@ def inversion_naive(*, W, step_length, S, C_dd, H, C_dd_cholesky=None):
         C_dd = np.diag(C_dd)
 
     to_invert = S @ S.T + C_dd
-    return W - step_length * (
+    ans: npt.NDArray[np.double] = W - step_length * (
         W - np.linalg.multi_dot([S.T, sp.linalg.inv(to_invert), H])
     )
+    return ans
 
 
-def inversion_direct(*, W, step_length, S, C_dd, H, C_dd_cholesky=None):
+def inversion_direct(
+    *,
+    W: npt.NDArray[np.double],
+    step_length: float,
+    S: npt.NDArray[np.double],
+    C_dd: npt.NDArray[np.double],
+    H: npt.NDArray[np.double],
+    C_dd_cholesky: Optional[npt.NDArray[np.double]],
+) -> npt.NDArray[np.double]:
     """A more optimized implementation of Equation (42)."""
     _verify_inversion_args(
         W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
@@ -67,10 +103,19 @@ def inversion_direct(*, W, step_length, S, C_dd, H, C_dd_cholesky=None):
         check_finite=True,
         assume_a="pos",
     )
-    return W - step_length * (W - np.linalg.multi_dot([S.T, K]))
+    ans: npt.NDArray[np.double] = W - step_length * (W - np.linalg.multi_dot([S.T, K]))
+    return ans
 
 
-def inversion_direct_corrscale(*, W, step_length, S, C_dd, H, C_dd_cholesky=None):
+def inversion_direct_corrscale(
+    *,
+    W: npt.NDArray[np.double],
+    step_length: float,
+    S: npt.NDArray[np.double],
+    C_dd: npt.NDArray[np.double],
+    H: npt.NDArray[np.double],
+    C_dd_cholesky: Optional[npt.NDArray[np.double]],
+) -> npt.NDArray[np.double]:
     """Implementation of Equation (42), with correlation matrix scaling."""
     _verify_inversion_args(
         W=W, step_length=step_length, S=S, C_dd=C_dd, H=H, C_dd_cholesky=C_dd_cholesky
@@ -107,10 +152,19 @@ def inversion_direct_corrscale(*, W, step_length, S, C_dd, H, C_dd_cholesky=None
         check_finite=True,
         assume_a="pos",
     )
-    return W - step_length * (W - np.linalg.multi_dot([S.T, K]))
+    ans: npt.NDArray[np.double] = W - step_length * (W - np.linalg.multi_dot([S.T, K]))
+    return ans
 
 
-def inversion_exact(*, W, step_length, S, C_dd, H, C_dd_cholesky):
+def inversion_exact(
+    *,
+    W: npt.NDArray[np.double],
+    step_length: float,
+    S: npt.NDArray[np.double],
+    C_dd: npt.NDArray[np.double],
+    H: npt.NDArray[np.double],
+    C_dd_cholesky: npt.NDArray[np.double],
+) -> npt.NDArray[np.double]:
     """Implementation of Equation (50), which does inversion in the ensemble
     space (size N) instead doing it in the output space (size m >> N)."""
     _verify_inversion_args(
@@ -122,35 +176,26 @@ def inversion_exact(*, W, step_length, S, C_dd, H, C_dd_cholesky):
     if C_dd.ndim == 1:
         K = S / C_dd_cholesky.reshape(-1, 1)
         lhs = K.T @ K  # sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)
-        lhs.flat[:: lhs.shape[0] + 1] += 1
+        lhs.flat[:: lhs.shape[0] + 1] += 1  # type: ignore
         C_dd_inv_H = H / C_dd.reshape(-1, 1)
-        K = sp.linalg.solve(
-            lhs,
-            S.T @ C_dd_inv_H,
-            lower=False,
-            overwrite_a=True,
-            overwrite_b=True,
-            check_finite=True,
-            assume_a="pos",
-        )
-        return W - step_length * (W - K)
 
-    # Solve the equation: C_dd_cholesky @ K = S for K,
-    # which is equivalent to forming K := C_dd_cholesky^-1 @ S,
-    # exploiting the fact that C_dd_cholesky is lower triangular
-    # K = sp.linalg.blas.dtrsm(alpha=1.0, a=C_dd_cholesky, b=S, lower=1)
-    K = sp.linalg.solve(C_dd_cholesky, S)
+    else:
+        # Solve the equation: C_dd_cholesky @ K = S for K,
+        # which is equivalent to forming K := C_dd_cholesky^-1 @ S,
+        # exploiting the fact that C_dd_cholesky is lower triangular
+        # K = sp.linalg.blas.dtrsm(alpha=1.0, a=C_dd_cholesky, b=S, lower=1)
+        K = sp.linalg.solve(C_dd_cholesky, S)
 
-    # Form lhs := (S.T @ C_dd^-1 @ S + I)
-    lhs = K.T @ K  # sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)
-    lhs.flat[:: lhs.shape[0] + 1] += 1
+        # Form lhs := (S.T @ C_dd^-1 @ S + I)
+        lhs = K.T @ K  # sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)
+        lhs.flat[:: lhs.shape[0] + 1] += 1  # type: ignore
 
-    # Compute C_dd^-1 @ H, exploiting the fact that we have the cholesky factor
-    C_dd_inv_H = sp.linalg.cho_solve((C_dd_cholesky, 1), H)
+        # Compute C_dd^-1 @ H, exploiting the fact that we have the cholesky factor
+        C_dd_inv_H = sp.linalg.cho_solve((C_dd_cholesky, 1), H)
 
-    # Solve the following for K
-    # lhs @ K = S.T @ C_dd_inv_H
-    K = sp.linalg.solve(
+    # Solve the following for F
+    # lhs @ F = S.T @ C_dd_inv_H
+    F: npt.NDArray[np.double] = sp.linalg.solve(
         lhs,
         S.T @ C_dd_inv_H,
         lower=False,
@@ -160,4 +205,4 @@ def inversion_exact(*, W, step_length, S, C_dd, H, C_dd_cholesky):
         assume_a="pos",
     )
 
-    return W - step_length * (W - K)
+    return W - step_length * (W - F)

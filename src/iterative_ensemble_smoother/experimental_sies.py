@@ -1,8 +1,8 @@
 from __future__ import annotations
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Union
 
 import numpy as np
-import scipy as sp
+import scipy as sp  # type: ignore
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -52,8 +52,8 @@ class SIES:
         covariance: npt.NDArray[np.double],
         observations: npt.NDArray[np.double],
         *,
-        inversion="exact",
-        seed: Optional[int] = None,
+        inversion: str = "exact",
+        seed: Union[None, int, np.random._generator.Generator] = None,
     ):
         _validate_inputs(
             parameters=parameters, covariance=covariance, observations=observations
@@ -93,7 +93,9 @@ class SIES:
             shape=(self.X.shape[1], self.X.shape[1]), dtype=parameters.dtype
         )
 
-    def evaluate_objective(self, W, Y):
+    def evaluate_objective(
+        self, W: npt.NDArray[np.double], Y: npt.NDArray[np.double]
+    ) -> npt.NDArray[np.double]:
         """Evaluate the objective function in Equation (18), taking the mean
         over each ensemble member.
 
@@ -112,9 +114,12 @@ class SIES:
 
         """
         (prior, likelihood) = self.evaluate_objective_elementwise(W, Y)
-        return (prior + likelihood).mean()
+        answer: npt.NDArray[np.double] = (prior + likelihood).mean()
+        return answer
 
-    def evaluate_objective_elementwise(self, W, Y):
+    def evaluate_objective_elementwise(
+        self, W: npt.NDArray[np.double], Y: npt.NDArray[np.double]
+    ) -> tuple[npt.NDArray[np.double], npt.NDArray[np.double]]:
         """Equation (18) elementwise and termwise, returning a tuple of vectors
         (prior, likelihood).
 
@@ -162,53 +167,12 @@ class SIES:
 
         return (prior, likelihood)
 
-    def line_search(self, g):
-        """Demo implementation of line search."""
-        BACKTRACK_ITERATIONS = 10
-
-        # Initial evaluation
-        X_i = np.copy(self.X)
-        N = self.X.shape[1]  # Ensemble members
-        Y_i = g(X_i)
-
-        # Perform a Gauss-Newton iteration
-        while True:
-            objective_before = self.evaluate_objective(W=self.W, Y=Y_i)
-
-            # Perform a line-search iteration
-            for p in range(BACKTRACK_ITERATIONS):
-                step_length = pow(1 / 2, p)  # 1, 0.5, 0.25, 0.125, ...
-                print(f"Step length: {step_length}")
-
-                # Make a step with the given step length
-                proposed_W = self.propose_W(Y_i, step_length)
-
-                # Evaluate at the new point
-                proposed_X = self.X + self.X @ proposed_W / np.sqrt(N - 1)
-                proposed_Y = g(proposed_X)
-                objective = self.evaluate_objective(W=proposed_W, Y=proposed_Y)
-
-                # Accept the step
-                if objective <= objective_before:
-                    print(f"Accepting. {objective} <= {objective_before}")
-                    # Update variables
-                    self.W = proposed_W
-                    X_i = proposed_X
-                    Y_i = proposed_Y
-                    break
-                else:
-                    print(f"Rejecting. {objective} > {objective_before}")
-
-            # If no break was triggered in the for loop, we never accepted
-            else:
-                print(
-                    f"Terminating. No improvement after {BACKTRACK_ITERATIONS} iterations."
-                )
-                return X_i
-
-            yield X_i
-
-    def sies_iteration(self, responses, step_length=0.5, ensemble_mask=None):
+    def sies_iteration(
+        self,
+        responses: npt.NDArray[np.double],
+        step_length: float = 0.5,
+        ensemble_mask: Optional[npt.NDArray[np.bool_]] = None,
+    ) -> npt.NDArray[np.double]:
         """Perform a single SIES iteration (Gauss-Newton step).
 
         This method implements lines 4-9 in Algorithm 1.
@@ -238,21 +202,19 @@ class SIES:
             )
             self.W[:, ensemble_mask] = proposed_W
 
-            # Line 9
-            N = self.X.shape[1]  # Ensemble members
-            return self.X + self.X @ self.W / np.sqrt(N - 1)
-
         else:
             # Lines 4 through 8
             proposed_W = self.propose_W(Y, step_length=step_length)
             self.W = proposed_W
 
-            # Line 9
-            N = self.X.shape[1]  # Ensemble members
+        # Line 9
+        N = self.X.shape[1]  # Ensemble members
+        ans: npt.NDArray[np.double] = self.X + self.X @ self.W / np.sqrt(N - 1)
+        return ans
 
-            return self.X + self.X @ self.W / np.sqrt(N - 1)
-
-    def propose_W(self, responses, step_length=0.5):
+    def propose_W(
+        self, responses: npt.NDArray[np.double], step_length: float = 0.5
+    ) -> npt.NDArray[np.double]:
         """Returns a proposal for W_i, without updating the internal W.
 
         This is an implementation of lines 4-8 in Algorithm 1.
@@ -318,7 +280,7 @@ class SIES:
         assert self.C_dd.shape in [(m, m), (m,)]
         assert H.shape == (m, N)
 
-        return self.inversion(
+        proposed_W: npt.NDArray[np.double] = self.inversion(
             W=self.W,
             step_length=step_length,
             S=S,
@@ -326,8 +288,14 @@ class SIES:
             H=H,
             C_dd_cholesky=self.C_dd_cholesky,
         )
+        return proposed_W
 
-    def propose_W_masked(self, responses, ensemble_mask, step_length=0.5):
+    def propose_W_masked(
+        self,
+        responses: npt.NDArray[np.double],
+        ensemble_mask: npt.NDArray[np.bool_],
+        step_length: float = 0.5,
+    ) -> npt.NDArray[np.double]:
         """Returns a proposal for W_i, without updating the internal W.
 
         This is an implementation of lines 4-8 in Algorithm 1.
@@ -383,20 +351,6 @@ class SIES:
             # S = sp.linalg.solve(
             #     Omega.T, np.linalg.multi_dot([Y, sp.linalg.pinv(A_i), A_i]).T
             # ).T
-
-            print(f"A shape: {Omega.T.shape}")
-            print(
-                f"B shape: {np.linalg.multi_dot([Y, sp.linalg.pinv(A_i), A_i]).T.shape}"
-            )
-            assert np.all(np.isfinite(Omega))
-            assert np.all(np.isfinite(sp.linalg.pinv(A_i)))
-            assert np.all(np.isfinite(Y))
-            assert np.all(
-                np.isfinite(np.linalg.multi_dot([Y, sp.linalg.pinv(A_i), A_i]).T)
-            )
-            K = np.linalg.multi_dot([Y, sp.linalg.pinv(A_i), A_i]).T
-            print(K.min(), K.max())
-            print(Omega.min(), Omega.max())
             ST, *_ = sp.linalg.lstsq(
                 Omega.T, np.linalg.multi_dot([Y, sp.linalg.pinv(A_i), A_i]).T
             )
@@ -418,7 +372,7 @@ class SIES:
         assert self.C_dd.shape in [(m, m), (m,)]
         assert H.shape == (m, k)
 
-        return self.inversion(
+        proposed_W: npt.NDArray[np.double] = self.inversion(
             W=self.W[:, ensemble_mask],
             step_length=step_length,
             S=S,
@@ -426,6 +380,7 @@ class SIES:
             H=H,
             C_dd_cholesky=self.C_dd_cholesky,
         )
+        return proposed_W
 
 
 if __name__ == "__main__":
@@ -433,50 +388,3 @@ if __name__ == "__main__":
 
     # --durations=10  <- May be used to show potentially slow tests
     pytest.main(args=[__file__, "--doctest-modules", "-v", "-v", "--maxfail=1"])
-
-    import matplotlib.pyplot as plt
-
-    rng = np.random.default_rng(42)
-    # Problem size
-    ensemble_size = 110
-    num_params = 20
-    num_responses = 100
-
-    A = rng.normal(size=(num_responses, num_params))
-
-    def g(X):
-        return A @ X
-
-    # Inputs and outputs
-    parameters = rng.normal(size=(num_params, ensemble_size))
-    observations = A @ np.linspace(-3, 3, num=num_params)
-    observations += rng.normal(size=(num_responses))
-    covariance = np.ones(num_responses)
-
-    # Create smoother
-    smoother = SIES(
-        parameters=parameters, covariance=covariance, observations=observations, seed=42
-    )
-
-    ensemble_mask = np.ones(ensemble_size, dtype=bool)
-    X_i = np.copy(parameters)
-    plt.plot(X_i.mean(axis=1), label="prior")
-    for iteration in range(10):
-        # Assume we do a model run, but some realizations (ensemble members)
-        # fail for some reason. We know which realizations failed.
-        simulation_ok = rng.choice([True, False], size=ensemble_size, p=[0.9, 0.1])
-        ensemble_mask = np.logical_and(ensemble_mask, simulation_ok)
-
-        responses = g(X_i)
-
-        X_i = smoother.sies_iteration(
-            responses[:, ensemble_mask], ensemble_mask=ensemble_mask, step_length=0.5
-        )
-
-        print(X_i.mean(axis=1))
-
-        plt.plot(X_i.mean(axis=1), label=iteration)
-
-    plt.legend()
-    plt.show()
-    assert np.all(np.diff(X_i.mean(axis=1)) >= 0)

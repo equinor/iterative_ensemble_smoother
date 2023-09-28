@@ -147,12 +147,7 @@ class SIES:
         # ----------------- Input validation and setup ------------------------
         # ---------------------------------------------------------------------
 
-        _validate_inputs(
-            response_ensemble,
-            observation_errors,
-            observation_values,
-            param_ensemble=param_ensemble,
-        )
+        _validate_inputs(response_ensemble, observation_errors, observation_values)
 
         num_obs = len(observation_values)
         ensemble_size = response_ensemble.shape[1]

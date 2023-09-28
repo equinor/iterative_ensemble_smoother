@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Tuple, Optional, TYPE_CHECKING
+from typing import Tuple, Optional, TYPE_CHECKING, Union
 
 import numpy as np
 
@@ -137,7 +137,12 @@ def covariance_to_correlation(
     return None, standard_deviations
 
 
-def sample_mvnormal(*, C_dd_cholesky, rng, size):
+def sample_mvnormal(
+    *,
+    C_dd_cholesky: npt.NDArray[np.double],
+    rng: np.random._generator.Generator,
+    size: int,
+) -> npt.NDArray[np.double]:
     """Draw samples from the multivariate normal N(0, C_dd).
 
     We write this function from scratch here we can to avoid factoring the
