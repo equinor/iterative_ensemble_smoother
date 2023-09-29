@@ -1,18 +1,14 @@
 import numpy as np
+import pytest
 import scipy as sp
-from iterative_ensemble_smoother import SIES
 
+from iterative_ensemble_smoother import SIES
 from iterative_ensemble_smoother.sies_inversion import (
-    inversion_naive,
-    inversion_subspace_exact,
-    inversion_subspace_exact_corrscale,
-    inversion_direct,
     inversion_direct_corrscale,
-    inversion_subspace_projected,
+    inversion_naive,
+    inversion_subspace_exact_corrscale,
     inversion_subspace_projected_corrscale,
 )
-
-import pytest
 
 
 class TestSIESInversions:
@@ -21,11 +17,8 @@ class TestSIESInversions:
         "func",
         [
             inversion_naive,
-            inversion_direct,
             inversion_direct_corrscale,
-            inversion_subspace_exact,
             inversion_subspace_exact_corrscale,
-            inversion_subspace_projected,
             inversion_subspace_projected_corrscale,
         ],
     )
@@ -77,15 +70,12 @@ class TestSIESInversions:
     @pytest.mark.parametrize(
         "func",
         [
-            inversion_direct,
             inversion_direct_corrscale,
-            inversion_subspace_exact,
             inversion_subspace_exact_corrscale,
-            inversion_subspace_projected,
             inversion_subspace_projected_corrscale,
         ],
     )
-    def test_that_inversions_are_all_equal_with_many_realizations(self, func):
+    def test_that_all_inversions_are_equal_with_many_realizations(self, func):
         """With N >= m, all inversions are equal as long as the truncation is 1.0.
         This is also true for projected inversions.
         """
@@ -124,9 +114,7 @@ class TestSIESInversions:
     @pytest.mark.parametrize(
         "func",
         [
-            inversion_direct,
             inversion_direct_corrscale,
-            inversion_subspace_exact,
             inversion_subspace_exact_corrscale,
         ],
     )
@@ -253,7 +241,7 @@ class TestSIESObjective:
 
     def test_line_search(self):
         """This is a demo (or test) of how line search can be implemented."""
-        rng = np.random.default_rng(4)
+        rng = np.random.default_rng(42)
 
         ensemble_size = 5
         num_params = 10

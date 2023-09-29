@@ -1,6 +1,7 @@
-from iterative_ensemble_smoother import SIES
 import numpy as np
 import pytest
+
+from iterative_ensemble_smoother import SIES
 
 
 def test_that_nans_produced_due_to_outliers_in_responses_are_handled():

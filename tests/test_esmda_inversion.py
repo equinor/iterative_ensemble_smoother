@@ -6,12 +6,11 @@ from iterative_ensemble_smoother.esmda_inversion import (
     inversion_exact_lstsq,
     inversion_exact_naive,
     inversion_exact_rescaled,
+    inversion_exact_subspace_woodbury,
     inversion_rescaled_subspace,
     inversion_subspace,
-    inversion_exact_subspace_woodbury,
     normalize_alpha,
 )
-
 
 # If `truncation` is 1.0, then all of these produce the same result
 EXACT_INVERSIONS = [

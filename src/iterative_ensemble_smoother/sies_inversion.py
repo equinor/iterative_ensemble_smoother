@@ -51,14 +51,11 @@ techniques (scaling using correlation or cholesky factors) coincide.
 
 """
 
+import numbers
 from typing import Optional
 
 import numpy as np
-
 import numpy.typing as npt
-
-import numbers
-
 import scipy as sp  # type: ignore
 
 
@@ -173,51 +170,6 @@ def inversion_naive(
     return ans
 
 
-def inversion_direct(
-    *,
-    W: npt.NDArray[np.double],
-    step_length: float,
-    S: npt.NDArray[np.double],
-    C_dd: npt.NDArray[np.double],
-    H: npt.NDArray[np.double],
-    C_dd_cholesky: Optional[npt.NDArray[np.double]],
-    truncation: float = 1.0,
-) -> npt.NDArray[np.double]:
-    """A more optimized implementation of Equation (42), implementing Section 3.1."""
-    _verify_inversion_args(
-        W=W,
-        step_length=step_length,
-        S=S,
-        C_dd=C_dd,
-        H=H,
-        C_dd_cholesky=C_dd_cholesky,
-        truncation=truncation,
-    )
-
-    # We define K as the solution to:
-    # (S @ S.T + C_dd) @ K = H, so that
-    # K = (S @ S.T + C_dd)^-1 H
-    # K = solve(S @ S.T + C_dd, H)
-    if C_dd.ndim == 1:
-        # Using BLAS to only create the upper-triangular part is around 2x faster
-        lhs = S @ S.T  # sp.linalg.blas.dsyrk(alpha=1.0, a=S)
-        lhs.flat[:: lhs.shape[0] + 1] += C_dd
-    else:
-        lhs = S @ S.T + C_dd  # sp.linalg.blas.dsyrk(alpha=1.0, a=S, c=C_dd, beta=1.0)
-
-    K = sp.linalg.solve(
-        lhs,
-        H,
-        lower=False,
-        overwrite_a=True,
-        overwrite_b=False,
-        check_finite=True,
-        assume_a="pos",  # Exploit the fact that lhs is PSD
-    )
-    ans: npt.NDArray[np.double] = W - step_length * (W - S.T @ K)
-    return ans
-
-
 def inversion_direct_corrscale(
     *,
     W: npt.NDArray[np.double],
@@ -272,65 +224,6 @@ def inversion_direct_corrscale(
     )
     ans: npt.NDArray[np.double] = W - step_length * (W - np.linalg.multi_dot([S.T, K]))
     return ans
-
-
-def inversion_subspace_exact(
-    *,
-    W: npt.NDArray[np.double],
-    step_length: float,
-    S: npt.NDArray[np.double],
-    C_dd: npt.NDArray[np.double],
-    H: npt.NDArray[np.double],
-    C_dd_cholesky: npt.NDArray[np.double],
-    truncation: float = 1.0,
-) -> npt.NDArray[np.double]:
-    """Implementation of Equation (50), which performs inversion in the ensemble
-    space (size N) instead doing it in the output space (size m >> N)."""
-    _verify_inversion_args(
-        W=W,
-        step_length=step_length,
-        S=S,
-        C_dd=C_dd,
-        H=H,
-        C_dd_cholesky=C_dd_cholesky,
-        truncation=truncation,
-    )
-
-    # Special case for diagonal covariance matrix.
-    # See below for a more explanation of these computations.
-    if C_dd.ndim == 1:
-        K = S / C_dd_cholesky.reshape(-1, 1)
-        lhs = K.T @ K  # sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)
-        lhs.flat[:: lhs.shape[0] + 1] += 1  # type: ignore # Add identity
-        C_dd_inv_H = H / C_dd.reshape(-1, 1)
-
-    else:
-        # Solve the equation: C_dd_cholesky @ K = S for K,
-        # which is equivalent to forming K := C_dd_cholesky^-1 @ S,
-        # exploiting the fact that C_dd_cholesky is lower triangular
-        # K = sp.linalg.blas.dtrsm(alpha=1.0, a=C_dd_cholesky, b=S, lower=1)
-        K = sp.linalg.solve(C_dd_cholesky, S)
-
-        # Form lhs := (S.T @ C_dd^-1 @ S + I)
-        lhs = K.T @ K  # sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)
-        lhs.flat[:: lhs.shape[0] + 1] += 1  # type: ignore
-
-        # Compute C_dd^-1 @ H, exploiting the fact that we have the cholesky factor
-        C_dd_inv_H = sp.linalg.cho_solve((C_dd_cholesky, 1), H)
-
-    # Solve the following for F
-    # lhs @ F = S.T @ C_dd_inv_H
-    F: npt.NDArray[np.double] = sp.linalg.solve(
-        lhs,
-        S.T @ C_dd_inv_H,
-        lower=False,
-        overwrite_a=True,
-        overwrite_b=True,
-        check_finite=True,
-        assume_a="pos",
-    )
-
-    return W - step_length * (W - F)
 
 
 def inversion_subspace_exact_corrscale(
@@ -402,70 +295,6 @@ def inversion_subspace_exact_corrscale(
         assume_a="pos",
     )
 
-    return W - step_length * (W - F)
-
-
-def inversion_subspace_projected(
-    *,
-    W: npt.NDArray[np.double],
-    step_length: float,
-    S: npt.NDArray[np.double],
-    C_dd: npt.NDArray[np.double],
-    H: npt.NDArray[np.double],
-    C_dd_cholesky: npt.NDArray[np.double],
-    truncation: float = 1.0,
-) -> npt.NDArray[np.double]:
-    """Implementation of section 3.3 : 'Ensemble Subspace Inversion Using Full C_dd'
-
-    Note that this is an APPROXIMATE inversion in general.
-    When N >= m and truncation is 1.0, then there is no approximation.
-
-    """
-    _verify_inversion_args(
-        W=W,
-        step_length=step_length,
-        S=S,
-        C_dd=C_dd,
-        H=H,
-        C_dd_cholesky=C_dd_cholesky,
-        truncation=truncation,
-    )
-    assert 0 < truncation <= 1.0
-
-    # Equation (58)
-    U, Sigma, VT = sp.linalg.svd(
-        S,
-        full_matrices=False,
-        compute_uv=True,
-        overwrite_a=False,
-        check_finite=True,
-        lapack_driver="gesdd",
-    )
-
-    # Compute Sigma^+
-    num_significant = calc_num_significant(Sigma, truncation)
-    Sigma_inv = 1 / Sigma[:num_significant]
-    U = U[:, :num_significant]
-    VT = VT[:num_significant, :]
-
-    # Equation (59), using the cholesky factor: C_dd_cholesky @ C_dd_cholesky.T = C_dd
-    if C_dd_cholesky.ndim == 2:
-        K = np.linalg.multi_dot([U.T, C_dd_cholesky]) * Sigma_inv.reshape(-1, 1)
-    else:
-        K = (U.T * C_dd_cholesky) * Sigma_inv.reshape(-1, 1)
-    # Compute SVD, which is equivalent to taking eigendecomposition
-    # since C_tilde is PSD. Using eigh() is faster than svd().
-    # Note that svd() returns eigenvalues in decreasing order, while eigh()
-    # returns eigenvalues in increasing order.
-    # driver="evr" => fastest option
-    Lambda, Z = sp.linalg.eigh(K @ K.T, driver="evr", overwrite_a=True)
-
-    # Equation (60)
-    K = np.linalg.multi_dot([U * Sigma_inv, Z])
-    K *= 1 / (1 + Lambda) ** 0.5
-
-    # Equation (42), but with (S @ S.T + C_dd)^{-1} expressed as K @ K.T
-    F: npt.NDArray[np.double] = np.linalg.multi_dot([S.T, K, K.T, H])
     return W - step_length * (W - F)
 
 

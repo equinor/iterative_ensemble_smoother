@@ -10,8 +10,8 @@ if TYPE_CHECKING:
 
 from iterative_ensemble_smoother.sies_inversion import (
     inversion_direct_corrscale,
-    inversion_subspace_projected_corrscale,
     inversion_subspace_exact_corrscale,
+    inversion_subspace_projected_corrscale,
 )
 from iterative_ensemble_smoother.utils import _validate_inputs, sample_mvnormal
 

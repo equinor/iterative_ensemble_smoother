@@ -2,9 +2,7 @@ import numpy as np
 import pytest
 from scipy.stats import linregress
 
-
 import iterative_ensemble_smoother as ies
-
 
 # The following tests follow the
 # posterior properties described in
