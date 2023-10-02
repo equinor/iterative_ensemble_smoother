@@ -9,9 +9,9 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
 from iterative_ensemble_smoother.sies_inversion import (
-    inversion_direct_corrscale,
-    inversion_subspace_exact_corrscale,
-    inversion_subspace_projected_corrscale,
+    inversion_direct,
+    inversion_subspace_exact,
+    inversion_subspace_projected,
 )
 from iterative_ensemble_smoother.utils import _validate_inputs, sample_mvnormal
 
@@ -63,9 +63,9 @@ class SIES:
     """
 
     inversion_funcs = {
-        "direct": inversion_direct_corrscale,
-        "subspace_exact": inversion_subspace_exact_corrscale,
-        "subspace_projected": inversion_subspace_projected_corrscale,
+        "direct": inversion_direct,
+        "subspace_exact": inversion_subspace_exact,
+        "subspace_projected": inversion_subspace_projected,
     }
 
     def __init__(

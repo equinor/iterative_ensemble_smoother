@@ -170,7 +170,7 @@ def inversion_naive(
     return ans
 
 
-def inversion_direct_corrscale(
+def inversion_direct(
     *,
     W: npt.NDArray[np.double],
     step_length: float,
@@ -226,7 +226,7 @@ def inversion_direct_corrscale(
     return ans
 
 
-def inversion_subspace_exact_corrscale(
+def inversion_subspace_exact(
     *,
     W: npt.NDArray[np.double],
     step_length: float,
@@ -298,7 +298,7 @@ def inversion_subspace_exact_corrscale(
     return W - step_length * (W - F)
 
 
-def inversion_subspace_projected_corrscale(
+def inversion_subspace_projected(
     *,
     W: npt.NDArray[np.double],
     step_length: float,
