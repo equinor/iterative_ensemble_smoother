@@ -209,7 +209,7 @@ def inversion_direct(
     # K = solve(S @ S.T + C_dd, H)
     if C_dd.ndim == 1:
         lhs = S @ S.T  # sp.linalg.blas.dsyrk(alpha=1.0, a=S)
-        lhs.flat[:: lhs.shape[0] + 1] += 1
+        np.fill_diagonal(lhs, lhs.diagonal() + 1)
     else:
         lhs = S @ S.T + R  # sp.linalg.blas.dsyrk(alpha=1.0, a=S, beta=1.0, c=R)
 
@@ -266,7 +266,7 @@ def inversion_subspace_exact(
     # See below for a more explanation of these computations.
     if C_dd.ndim == 1:
         lhs = S.T @ S  # sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)
-        lhs.flat[:: lhs.shape[0] + 1] += 1
+        np.fill_diagonal(lhs, lhs.diagonal() + 1)
         C_dd_inv_H = H
 
     else:
@@ -278,7 +278,7 @@ def inversion_subspace_exact(
 
         # Form lhs := (S.T @ C_dd^-1 @ S + I)
         lhs = K.T @ K  # sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)
-        lhs.flat[:: lhs.shape[0] + 1] += 1
+        np.fill_diagonal(lhs, lhs.diagonal() + 1)
 
         # Compute C_dd^-1 @ H, exploiting the fact that we have the cholesky factor
         C_dd_inv_H = sp.linalg.cho_solve((R_cholesky, 1), H)

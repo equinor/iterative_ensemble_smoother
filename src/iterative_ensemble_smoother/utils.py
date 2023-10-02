@@ -69,9 +69,9 @@ def sample_mvnormal(
 ) -> npt.NDArray[np.double]:
     """Draw samples from the multivariate normal N(0, C_dd).
 
-    We write this function from scratch here we can to avoid factoring the
-    covariance matrix every time we sample, and we want to exploit diagonal
-    covariance matrices in terms of computation and memory. More specifically:
+    We write this function from scratch to avoid factoring the covariance
+    matrix every time we sample, and we want to exploit diagonal covariance
+    matrices in terms of computation and memory. More specifically:
 
         - numpy.random.multivariate_normal factors the covariance in every call
         - scipy.stats.Covariance.from_diagonal stores off diagonal zeros
@@ -94,7 +94,6 @@ def sample_mvnormal(
 
 
     """
-
     # Standard normal samples
     z = rng.standard_normal(size=(C_dd_cholesky.shape[0], size))
 
