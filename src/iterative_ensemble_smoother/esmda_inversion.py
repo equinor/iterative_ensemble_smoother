@@ -77,7 +77,7 @@ def empirical_cross_covariance(
 def normalize_alpha(alpha: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
     """Assure that sum_i (1/alpha_i) = 1.
 
-    This is Eqn (22) in the 2013 Emerick paper.
+    This is Eqn (22) in :cite:t:`EMERICK2013`.
 
     Examples
     --------
@@ -135,10 +135,10 @@ def singular_values_to_keep(
 #
 #  C_MD @ inv(C_DD + alpha * C_D) @ (D - Y)
 #
-# where C_MD = empirical_cross_covariance(X, Y) =
-# center(X) @ center(Y).T / (X.shape[1] - 1)
-#       C_DD = empirical_cross_covariance(Y, Y) =
-# center(Y) @ center(Y).T / (Y.shape[1] - 1)
+# where C_MD = empirical_cross_covariance(X, Y) = center(X) @ center(Y).T
+#               / (X.shape[1] - 1)
+#       C_DD = empirical_cross_covariance(Y, Y) = center(Y) @ center(Y).T
+#               / (Y.shape[1] - 1)
 #
 # The methods can be classified as
 #   - exact : with truncation=1.0, these methods compute the exact solution
@@ -264,7 +264,9 @@ def inversion_exact_rescaled(
 ) -> npt.NDArray[np.double]:
     """Compute a rescaled inversion.
 
-    See Appendix A.1 in Emerick et al (2012) for details regarding this approach."""
+    See Appendix A.1 in :cite:t:`emerickHistoryMatchingTimelapse2012`
+    for details regarding this approach.
+    """
     C_DD = empirical_cross_covariance(Y, Y)
 
     if C_D.ndim == 2:
@@ -338,9 +340,6 @@ def inversion_exact_subspace_woodbury(
     (A + U @ U.T)^-1 = A^-1 - A^-1 @ U @ (1 + U.T @ A^-1 @ U )^-1 @ U.T @ A^-1
 
     to compute inv(C_DD + alpha * C_D).
-
-
-
     """
 
     # Woodbury:
@@ -397,7 +396,7 @@ def inversion_subspace(
     X: npt.NDArray[np.double],
     truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
-    """See Appendix A.2 in Emerick et al (2012)
+    """See Appendix A.2 in :cite:t:`emerickHistoryMatchingTimelapse2012`.
 
     This is an approximate solution. The approximation is that when
     U, w, V.T = svd(D_delta)
@@ -484,10 +483,10 @@ def inversion_rescaled_subspace(
     X: npt.NDArray[np.double],
     truncation: float = 1.0,
 ) -> npt.NDArray[np.double]:
-    """See Appendix A.2 in Emerick et al (2012)
+    """
+    See Appendix A.2 in :cite:t:`emerickHistoryMatchingTimelapse2012`.
 
     Subspace inversion with rescaling.
-
     """
     # TODO: I don't understand why this approach is not approximate, when
     # `inversion_subspace` is approximate

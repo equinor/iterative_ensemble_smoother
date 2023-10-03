@@ -1,10 +1,11 @@
-API reference
+.. _api_ref:
+
+=============
+API Reference
 =============
 
-.. currentmodule:: iterative_ensemble_smoother
+.. automodule:: iterative_ensemble_smoother
 
-.. autoclass:: iterative_ensemble_smoother.SIES
-   :members:
+.. raw:: latex
 
-.. autoclass:: iterative_ensemble_smoother.ESMDA
-   :members:
+    \clearpage
