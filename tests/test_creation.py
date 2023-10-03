@@ -1,7 +1,9 @@
-from iterative_ensemble_smoother import ES, SIES
+import re
+
 import numpy as np
 import pytest
-import re
+
+from iterative_ensemble_smoother import ES, SIES
 
 
 def test_that_repr_can_be_created():
@@ -26,7 +28,8 @@ def test_that_bad_inputs_cause_nice_error_messages():
     with pytest.raises(
         ValueError,
         match=re.escape(
-            "response_ensemble must be a matrix of size (number of responses by number of realizations)"
+            "response_ensemble must be a matrix of size "
+            "(number of responses by number of realizations)"
         ),
     ):
         _ = SIES().fit(Y.ravel(), obs_errors, obs_values)
@@ -34,7 +37,8 @@ def test_that_bad_inputs_cause_nice_error_messages():
     with pytest.raises(
         ValueError,
         match=re.escape(
-            "observation_errors and observation_values must have the same number of elements"
+            "observation_errors and observation_values "
+            "must have the same number of elements"
         ),
     ):
         _ = SIES().fit(Y, obs_errors[1:], obs_values)
@@ -42,14 +46,18 @@ def test_that_bad_inputs_cause_nice_error_messages():
     with pytest.raises(
         ValueError,
         match=re.escape(
-            "observation_values must have the same number of elements as there are responses"
+            "observation_values must have the same number "
+            "of elements as there are responses"
         ),
     ):
         _ = SIES().fit(Y, obs_errors[1:], obs_values[1:])
 
     with pytest.raises(
         ValueError,
-        match="param_ensemble and response_ensemble must have the same number of columns",
+        match=(
+            "param_ensemble and response_ensemble must "
+            "have the same number of columns"
+        ),
     ):
         _ = SIES().fit(
             Y,
@@ -61,7 +69,8 @@ def test_that_bad_inputs_cause_nice_error_messages():
     with pytest.raises(
         ValueError,
         match=re.escape(
-            "parameter_ensemble must be a matrix of size (number of parameters by number of realizations)"
+            "parameter_ensemble must be a matrix of size "
+            "(number of parameters by number of realizations)"
         ),
     ):
         _ = SIES().fit(
@@ -83,7 +92,10 @@ def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
 
     with pytest.raises(
         ValueError,
-        match="Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation.",
+        match=(
+            "Fit produces NaNs. Check your response matrix for "
+            "outliers or use an inversion type with truncation."
+        ),
     ):
         smoother.fit(response_ensemble, obs_error, obs_value, inversion="exact")
 
@@ -100,7 +112,5 @@ def test_that_nans_produced_due_to_outliers_in_responses_are_handled():
 
 
 if __name__ == "__main__":
-    import pytest
-
     # --durations=10  <- May be used to show potentially slow tests
     pytest.main(args=[__file__, "--doctest-modules", "-v", "-v"])

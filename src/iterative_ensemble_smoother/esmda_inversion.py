@@ -135,8 +135,10 @@ def singular_values_to_keep(
 #
 #  C_MD @ inv(C_DD + alpha * C_D) @ (D - Y)
 #
-# where C_MD = empirical_cross_covariance(X, Y) = center(X) @ center(Y).T / (X.shape[1] - 1)
-#       C_DD = empirical_cross_covariance(Y, Y) = center(Y) @ center(Y).T / (Y.shape[1] - 1)
+# where C_MD = empirical_cross_covariance(X, Y) =
+# center(X) @ center(Y).T / (X.shape[1] - 1)
+#       C_DD = empirical_cross_covariance(Y, Y) =
+# center(Y) @ center(Y).T / (Y.shape[1] - 1)
 #
 # The methods can be classified as
 #   - exact : with truncation=1.0, these methods compute the exact solution
@@ -312,7 +314,9 @@ def inversion_exact_rescaled(
     X_shift = (X - np.mean(X, axis=1, keepdims=True)) / (N_e - 1)
     Y_shift = Y - np.mean(Y, axis=1, keepdims=True)
 
-    return np.linalg.multi_dot([X_shift, Y_shift.T, term / s_r, term.T, (D - Y)])  # type: ignore
+    return np.linalg.multi_dot(  # type: ignore
+        [X_shift, Y_shift.T, term / s_r, term.T, (D - Y)]
+    )
 
 
 def inversion_exact_subspace_woodbury(
@@ -339,7 +343,8 @@ def inversion_exact_subspace_woodbury(
 
     """
 
-    # Woodbury: (A + U @ U.T)^-1 = A^-1 - A^-1 @ U @ (1 + U.T @ A^-1 @ U )^-1 @ U.T @ A^-1
+    # Woodbury:
+    # (A + U @ U.T)^-1 = A^-1 - A^-1 @ U @ (1 + U.T @ A^-1 @ U )^-1 @ U.T @ A^-1
 
     # Compute D_delta. N_n = number of outputs, N_e = number of ensemble members
     N_n, N_e = Y.shape
@@ -364,7 +369,9 @@ def inversion_exact_subspace_woodbury(
 
         # Compute the woodbury inversion, then return
         inverted = C_D_inv - np.linalg.multi_dot([term, sp.linalg.inv(center), term.T])
-        return np.linalg.multi_dot([X_shift, D_delta.T, inverted, (D - Y)])  # type: ignore
+        return np.linalg.multi_dot(  # type: ignore
+            [X_shift, D_delta.T, inverted, (D - Y)]
+        )
 
     # A diagonal covariance matrix was given as a 1D array.
     # Same computation as above, but exploit the diagonal structure
@@ -376,7 +383,9 @@ def inversion_exact_subspace_woodbury(
         inverted = np.diag(C_D_inv) - np.linalg.multi_dot(
             [UT_D.T, sp.linalg.inv(center), UT_D]
         )
-        return np.linalg.multi_dot([X_shift, D_delta.T, inverted, (D - Y)])  # type: ignore
+        return np.linalg.multi_dot(  # type: ignore
+            [X_shift, D_delta.T, inverted, (D - Y)]
+        )
 
 
 def inversion_subspace(
@@ -461,7 +470,9 @@ def inversion_subspace(
 
     # Compute C_MD = center(X) @ center(Y).T / (num_ensemble - 1)
     X_shift = X - np.mean(X, axis=1, keepdims=True)
-    return np.linalg.multi_dot([X_shift, D_delta.T, (term / (1 + T)), term.T, (D - Y)])  # type: ignore
+    return np.linalg.multi_dot(  # type: ignore
+        [X_shift, D_delta.T, (term / (1 + T)), term.T, (D - Y)]
+    )
 
 
 def inversion_rescaled_subspace(
@@ -520,7 +531,9 @@ def inversion_rescaled_subspace(
 
     # Compute C_MD
     X_shift = X - np.mean(X, axis=1, keepdims=True)
-    return np.linalg.multi_dot([X_shift, D_delta.T, (term * diag), term.T, (D - Y)])  # type: ignore
+    return np.linalg.multi_dot(  # type: ignore
+        [X_shift, D_delta.T, (term * diag), term.T, (D - Y)]
+    )
 
 
 if __name__ == "__main__":

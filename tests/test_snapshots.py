@@ -7,12 +7,11 @@ from numpy import testing
 from scipy.special import erf
 
 import iterative_ensemble_smoother as ies
-from iterative_ensemble_smoother.experimental import (
-    ensemble_smoother_update_step_row_scaling,
-)
-
 from iterative_ensemble_smoother._iterative_ensemble_smoother import (
     steplength_exponential,
+)
+from iterative_ensemble_smoother.experimental import (
+    ensemble_smoother_update_step_row_scaling,
 )
 
 
@@ -23,7 +22,7 @@ def fix_seed(seed=123456789):
 
 
 def guassian_to_uniform(min_x, max_x):
-    """Maps a standard guassian random variable
+    """Maps a standard gaussian random variable
         to random variable, uniformly distributied between
         min_x and max_x.
     :param min_x: The lower bound on the returned value.
@@ -44,7 +43,7 @@ def guassian_to_uniform(min_x, max_x):
 # iterative_ensemble_smoother library.
 
 # The setup contains a forward model (a second degree polynomial in this case),
-# where the coefficents of the polynomial are the model parameters.
+# where the coefficients of the polynomial are the model parameters.
 
 # There are 5 time steps t=0,1,2,3,4 and 3 observations at t=0,2,4.
 number_of_observations = 3

@@ -162,7 +162,8 @@ def exact_inversion(W, S, H, steplength):
         term = np.linalg.solve(C, S.T @ H)
     except np.linalg.LinAlgError:
         raise ValueError(
-            "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."
+            "Fit produces NaNs. Check your response matrix for outliers "
+            "or use an inversion type with truncation."
         )
 
     return W - steplength * (W - term)

@@ -1,19 +1,19 @@
 from __future__ import annotations
-from typing import Optional, TYPE_CHECKING, Callable
+
+from typing import TYPE_CHECKING, Callable, Optional
 
 import numpy as np
 
 if TYPE_CHECKING:
     import numpy.typing as npt
 
+from iterative_ensemble_smoother.ies import create_coefficient_matrix
 from iterative_ensemble_smoother.utils import (
     _validate_inputs,
     covariance_to_correlation,
-    steplength_exponential,
     response_projection,
+    steplength_exponential,
 )
-
-from iterative_ensemble_smoother.ies import create_coefficient_matrix
 
 
 class SIES:
@@ -21,12 +21,14 @@ class SIES:
     Initialize a Subspace Iterative Ensemble Smoother (SIES) instance.
 
     This is an implementation of the algorithm described in the paper:
-    Efficient Implementation of an Iterative Ensemble Smoother for Data Assimilation and Reservoir History Matching
-    written by Evensen et al (2019), URL: https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full
+    Efficient Implementation of an Iterative Ensemble Smoother for Data Assimilation
+    and Reservoir History Matching written by Evensen et al (2019),
+    URL: https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full
 
     The default step length is described in equation (49) in the paper
     Formulating the history matching problem with consistent error statistics
-    written by Geir Evensen (2021), URL: https://link.springer.com/article/10.1007/s10596-021-10032-7
+    written by Geir Evensen (2021),
+    URL: https://link.springer.com/article/10.1007/s10596-021-10032-7
 
     Parameters
     ----------
@@ -110,7 +112,8 @@ class SIES:
         Parameters
         ----------
         response_ensemble : npt.NDArray[np.double]
-            A 2D array of reponses from the model g(X) of shape (observations, ensemble_size).
+            A 2D array of responses from the model g(X) of shape
+            (observations, ensemble_size).
             This matrix is Y in Evensen (2019).
         observation_errors : npt.NDArray[np.double]
             Either a 1D array of standard deviations, or a 2D covariance matrix.
@@ -254,7 +257,8 @@ class SIES:
 
         if np.isnan(W).sum() != 0:
             raise ValueError(
-                "Fit produces NaNs. Check your response matrix for outliers or use an inversion type with truncation."
+                "Fit produces NaNs. Check your response matrix for outliers "
+                "or use an inversion type with truncation."
             )
 
         self.iteration += 1
