@@ -12,13 +12,14 @@
 #     language: python
 #     name: python3
 # ---
-
+# ruff: noqa: E402
 # %% [markdown]
 # # Estimating parameters of an anharmonic oscillator
 #
 # The anharnomic oscillator can be modelled by a non-linear partial differential
 # equation as described in section 6.3.4 of the book [Fundamentals of Algorithms
-# and Data Assimilation](https://www.amazon.com/Data-Assimilation-Methods-Algorithms-Applications/dp/1611974534) by Mark Asch, Marc Bocquet and Maëlle Nodet.
+# and Data Assimilation](https://www.amazon.com/Data-Assimilation-Methods-Algorithms-Applications/dp/1611974534)
+# by Mark Asch, Marc Bocquet and Maëlle Nodet.
 #
 # -------------
 #
@@ -53,11 +54,11 @@
 #
 #
 
-# %%
-from matplotlib import pyplot as plt
+#%%
 import numpy as np
+from matplotlib import pyplot as plt
 from scipy import stats
-from scipy.special import erf
+
 import iterative_ensemble_smoother as ies
 
 rng = np.random.default_rng(12345)
@@ -168,7 +169,7 @@ plt.show()
 # The trick is to sample $x \sim \mathcal{N}(0, 1)$,
 # then define a function $f$ that maps from standard normal to the
 # exponential distribution.
-# This funciton can be constructed by first mapping from standard normal to
+# This function can be constructed by first mapping from standard normal to
 # the interval $[0, 1)$ using the CDF, then mapping to exponential using the
 # quantile function (inverse CDF) of the exponential distribution.
 #

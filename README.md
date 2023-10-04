@@ -1,6 +1,8 @@
 Iterative Ensemble Smoother
 ===========================
 
+[![Precommit: enabled](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![docs](https://readthedocs.org/projects/iterative_ensemble_smoother/badge/?version=latest&style=plastic)](https://iterative-ensemble-smoother.readthedocs.io/)
 

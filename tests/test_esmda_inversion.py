@@ -110,7 +110,7 @@ class TestEsmdaInversion:
 
     @pytest.mark.parametrize("function", APPROX_INVERSIONS)
     @pytest.mark.parametrize("num_outputs", [10])
-    def test_that_approximate_inversions_do_not_compute_exact_answer_with_few_ensemble_members(
+    def test_that_approximate_inversions_do_not_compute_exact_answer_with_few_members(
         self, function, num_outputs
     ):
         """With few ensemble members, the approximate methods should not return

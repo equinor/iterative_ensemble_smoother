@@ -294,7 +294,7 @@ class TestESMDA:
     @pytest.mark.parametrize("S", [1, 3, 9])
     # Number of iterations
     @pytest.mark.parametrize("alpha", [5, 10, 15])
-    def test_that_single_and_multiple_assimilations_achieve_same_result_for_1D_gauss_linear_case(
+    def test_that_single_and_multiple_assimil_give_same_res_for_1D_gauss_linear_case(
         self, alpha, mu, S, X_true, C_D
     ):
         # Here we test on a Guass-linear case.

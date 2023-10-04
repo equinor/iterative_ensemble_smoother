@@ -12,16 +12,21 @@
 #     language: python
 #     name: python3
 # ---
+# ruff: noqa: E402
+# ruff: noqa: E501
 
 # %% [markdown]
 # # Fitting a polynomial with Gaussian priors
 #
-# We fit a simple polynomial with Gaussian priors, which is an example of a Gauss-linear problem for which the results obtained using Subspace Iterative Ensemble Smoother (SIES) tend to those obtained using Ensemble Smoother (ES).
+# We fit a simple polynomial with Gaussian priors, which is an example of a Gauss-linear
+# problem for which the results obtained using Subspace Iterative Ensemble Smoother
+# (SIES) tend to those obtained using Ensemble Smoother (ES).
 # This notebook illustrated this property.
 # %%
+import itertools
+
 import numpy as np
 import pandas as pd
-import itertools
 
 np.set_printoptions(suppress=True)
 rng = np.random.default_rng(12345)
@@ -32,9 +37,8 @@ COLORS = list(plt.rcParams["axes.prop_cycle"].by_key()["color"])
 
 plt.rcParams["figure.figsize"] = (6, 6)
 plt.rcParams.update({"font.size": 10})
-from ipywidgets import interact
-import ipywidgets as widgets
-
+from ipywidgets import interact  # noqa  # isort:skip
+import ipywidgets as widgets  # noqa  # isort:skip
 from p_tqdm import p_map
 
 import iterative_ensemble_smoother as ies
@@ -112,7 +116,7 @@ fwd_runs = p_map(
     coeff_b,
     coeff_c,
     [np.arange(max(x_observations) + 1)] * ensemble_size,
-    desc=f"Running forward model.",
+    desc="Running forward model.",
 )
 
 # %% [markdown]
@@ -241,7 +245,7 @@ for parameter_prior in X.T:
     )
 
 # Plot the posterior
-ax2.set_title(f"ES ert posterior")
+ax2.set_title("ES ert posterior")
 ax2.plot(x_plot, poly(a_t, b_t, c_t, x_plot), zorder=10, lw=4, color="black")
 for parameter_posterior in X_ES_ert.T:
     ax2.plot(
