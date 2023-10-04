@@ -208,10 +208,16 @@ def inversion_direct(
     # K = (S @ S.T + C_dd)^-1 H
     # K = solve(S @ S.T + C_dd, H)
     if C_dd.ndim == 1:
-        lhs = S @ S.T  # sp.linalg.blas.dsyrk(alpha=1.0, a=S)
+        # We note that we only need the upper-triangular part of S @ S.T + I in
+        # the sp.linalg.solve routine, and that the BLAS routine dsyrk can compute
+        # this, via sp.linalg.blas.dsyrk(alpha=1.0, a=S).
+        # However, we chose NOT to use BLAS 'directly' since it makes the code
+        # less readable, and the gains in speed are marginal.
+
+        lhs = S @ S.T
         np.fill_diagonal(lhs, lhs.diagonal() + 1)
     else:
-        lhs = S @ S.T + R  # sp.linalg.blas.dsyrk(alpha=1.0, a=S, beta=1.0, c=R)
+        lhs = S @ S.T + R
 
     K = sp.linalg.solve(
         lhs,
@@ -265,7 +271,7 @@ def inversion_subspace_exact(
     # Special case for diagonal covariance matrix.
     # See below for a more explanation of these computations.
     if C_dd.ndim == 1:
-        lhs = S.T @ S  # sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)
+        lhs = S.T @ S
         np.fill_diagonal(lhs, lhs.diagonal() + 1)
         C_dd_inv_H = H
 
@@ -273,11 +279,10 @@ def inversion_subspace_exact(
         # Solve the equation: C_dd_cholesky @ K = S for K,
         # which is equivalent to forming K := C_dd_cholesky^-1 @ S,
         # exploiting the fact that C_dd_cholesky is lower triangular
-        # K = sp.linalg.blas.dtrsm(alpha=1.0, a=C_dd_cholesky, b=S, lower=1)
-        K = sp.linalg.solve(R_cholesky, S)
+        K = sp.linalg.solve_triangular(a=R_cholesky, b=S, lower=True)
 
         # Form lhs := (S.T @ C_dd^-1 @ S + I)
-        lhs = K.T @ K  # sp.linalg.blas.dsyrk(alpha=1.0, a=K, trans=1)
+        lhs = K.T @ K
         np.fill_diagonal(lhs, lhs.diagonal() + 1)
 
         # Compute C_dd^-1 @ H, exploiting the fact that we have the cholesky factor

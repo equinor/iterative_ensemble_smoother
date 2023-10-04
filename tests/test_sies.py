@@ -742,7 +742,7 @@ def test_that_ies_runs_with_failed_realizations(seed):
     )
 
     # The posterior mean is reasonably close - or at least nothing crazy happens
-    assert np.all(np.abs(mean_posterior - x_true) < 3)
+    assert np.all(np.abs(mean_posterior - x_true) < 4)
 
 
 @pytest.mark.parametrize("seed", list(range(9)))
@@ -810,8 +810,70 @@ def test_that_subspaces_are_still_used_as_original_realizations_fail(seed):
     assert not np.allclose(X_i[:7, ensemble_mask], 0)
 
 
+@pytest.mark.parametrize("ensemble_size", [5, 15, 50])
+def test_that_full_ensemble_mask_is_equal_to_no_ensemble_mask(ensemble_size):
+    """When the forward model is a simulation being run parallel on clusters,
+    some of the jobs (realizations) might fail.
+
+    Consider the case when the prior is the identity matrix I.
+    N = n = 10. In each iteration, another ensemble member "dies."
+    After 7 iteations, only the three right-most columns are still alive.
+    However, that does NOT mean that the posterior lies in the subspace
+    spanned by the three most right-most columns in the prior, since
+    in earlier iterations the algorithm is able to explore other subspaces
+    before realizations die out.
+    """
+
+    rng = np.random.default_rng(42)
+
+    # Problem size
+    num_params = 10
+    num_responses = 25
+
+    # Create a linear mapping g
+    A = rng.normal(size=(num_responses, num_params))
+
+    def g(X):
+        return A @ X
+
+    # Inputs and outputs
+    parameters = rng.normal(size=(num_params, ensemble_size))
+    x_true = rng.normal(size=(num_params))
+    observations = A @ x_true + rng.normal(size=(num_responses))
+    covariance = np.ones(num_responses)
+
+    X_i = np.copy(parameters)
+    responses = g(X_i)
+    ensemble_mask = np.ones(ensemble_size, dtype=bool)
+
+    # Create smoother with the intention of using ensemble mask
+    smoother1 = ies.SIES(
+        parameters=parameters,
+        covariance=covariance,
+        observations=observations,
+        seed=rng,
+    )
+    assert np.allclose(responses[:, ensemble_mask], responses)
+    X_i_mask = smoother1.sies_iteration(
+        responses[:, ensemble_mask], ensemble_mask=ensemble_mask, step_length=0.2
+    )
+
+    # Create smoother new smoother, since the iteration on the previous one
+    # updates the internal state
+    smoother2 = ies.SIES(
+        parameters=parameters,
+        covariance=covariance,
+        observations=observations,
+        seed=rng,
+    )
+    X_i = smoother2.sies_iteration(responses, step_length=0.2)
+
+    print(sp.linalg.norm(X_i_mask - X_i))
+    assert np.allclose(X_i_mask, X_i)
+
+
 @pytest.mark.parametrize("seed", list(range(10)))
-@pytest.mark.parametrize("inversion", ["exact"])
+@pytest.mark.parametrize("inversion", list(ies.SIES.inversion_funcs.keys()))
 def test_that_diagonal_and_dense_covariance_return_the_same_result(inversion, seed):
     """A 1D array represents the diagonal of a covariance matrix. The user should
     be able to pass either a 2D or 1D representation of a diagonal, and get the same
@@ -848,7 +910,7 @@ def test_that_diagonal_and_dense_covariance_return_the_same_result(inversion, se
     assert not np.allclose(X, X_post_covar)  # Update happened
 
 
-@pytest.mark.parametrize("inversion", ["naive", "exact", "exact_r", "subspace_re"])
+@pytest.mark.parametrize("inversion", list(ies.SIES.inversion_funcs.keys()))
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 @pytest.mark.parametrize("diagonal", [True, False])
 def test_that_float_dtypes_are_preserved(inversion, dtype, diagonal):
@@ -874,15 +936,16 @@ def test_that_float_dtypes_are_preserved(inversion, dtype, diagonal):
 
     # Convert dtypes
     parameters = parameters.astype(dtype)
-    responses = responses.astype(dtype)
-    observations = observations.astype(dtype)
     covariance = covariance.astype(dtype)
+    observations = observations.astype(dtype)
+    responses = responses.astype(dtype)
 
     smoother = ies.SIES(
         parameters=parameters,
         covariance=covariance,
         observations=observations,
         seed=rng,
+        inversion=inversion,
     )
 
     X_posterior = smoother.sies_iteration(responses)

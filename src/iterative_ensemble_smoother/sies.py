@@ -34,11 +34,11 @@ class SIES:
         member (realization). This is X in Evensen (2019).
     covariance : npt.NDArray[np.double]
         Either a 1D array of diagonal covariances, or a 2D covariance matrix.
-        The shape is either (num_parameters,) or (num_parameters, num_parameters).
+        The shape is either (num_observations,) or (num_observations, num_observations).
         This is C_dd in Evensen (2019), and represents observation or measurement
         errors. We observe d from the real world, y from the model g(x), and
-        assume that d = y + e, where e is multivariate normal with covariance
-        given by `covariance`.
+        assume that d = y + e, where the error e is multivariate normal with
+        covariance given by `covariance`.
     observations : npt.NDArray[np.double]
         A 1D array of observations, with shape (num_observations,).
         This is d in Evensen (2019).
@@ -48,9 +48,9 @@ class SIES:
         The options are:
 
             - `direct`: Solve Eqn (42) directly, which involves inverting a
-               matrix of shape (num_parameters, num_parameters)
+               matrix of shape (num_parameters, num_parameters).
             - `subspace_exact` : Solve Eqn (42) using Eqn (50), i.e., the Woodbury
-               lemma to invert a matrix of size (ensemble_size, ensemble_size)
+               lemma to invert a matrix of size (ensemble_size, ensemble_size).
             - `subspace_projected` : Solve Eqn (42) using Section 3.3, i.e.,
                by projecting the covariance onto S. This approach utilizes the
                truncation factor `truncation`.
@@ -58,7 +58,7 @@ class SIES:
     truncation : float
         How much of the total energy (singular values squared) to keep in the
         SVD when `inversion` equals `subspace_projected`. Choosing 1.0
-        retains the most information, while 0.0 removes all information.
+        retains all information, while 0.0 removes all information.
     seed : Union[None, int, np.random._generator.Generator], optional
         Integer used to seed the random number generator. The default is None.
     """
@@ -168,27 +168,27 @@ class SIES:
         # Evaluate np.diag(W.T @ W) = (W**2).sum(axis=0)
         prior = (W**2).sum(axis=0)
 
+        # Introduce F as the differences between responses y=g(x) and D
+        F = Y - self.D
+
         if self.C_dd.ndim == 2:
             # Evaluate the elementwise likelihood term
             # Evaluate np.diag((g(X_i) - D).T @ C_dd^{-1} @ (g(X_i) - D))
             #        = np.diag((Y - D).T @ C_dd^{-1} @ (Y - D))
-            # First let A := Y - D, then use the cholesky factors C_dd = L @ L.T
+            # First let F := Y - D, then use the cholesky factors C_dd = L @ L.T
             # to write (Y - D).T @ C_dd^{-1} @ (Y - D)
-            #             A.T @ (L @ L.T)^-1 @ A
-            #             (L^-1 @ A).T @ (L^-1 @ A)
-            # To compute the expression above, we solve K := L^-1 @ A,
+            #             F.T @ (L @ L.T)^-1 @ F
+            #             (L^-1 @ F).T @ (L^-1 @ F)
+            # To compute the expression above, we solve K := L^-1 @ F,
             # then we compute np.diag(K.T @ K) as (K**2).sum(axis=0)
-            A = Y - self.D
-            # Likelihood is equal to: np.diag(A.T @ inv(self.C_dd) @ A)
-            K = sp.linalg.blas.dtrsm(alpha=1.0, a=self.C_dd_cholesky, b=A, lower=1)
+            # Likelihood is equal to: np.diag(F.T @ inv(self.C_dd) @ F)
+            K = sp.linalg.solve_triangular(a=self.C_dd_cholesky, b=F, lower=True)
             likelihood = (K**2).sum(axis=0)
 
         else:
-            # If C_dd is diagonal, then (L^-1 @ A) = A / L.reshape(-1, 1)
-            A = Y - self.D
-            K = A / self.C_dd_cholesky.reshape(-1, 1)
+            # If C_dd is diagonal, then (L^-1 @ F) = F / L.reshape(-1, 1)
+            K = F / self.C_dd_cholesky.reshape(-1, 1)
             likelihood = (K**2).sum(axis=0)
-            # assert np.allclose(likelihood, np.diag(A.T @ np.diag(1/self.C_dd) @ A))
 
         return (prior, likelihood)
 
@@ -201,7 +201,7 @@ class SIES:
         """Perform a single SIES iteration (Gauss-Newton step).
 
         This method implements lines 4-9 in Algorithm 1.
-        It returns a updated X and updates internal state W.
+        It returns an updated X and updates the internal state W.
 
 
         Parameters
@@ -275,14 +275,17 @@ class SIES:
         Omega = self.W.copy()
         Omega -= Omega.mean(axis=1, keepdims=True)
         Omega /= np.sqrt(N - 1)
-        Omega.flat[:: Omega.shape[0] + 1] += 1  # Add identity in place
+        np.fill_diagonal(Omega, Omega.diagonal() + 1)  # Add identity in place
+
+        # Remind ourselves of shapes
+        assert Omega.shape == (N, N)
+        assert Y.shape == (m, N)
 
         # Line 6
-        if n < N - 1:
-            # There are fewer parameters than realizations. This means that the
-            # system of equations is overdetermined, and we must solve a least
-            # squares problem.
+        if n >= N - 1:  # Section (2.4.1)
+            S = sp.linalg.solve(Omega.T, Y.T).T
 
+        else:  # Section (2.4.3)
             # An alternative approach to producing A_i would be keeping the
             # returned value from the previous Newton iteration (call it X_i),
             # then computing:
@@ -291,9 +294,6 @@ class SIES:
             S = sp.linalg.solve(
                 Omega.T, np.linalg.multi_dot([Y, sp.linalg.pinv(A_i), A_i]).T
             ).T
-        else:
-            # The system is not overdetermined
-            S = sp.linalg.solve(Omega.T, Y.T).T
 
         # Line 7
         H = S @ self.W + self.D - g_X
@@ -344,8 +344,8 @@ class SIES:
         assert Y.ndim == 2
         assert Y.shape[0] == self.C_dd.shape[0]
         g_X = Y.copy()
-        if ensemble_mask is not None:
-            assert Y.shape[1] == ensemble_mask.sum()
+        assert ensemble_mask.dtype == bool
+        assert Y.shape[1] == ensemble_mask.sum()
 
         # Get shapes. Same notation as used in the paper.
         N = self.X.shape[1]  # Ensemble members in prior
@@ -360,32 +360,28 @@ class SIES:
         Omega = self.W.copy()
         Omega -= Omega.mean(axis=1, keepdims=True)
         Omega /= np.sqrt(N - 1)
-        Omega.flat[:: Omega.shape[0] + 1] += 1  # Add identity in place
+        np.fill_diagonal(Omega, Omega.diagonal() + 1)  # Add identity in place
         Omega = Omega[:, ensemble_mask]
 
-        # Line 6
-        if n < k - 1:  # Here we use k instead of N
-            # There are fewer parameters than realizations. This means that the
-            # system of equations is overdetermined, and we must solve a least
-            # squares problem.
+        # Remind ourselves of shapes
+        assert Omega.shape == (N, k)
+        assert Y.shape == (m, k)
 
+        # Line 6
+        if n >= k - 1:  # Section (2.4.1)
+            # Omega is not longer square, so we use least squares solver
+            ST, *_ = sp.linalg.lstsq(Omega.T, Y.T)
+            S = ST.T
+
+        else:  # Section (2.4.3)
             # An alternative approach to producing A_i would be keeping the
             # returned value from the previous Newton iteration (call it X_i),
             # then computing:
             # A_i = (self.X_i - self.X_i.mean(axis=1, keepdims=True)) / np.sqrt(N - 1)
             A_i = self.A @ Omega
-            # S = sp.linalg.solve(
-            #     Omega.T, np.linalg.multi_dot([Y, sp.linalg.pinv(A_i), A_i]).T
-            # ).T
             ST, *_ = sp.linalg.lstsq(
                 Omega.T, np.linalg.multi_dot([Y, sp.linalg.pinv(A_i), A_i]).T
             )
-            S = ST.T
-
-        else:
-            # The system is not overdetermined
-            # S = sp.linalg.solve(Omega.T, Y.T).T
-            ST, *_ = sp.linalg.lstsq(Omega.T, Y.T)
             S = ST.T
 
         # Line 7
