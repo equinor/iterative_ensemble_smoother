@@ -163,9 +163,11 @@ class TestSIESObjective:
 
                 # If no break was triggered in the for loop, we never accepted
                 else:
-                    print(
-                        f"Terminating. No improvement after {BACKTRACK_ITERATIONS} iterations."
+                    msg = (
+                        "Terminating. No improvement"
+                        + f"after {BACKTRACK_ITERATIONS} iterations."
                     )
+                    print(msg)
                     return X_i
 
                 yield X_i
@@ -903,9 +905,11 @@ def test_memory_usage():
     )
     nbytes += noise.nbytes  # Creating E
     nbytes += noise.nbytes  # Creating D
+    # scaling response_ensemble
+    # (can't scale in-place because response_ensemble is an input argument)
     nbytes += (
         noise.nbytes
-    )  # scaling response_ensemble (can't scale in-place because response_ensemble is an input argument)
+    )
     nbytes += 80000 # Omega in C++ (ensemble_size, ensemble_size)
     nbytes += Y.nbytes # Solving for S^T needs Y^T which causes a copy in C++ code
     nbytes += Y.nbytes # Solving for S^T causes both Y^T and S^T to be in memory

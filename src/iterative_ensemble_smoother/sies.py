@@ -21,7 +21,8 @@ class SIES:
     Initialize a Subspace Iterative Ensemble Smoother (SIES) instance.
 
     This is an implementation of the algorithm described in the paper:
-    Efficient Implementation of an Iterative Ensemble Smoother for Data Assimilation and Reservoir History Matching
+    Efficient Implementation of an Iterative Ensemble Smoother for
+    Data Assimilation and Reservoir History Matching
     written by Evensen et al (2019),
     URL: https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full
 
@@ -129,7 +130,7 @@ class SIES:
             Current weight matrix W, which represents the current X_i as a linear
             combination of the prior. See equation (17) and line 9 in Algorithm 1.
         Y : npt.NDArray[np.double]
-            Reponses when evaluating the model at X_i. In other words, Y = g(X_i).
+            Responses when evaluating the model at X_i. In other words, Y = g(X_i).
 
         Returns
         -------
@@ -153,7 +154,7 @@ class SIES:
             Current weight matrix W, which represents the current X_i as a linear
             combination of the prior. See equation (17) and line 9 in Algorithm 1.
         Y : npt.NDArray[np.double]
-            Reponses when evaluating the model at X_i. In other words, Y = g(X_i).
+            Responses when evaluating the model at X_i. In other words, Y = g(X_i).
 
         Returns
         -------
@@ -178,9 +179,9 @@ class SIES:
             # To compute the expression above, we solve K := L^-1 @ A,
             # then we compute np.diag(K.T @ K) as (K**2).sum(axis=0)
             A = Y - self.D
+            # Likelihood is equal to: np.diag(A.T @ inv(self.C_dd) @ A)
             K = sp.linalg.blas.dtrsm(alpha=1.0, a=self.C_dd_cholesky, b=A, lower=1)
             likelihood = (K**2).sum(axis=0)
-            # assert np.allclose(likelihood, np.diag(A.T @ np.linalg.inv(self.C_dd) @ A))
 
         else:
             # If C_dd is diagonal, then (L^-1 @ A) = A / L.reshape(-1, 1)
