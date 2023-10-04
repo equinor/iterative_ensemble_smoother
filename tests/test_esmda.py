@@ -181,7 +181,8 @@ class TestESMDA:
 
         # Analytical solution given by Bishop
         def inv(x):
-            return 1 / x  # Matrix inversion for 1D matrix
+            # Matrix inversion for 1D matrix
+            return 1 / x
 
         COV = inv(inv(S) + a * inv(C_D) * a)
         MEAN = COV * ((a * inv(C_D)) * (G(X_true) - b) + inv(S) * mu)
