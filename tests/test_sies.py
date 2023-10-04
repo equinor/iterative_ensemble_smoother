@@ -742,7 +742,7 @@ def test_that_ies_runs_with_failed_realizations(seed):
     )
 
     # The posterior mean is reasonably close - or at least nothing crazy happens
-    assert np.all(np.abs(mean_posterior - x_true) < 4)
+    assert np.all(np.abs(mean_posterior - x_true) < 3)
 
 
 @pytest.mark.parametrize("seed", list(range(9)))
@@ -851,7 +851,7 @@ def test_that_full_ensemble_mask_is_equal_to_no_ensemble_mask(ensemble_size):
         parameters=parameters,
         covariance=covariance,
         observations=observations,
-        seed=rng,
+        seed=1,
     )
     assert np.allclose(responses[:, ensemble_mask], responses)
     X_i_mask = smoother1.sies_iteration(
@@ -864,11 +864,10 @@ def test_that_full_ensemble_mask_is_equal_to_no_ensemble_mask(ensemble_size):
         parameters=parameters,
         covariance=covariance,
         observations=observations,
-        seed=rng,
+        seed=1,
     )
     X_i = smoother2.sies_iteration(responses, step_length=0.2)
 
-    print(sp.linalg.norm(X_i_mask - X_i))
     assert np.allclose(X_i_mask, X_i)
 
 
