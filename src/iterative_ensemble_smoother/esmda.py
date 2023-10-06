@@ -42,7 +42,7 @@ class ESMDA:
 
     Parameters
     ----------
-    C_D : np.ndarray
+    covariance : np.ndarray
         Covariance matrix of outputs of shape (num_outputs, num_outputs).
         If a 1D array is passed, it represents a diagonal covariance matrix.
     observations : np.ndarray
@@ -61,9 +61,9 @@ class ESMDA:
 
     Examples
     --------
-    >>> C_D = np.diag([1, 1, 1])
+    >>> covariance = np.diag([1, 1, 1])
     >>> observations = np.array([1, 2, 3])
-    >>> esmda = ESMDA(C_D, observations)
+    >>> esmda = ESMDA(covariance, observations)
 
     """
 
@@ -76,24 +76,26 @@ class ESMDA:
 
     def __init__(
         self,
-        C_D: npt.NDArray[np.double],
+        covariance: npt.NDArray[np.double],
         observations: npt.NDArray[np.double],
         alpha: Union[int, npt.NDArray[np.double]] = 5,
         seed: Union[np.random._generator.Generator, int, None] = None,
         inversion: str = "exact",
     ) -> None:
         # Validate inputs
-        if not (isinstance(C_D, np.ndarray) and C_D.ndim in (1, 2)):
-            raise TypeError("Argument `C_D` must be a NumPy array of dimension 1 or 2.")
+        if not (isinstance(covariance, np.ndarray) and covariance.ndim in (1, 2)):
+            raise TypeError(
+                "Argument `covariance` must be a NumPy array of dimension 1 or 2."
+            )
 
-        if C_D.ndim == 2 and C_D.shape[0] != C_D.shape[1]:
-            raise ValueError("Argument `C_D` must be square if it's 2D.")
+        if covariance.ndim == 2 and covariance.shape[0] != covariance.shape[1]:
+            raise ValueError("Argument `covariance` must be square if it's 2D.")
 
         if not (isinstance(observations, np.ndarray) and observations.ndim == 1):
             raise TypeError("Argument `observations` must be a 1D NumPy array.")
 
-        if not observations.shape[0] == C_D.shape[0]:
-            raise ValueError("Shapes of `observations` and `C_D` must match.")
+        if not observations.shape[0] == covariance.shape[0]:
+            raise ValueError("Shapes of `observations` and `covariance` must match.")
 
         if not (
             (isinstance(alpha, np.ndarray) and alpha.ndim == 1)
@@ -139,14 +141,14 @@ class ESMDA:
         # If it's a full matrix, we gain speedup by only computing cholesky once
         # If it's a diagonal, we gain speedup by never having to compute cholesky
 
-        if isinstance(C_D, np.ndarray) and C_D.ndim == 2:
-            self.C_D_L = sp.linalg.cholesky(C_D, lower=False)
-        elif isinstance(C_D, np.ndarray) and C_D.ndim == 1:
-            self.C_D_L = np.sqrt(C_D)
+        if isinstance(covariance, np.ndarray) and covariance.ndim == 2:
+            self.C_D_L = sp.linalg.cholesky(covariance, lower=False)
+        elif isinstance(covariance, np.ndarray) and covariance.ndim == 1:
+            self.C_D_L = np.sqrt(covariance)
         else:
-            raise TypeError("Argument `C_D` must be 1D or 2D array")
+            raise TypeError("Argument `covariance` must be 1D or 2D array")
 
-        self.C_D = C_D
+        self.C_D = covariance
         assert isinstance(self.C_D, np.ndarray) and self.C_D.ndim in (1, 2)
 
     def num_assimilations(self) -> int:
