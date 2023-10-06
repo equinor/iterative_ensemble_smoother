@@ -12,6 +12,8 @@
 #     language: python
 #     name: python3
 # ---
+
+# %%
 # ruff: noqa: E402
 # %% [markdown]
 # # Estimating parameters of an anharmonic oscillator
@@ -54,7 +56,7 @@
 #
 #
 
-#%%
+# %%
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy import stats
@@ -90,6 +92,7 @@ def plot_result(A, response_x_axis, title=None):
 
 # %% [markdown]
 # ## Setup
+
 
 # %%
 def generate_observations(K):
@@ -286,10 +289,9 @@ iterative_smoother(A)
 
 # %%
 smoother = ies.ESMDA(
-    # Here C_D is a covariance matrix. If a 1D array is passed,
-    # it is interpreted as the diagonal of the covariance matrix,
-    # and NOT as a vector of standard deviations
-    C_D=observation_errors**2,
+    # If a 1D array is passed, it is interpreted
+    # as the diagonal of the covariance matrix.
+    covariance=observation_errors**2,
     observations=observation_values,
     # The inflation factors used in ESMDA
     # They are scaled so that sum_i alpha_i^-1 = 1
