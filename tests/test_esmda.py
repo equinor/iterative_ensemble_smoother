@@ -416,6 +416,75 @@ class TestESMDAMemory:
         assert X_posterior.dtype == dtype
 
 
+class TestESMDAAPI:
+    def test_row_by_row_assimilation(self):
+        inversion = "exact"
+
+        # Create problem instance
+        rng = np.random.default_rng(42)
+
+        num_outputs = 200
+        num_inputs = 15
+        num_ensemble = 10
+
+        A = rng.normal(size=(num_outputs, num_inputs))
+
+        def g(X):
+            return A @ X
+
+        # Prior is N(0, 1)
+        X_prior = rng.normal(size=(num_inputs, num_ensemble))
+
+        covariance = np.exp(rng.normal(size=num_outputs))
+        observations = rng.normal(size=num_outputs, loc=1)
+
+        # =========== Use the high level API ===========
+        smoother = ESMDA(
+            C_D=covariance,
+            observations=observations,
+            alpha=2,
+            inversion=inversion,
+            seed=1,
+        )
+        X = np.copy(X_prior)
+        for iteration in range(smoother.num_assimilations()):
+            X = smoother.assimilate(X, g(X))
+
+        X_posterior_highlevel_API = np.copy(X)
+
+        # =========== Use the low-level level API ===========
+        smoother = ESMDA(
+            C_D=covariance,
+            observations=observations,
+            alpha=2,
+            inversion=inversion,
+            seed=1,
+        )
+        X = np.copy(X_prior)
+        for alpha in [2, 2]:
+            # Permute the observations
+            D = smoother.get_D(size=(num_outputs, num_ensemble), alpha=alpha)
+
+            # Construct a matrix W so that the update is: X += X @ W
+            W = smoother._inversion_methods[inversion](
+                alpha=alpha, C_D=covariance, D=D, Y=g(X), X=X, return_W=True
+            )
+
+            # Apply the update row over each row (parameter) in the ensemble.
+            # Simulating a "streaming" like case
+            rows_times_W = []
+            # Loop over each row (parameter) in the current ensemble
+            for row_i in X:
+                rows_times_W.append(row_i @ W)
+
+            # Construct the full X again. X = X + X @ W
+            X = X + np.vstack(rows_times_W)
+
+        X_posterior_lowlevel_API = np.copy(X)
+
+        assert np.allclose(X_posterior_highlevel_API, X_posterior_lowlevel_API)
+
+
 if __name__ == "__main__":
     import pytest
 
@@ -423,6 +492,6 @@ if __name__ == "__main__":
         args=[
             __file__,
             "-v",
-            "-k test_that_float_dtypes_are_preserved",
+            "-k test_row_by_row_assimilation",
         ]
     )

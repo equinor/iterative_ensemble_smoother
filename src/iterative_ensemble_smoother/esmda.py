@@ -22,7 +22,7 @@ https://helper.ipam.ucla.edu/publications/oilws3/oilws3_14147.pdf
 
 """
 import numbers
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
@@ -218,21 +218,8 @@ class ESMDA:
             return X
 
         # Line 2 (b) in the description of ES-MDA in the 2013 Emerick paper
-
-        # Draw samples from zero-centered multivariate normal with cov=alpha * C_D,
-        # and add them to the observations. Notice that
-        # if C_D = L L.T by the cholesky factorization, then drawing y from
-        # a zero cented normal means that y := L @ z, where z ~ norm(0, 1)
-        # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
         size = (num_outputs, ensemble_mask.sum())
-        if self.C_D.ndim == 2:
-            D = self.observations.reshape(-1, 1) + np.sqrt(
-                self.alpha[self.iteration]
-            ) * self.C_D_L @ self.rng.normal(size=size)
-        else:
-            D = self.observations.reshape(-1, 1) + np.sqrt(
-                self.alpha[self.iteration]
-            ) * self.rng.normal(size=size) * self.C_D_L.reshape(-1, 1)
+        D = self.get_D(size=size, alpha=self.alpha[self.iteration])
         assert D.shape == (num_outputs, ensemble_mask.sum())
 
         # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
@@ -241,7 +228,7 @@ class ESMDA:
         inversion_func = self._inversion_methods[self.inversion]
 
         # Update and return
-        X[:, ensemble_mask] += inversion_func(
+        X[:, ensemble_mask] += inversion_func(  # type: ignore
             alpha=self.alpha[self.iteration],
             C_D=self.C_D,
             D=D,
@@ -252,6 +239,27 @@ class ESMDA:
 
         self.iteration += 1
         return X
+
+    def get_D(self, *, size: Tuple[int, int], alpha: float) -> npt.NDArray[np.double]:
+        # Draw samples from zero-centered multivariate normal with cov=alpha * C_D,
+        # and add them to the observations. Notice that
+        # if C_D = L L.T by the cholesky factorization, then drawing y from
+        # a zero cented normal means that y := L @ z, where z ~ norm(0, 1)
+        # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
+
+        D: npt.NDArray[np.double]
+
+        if self.C_D.ndim == 2:
+            D = self.observations.reshape(-1, 1) + np.sqrt(
+                self.alpha[self.iteration]
+            ) * self.C_D_L @ self.rng.normal(size=size)
+        else:
+            D = self.observations.reshape(-1, 1) + np.sqrt(
+                self.alpha[self.iteration]
+            ) * self.rng.normal(size=size) * self.C_D_L.reshape(-1, 1)
+        assert D.shape == size
+
+        return D
 
 
 if __name__ == "__main__":

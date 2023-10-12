@@ -180,6 +180,7 @@ def inversion_exact_cholesky(
     Y: npt.NDArray[np.double],
     X: npt.NDArray[np.double],
     truncation: float = 1.0,
+    return_W: bool = False,
 ) -> npt.NDArray[np.double]:
     """Computes an exact inversion using `sp.linalg.solve`, which uses a
     Cholesky factorization in the case of symmetric, positive definite matrices.
@@ -210,6 +211,11 @@ def inversion_exact_cholesky(
         # C_D is an array, so add it to the diagonal without forming diag(C_D)
         C_DD.flat[:: C_DD.shape[1] + 1] += alpha * C_D
         K = sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
+
+    if return_W:
+        Y = Y - np.mean(Y, axis=1, keepdims=True)
+        _, num_ensemble = X.shape
+        return (Y.T @ K) / (num_ensemble - 1)  # type: ignore
 
     # Form C_MD = center(X) @ center(Y).T / (num_ensemble - 1)
     X = X - np.mean(X, axis=1, keepdims=True)
