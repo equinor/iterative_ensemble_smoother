@@ -63,7 +63,7 @@ class TestESMDA:
         assert np.allclose(X_posterior1, X_posterior2)
 
     @pytest.mark.parametrize("num_ensemble", [2**i for i in range(2, 10)])
-    def test_that_using_example_mask_only_updates_those_parameters(self, num_ensemble):
+    def test_that_realizations_may_die(self, num_ensemble):
         seed = num_ensemble
         rng = np.random.default_rng(seed)
         alpha = rng.choice(np.array([5, 10, 25, 50]))  # Random alpha
@@ -96,19 +96,19 @@ class TestESMDA:
 
         # Prepare ESMDA instance running with lower number of ensemble members
         esmda_subset = ESMDA(C_D, observations, alpha=alpha, seed=seed)
-        X_i_subset = np.copy(X_prior[:, ensemble_mask])
 
-        # Prepare ESMDA instance running with all ensemble members
-        esmda_masked = ESMDA(C_D, observations, alpha=alpha, seed=seed)
         X_i = np.copy(X_prior)
 
-        # Run both
         for _ in range(esmda_subset.num_assimilations()):
-            X_i_subset = esmda_subset.assimilate(X_i_subset, G(X_i_subset))
-            X_i = esmda_masked.assimilate(X_i, G(X_i), ensemble_mask=ensemble_mask)
+            ensemble_mask = np.zeros(num_ensemble, dtype=bool)
+            idx = rng.choice(num_ensemble, size=num_ensemble // 2, replace=False)
+            ensemble_mask[idx] = True
 
-            # Exactly the same result (seed value for both must be equal )
-            assert np.allclose(X_i_subset, X_i[:, ensemble_mask])
+            # Run simulations
+            X_i_subset = X_i[:, ensemble_mask]
+            Y_i_subset = G(X_i_subset)
+
+            X_i_subset = esmda_subset.assimilate(X_i_subset, Y_i_subset)
 
     @pytest.mark.parametrize(
         "num_ensemble",
@@ -362,8 +362,8 @@ class TestESMDAMemory:
 
         return X_prior, Y_prior, C_D, observations
 
-    @pytest.mark.limit_memory("138 MB")
-    def test_ESMDA_memory_usage_subspace_inversion(self, setup):
+    @pytest.mark.limit_memory("55.7 MB")  # Total memory allocated: 119.6MiB
+    def test_ESMDA_memory_usage_subspace_inversion_without_overwrite(self, setup):
         # TODO: Currently this is a regression test. Work to improve memory usage.
 
         X_prior, Y_prior, C_D, observations = setup
@@ -373,6 +373,18 @@ class TestESMDAMemory:
 
         for _ in range(esmda.num_assimilations()):
             esmda.assimilate(X_prior, Y_prior)
+
+    @pytest.mark.limit_memory("47.3 MB")  # Total memory allocated: 111.2MiB
+    def test_ESMDA_memory_usage_subspace_inversion_with_overwrite(self, setup):
+        # TODO: Currently this is a regression test. Work to improve memory usage.
+
+        X_prior, Y_prior, C_D, observations = setup
+
+        # Create ESMDA instance from an integer `alpha` and run it
+        esmda = ESMDA(C_D, observations, alpha=1, seed=1, inversion="subspace")
+
+        for _ in range(esmda.num_assimilations()):
+            esmda.assimilate(X_prior, Y_prior, overwrite=True)
 
     @pytest.mark.parametrize("inversion", ["exact", "subspace"])
     @pytest.mark.parametrize("dtype", [np.float32, np.float64])
@@ -417,6 +429,50 @@ class TestESMDAMemory:
 
 
 class TestESMDAAPI:
+    def test_regression(self):
+        # It's OK to change this test, but know that if the test changes,
+        # then the results differ from what they were before
+
+        # Create problem instance
+        rng = np.random.default_rng(42)
+
+        num_outputs = 4
+        num_inputs = 4
+        num_ensemble = 5
+
+        A = rng.normal(size=(num_outputs, num_inputs))
+
+        def g(X):
+            return A @ X
+
+        # Prior is N(0, 1)
+        X_prior = rng.normal(size=(num_inputs, num_ensemble))
+
+        covariance = np.exp(rng.normal(size=num_outputs))
+        observations = rng.normal(size=num_outputs, loc=1)
+
+        # =========== Use the high level API ===========
+        smoother = ESMDA(
+            C_D=covariance,
+            observations=observations,
+            alpha=10,
+            seed=rng,
+        )
+        X = np.copy(X_prior)
+        for iteration in range(smoother.num_assimilations()):
+            X = smoother.assimilate(X, g(X))
+
+        X_ans = np.array(
+            [
+                [0.19021822, -0.80602453, 0.23266013, -0.03234797, -0.34627429],
+                [-0.47379395, 0.53463582, -0.08714118, -0.36288531, -0.01436311],
+                [0.0158433, 1.0190748, 1.11211383, 0.53817855, 1.00879112],
+                [-0.87604819, 0.50820663, 0.07857829, 0.45257449, -0.01551921],
+            ]
+        )
+
+        assert np.allclose(X, X_ans)
+
     def test_row_by_row_assimilation(self):
         inversion = "exact"
 
@@ -492,6 +548,6 @@ if __name__ == "__main__":
         args=[
             __file__,
             "-v",
-            "-k test_row_by_row_assimilation",
+            "-k TestESMDAAPI",
         ]
     )

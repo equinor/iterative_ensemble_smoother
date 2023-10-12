@@ -218,11 +218,11 @@ def inversion_exact_cholesky(
         return (Y.T @ K) / (num_ensemble - 1)  # type: ignore
 
     # Form C_MD = center(X) @ center(Y).T / (num_ensemble - 1)
-    X = X - np.mean(X, axis=1, keepdims=True)
+    # X = X - np.mean(X, axis=1, keepdims=True)
     Y = Y - np.mean(Y, axis=1, keepdims=True)
     _, num_ensemble = X.shape
 
-    return np.linalg.multi_dot([X / (num_ensemble - 1), Y.T, K])  # type: ignore
+    return np.linalg.multi_dot([X, Y.T, K / (num_ensemble - 1)])  # type: ignore
 
 
 def inversion_exact_lstsq(
@@ -439,7 +439,10 @@ def inversion_subspace(
     N_n, N_e = Y.shape
 
     # Subtract the mean of every observation, see Eqn (67)
-    D_delta = Y - np.mean(Y, axis=1, keepdims=True)  # Subtract average
+    D_minus_Y = D - Y
+    D_delta = Y
+    D_delta -= np.mean(D_delta, axis=1, keepdims=True)  # Subtract average
+    # D_delta = Y - np.mean(Y, axis=1, keepdims=True)  # Subtract average
 
     # Eqn (68)
     # TODO: Approximately 50% of the time in the function is spent here
@@ -453,6 +456,7 @@ def inversion_subspace(
 
     # Eqn (70). First compute the symmetric term, then form X
     U_r_w_inv = U_r / w_r
+    # U_r_w_inv /= w_r
     if C_D.ndim == 1:
         X1 = (N_e - 1) * np.linalg.multi_dot([U_r_w_inv.T * C_D * alpha, U_r_w_inv])
     else:
@@ -475,9 +479,9 @@ def inversion_subspace(
     term = U_r_w_inv @ Z
 
     # Compute C_MD = center(X) @ center(Y).T / (num_ensemble - 1)
-    X_shift = X - np.mean(X, axis=1, keepdims=True)
+    # X_shift = X - np.mean(X, axis=1, keepdims=True)
     return np.linalg.multi_dot(  # type: ignore
-        [X_shift, D_delta.T, (term / (1 + T)), term.T, (D - Y)]
+        [X, D_delta.T, (term / (1 + T)), term.T, D_minus_Y]
     )
 
 

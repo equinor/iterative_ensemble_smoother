@@ -22,7 +22,7 @@ https://helper.ipam.ucla.edu/publications/oilws3/oilws3_14147.pdf
 
 """
 import numbers
-from typing import Optional, Tuple, Union
+from typing import Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
@@ -156,7 +156,6 @@ class ESMDA:
         self,
         X: npt.NDArray[np.double],
         Y: npt.NDArray[np.double],
-        ensemble_mask: Optional[npt.NDArray[np.bool_]] = None,
         overwrite: bool = False,
         truncation: float = 1.0,
     ) -> npt.NDArray[np.double]:
@@ -195,9 +194,6 @@ class ESMDA:
         assert (
             num_ensemble == num_emsemble2
         ), "Number of ensemble members in X and Y must match"
-        assert (ensemble_mask is None) or (
-            ensemble_mask.ndim == 1 and len(ensemble_mask) == num_ensemble
-        )
         if not np.issubdtype(X.dtype, np.floating):
             raise TypeError("Argument `X` must be contain floats")
         if not np.issubdtype(Y.dtype, np.floating):
@@ -209,18 +205,8 @@ class ESMDA:
         if not overwrite:
             X, Y = np.copy(X), np.copy(Y)
 
-        # If no ensemble mask was given, we use the entire ensemble
-        if ensemble_mask is None:
-            ensemble_mask = np.ones(num_ensemble, dtype=bool)
-
-        # No ensemble members means no update
-        if ensemble_mask.sum() == 0:
-            return X
-
         # Line 2 (b) in the description of ES-MDA in the 2013 Emerick paper
-        size = (num_outputs, ensemble_mask.sum())
-        D = self.get_D(size=size, alpha=self.alpha[self.iteration])
-        assert D.shape == (num_outputs, ensemble_mask.sum())
+        D = self.get_D(size=Y.shape, alpha=self.alpha[self.iteration])
 
         # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
         # Choose inversion method, e.g. 'exact'. The inversion method computes
@@ -228,13 +214,18 @@ class ESMDA:
         inversion_func = self._inversion_methods[self.inversion]
 
         # Update and return
-        X[:, ensemble_mask] += inversion_func(  # type: ignore
-            alpha=self.alpha[self.iteration],
-            C_D=self.C_D,
-            D=D,
-            Y=Y[:, ensemble_mask],
-            X=X[:, ensemble_mask],
-            truncation=truncation,
+        X_parameter_mean = np.mean(X, axis=1, keepdims=True)
+        X -= X_parameter_mean
+        X += (
+            inversion_func(  # type: ignore
+                alpha=self.alpha[self.iteration],
+                C_D=self.C_D,
+                D=D,
+                Y=Y,
+                X=X,
+                truncation=truncation,
+            )
+            + X_parameter_mean
         )
 
         self.iteration += 1
