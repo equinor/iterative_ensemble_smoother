@@ -42,12 +42,18 @@ class ESMDA:
 
     Parameters
     ----------
-    covariance : np.ndarray
-        Covariance matrix of outputs of shape (num_outputs, num_outputs).
-        If a 1D array is passed, it represents a diagonal covariance matrix.
+    covariance : npt.NDArray[np.double]
+        Either a 1D array of diagonal covariances, or a 2D covariance matrix.
+        The shape is either (num_observations,) or (num_observations, num_observations).
+        This is C_D in Emerick (2013), and represents observation or measurement
+        errors. We observe d from the real world, y from the model g(x), and
+        assume that d = y + e, where the error e is multivariate normal with
+        covariance given by `covariance`.
     observations : np.ndarray
-        1D array of shape (num_inputs,) representing real-world observations.
+        1D array of shape (num_observations,) representing real-world observations.
+        This is d_obs in Emerick (2013).
     alpha : int or 1D np.ndarray, optional
+        Multiplicative factor for the covariance.
         If an integer `alpha` is given, an array with length `alpha` and
         elements `alpha` is constructed. If an 1D array is given, it is
         normalized so sum_i 1/alpha_i = 1 and used. The default is 5, which
@@ -58,6 +64,7 @@ class ESMDA:
         The default is None.
     inversion : str, optional
         Which inversion method to use. The default is "exact".
+        See the dictionary ESMDA._inversion_methods for more information.
 
     Examples
     --------
@@ -164,14 +171,16 @@ class ESMDA:
     ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble X_posterior.
 
+        num_parameters, ensemble_size
+
         Parameters
         ----------
         X : np.ndarray
-            2D array of shape (num_inputs, num_ensemble_members).
+            2D array of shape (num_parameters, ensemble_size).
         Y : np.ndarray
-            2D array of shape (num_ouputs, num_ensemble_members).
+            2D array of shape (num_parameters, ensemble_size).
         ensemble_mask : np.ndarray
-            1D boolean array of length `num_ensemble_members`, describing which
+            1D boolean array of length `ensemble_size`, describing which
             ensemble members are active. Inactive realizations are ignored.
             Defaults to all active.
         overwrite : bool
