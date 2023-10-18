@@ -42,12 +42,18 @@ class ESMDA:
 
     Parameters
     ----------
-    C_D : np.ndarray
-        Covariance matrix of outputs of shape (num_outputs, num_outputs).
-        If a 1D array is passed, it represents a diagonal covariance matrix.
+    covariance : npt.NDArray[np.double]
+        Either a 1D array of diagonal covariances, or a 2D covariance matrix.
+        The shape is either (num_observations,) or (num_observations, num_observations).
+        This is C_D in Emerick (2013), and represents observation or measurement
+        errors. We observe d from the real world, y from the model g(x), and
+        assume that d = y + e, where the error e is multivariate normal with
+        covariance given by `covariance`.
     observations : np.ndarray
-        1D array of shape (num_inputs,) representing real-world observations.
+        1D array of shape (num_observations,) representing real-world observations.
+        This is d_obs in Emerick (2013).
     alpha : int or 1D np.ndarray, optional
+        Multiplicative factor for the covariance.
         If an integer `alpha` is given, an array with length `alpha` and
         elements `alpha` is constructed. If an 1D array is given, it is
         normalized so sum_i 1/alpha_i = 1 and used. The default is 5, which
@@ -58,12 +64,13 @@ class ESMDA:
         The default is None.
     inversion : str, optional
         Which inversion method to use. The default is "exact".
+        See the dictionary ESMDA._inversion_methods for more information.
 
     Examples
     --------
-    >>> C_D = np.diag([1, 1, 1])
+    >>> covariance = np.diag([1, 1, 1])
     >>> observations = np.array([1, 2, 3])
-    >>> esmda = ESMDA(C_D, observations)
+    >>> esmda = ESMDA(covariance, observations)
 
     """
 
@@ -76,24 +83,26 @@ class ESMDA:
 
     def __init__(
         self,
-        C_D: npt.NDArray[np.double],
+        covariance: npt.NDArray[np.double],
         observations: npt.NDArray[np.double],
         alpha: Union[int, npt.NDArray[np.double]] = 5,
         seed: Union[np.random._generator.Generator, int, None] = None,
         inversion: str = "exact",
     ) -> None:
         # Validate inputs
-        if not (isinstance(C_D, np.ndarray) and C_D.ndim in (1, 2)):
-            raise TypeError("Argument `C_D` must be a NumPy array of dimension 1 or 2.")
+        if not (isinstance(covariance, np.ndarray) and covariance.ndim in (1, 2)):
+            raise TypeError(
+                "Argument `covariance` must be a NumPy array of dimension 1 or 2."
+            )
 
-        if C_D.ndim == 2 and C_D.shape[0] != C_D.shape[1]:
-            raise ValueError("Argument `C_D` must be square if it's 2D.")
+        if covariance.ndim == 2 and covariance.shape[0] != covariance.shape[1]:
+            raise ValueError("Argument `covariance` must be square if it's 2D.")
 
         if not (isinstance(observations, np.ndarray) and observations.ndim == 1):
             raise TypeError("Argument `observations` must be a 1D NumPy array.")
 
-        if not observations.shape[0] == C_D.shape[0]:
-            raise ValueError("Shapes of `observations` and `C_D` must match.")
+        if not observations.shape[0] == covariance.shape[0]:
+            raise ValueError("Shapes of `observations` and `covariance` must match.")
 
         if not (
             (isinstance(alpha, np.ndarray) and alpha.ndim == 1)
@@ -139,14 +148,14 @@ class ESMDA:
         # If it's a full matrix, we gain speedup by only computing cholesky once
         # If it's a diagonal, we gain speedup by never having to compute cholesky
 
-        if isinstance(C_D, np.ndarray) and C_D.ndim == 2:
-            self.C_D_L = sp.linalg.cholesky(C_D, lower=False)
-        elif isinstance(C_D, np.ndarray) and C_D.ndim == 1:
-            self.C_D_L = np.sqrt(C_D)
+        if isinstance(covariance, np.ndarray) and covariance.ndim == 2:
+            self.C_D_L = sp.linalg.cholesky(covariance, lower=False)
+        elif isinstance(covariance, np.ndarray) and covariance.ndim == 1:
+            self.C_D_L = np.sqrt(covariance)
         else:
-            raise TypeError("Argument `C_D` must be 1D or 2D array")
+            raise TypeError("Argument `covariance` must be 1D or 2D array")
 
-        self.C_D = C_D
+        self.C_D = covariance
         assert isinstance(self.C_D, np.ndarray) and self.C_D.ndim in (1, 2)
 
     def num_assimilations(self) -> int:
@@ -162,14 +171,16 @@ class ESMDA:
     ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble X_posterior.
 
+        num_parameters, ensemble_size
+
         Parameters
         ----------
         X : np.ndarray
-            2D array of shape (num_inputs, num_ensemble_members).
+            2D array of shape (num_parameters, ensemble_size).
         Y : np.ndarray
-            2D array of shape (num_ouputs, num_ensemble_members).
+            2D array of shape (num_parameters, ensemble_size).
         ensemble_mask : np.ndarray
-            1D boolean array of length `num_ensemble_members`, describing which
+            1D boolean array of length `ensemble_size`, describing which
             ensemble members are active. Inactive realizations are ignored.
             Defaults to all active.
         overwrite : bool
