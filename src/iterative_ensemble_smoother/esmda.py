@@ -165,6 +165,7 @@ class ESMDA:
         self,
         X: npt.NDArray[np.double],
         Y: npt.NDArray[np.double],
+        *,
         ensemble_mask: Optional[npt.NDArray[np.bool_]] = None,
         overwrite: bool = False,
         truncation: float = 1.0,
@@ -256,6 +257,50 @@ class ESMDA:
 
         self.iteration += 1
         return X
+
+    def get_K(
+        self,
+        Y: npt.NDArray[np.double],
+        *,
+        alpha: float,
+        truncation: float = 1.0,
+    ) -> npt.NDArray[np.double]:
+        """Return a matrix K such that X_posterior = X_prior + center(X_prior) @ K.
+
+        The purpose of this method is to facilitate row-by-row, or batch-by-batch,
+        updates of X. This is useful if X is too large to fit in memory.
+
+
+        Parameters
+        ----------
+        Y : npt.NDArray[np.double]
+            DESCRIPTION.
+        * : TYPE
+            DESCRIPTION.
+        alpha : float
+            DESCRIPTION.
+        truncation : float, optional
+            DESCRIPTION. The default is 1.0.
+         : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        """
+
+        D = self.get_D(size=Y.shape, alpha=alpha)
+        inversion_func = self._inversion_methods[self.inversion]
+        return inversion_func(
+            alpha=alpha,
+            C_D=self.C_D,
+            D=D,
+            Y=Y,
+            X=None,
+            truncation=truncation,
+            return_K=True,  # Ensures that we don't need X
+        )
 
     def get_D(self, *, size: Tuple[int, int], alpha: float) -> npt.NDArray[np.double]:
         """Create a matrix D with perturbed observations.

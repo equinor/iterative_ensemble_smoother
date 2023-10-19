@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 import numpy.typing as npt
 import scipy as sp  # type: ignore
@@ -178,8 +180,9 @@ def inversion_exact_cholesky(
     C_D: npt.NDArray[np.double],
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
-    X: npt.NDArray[np.double],
+    X: Optional[npt.NDArray[np.double]],
     truncation: float = 1.0,
+    return_K: bool = False,
 ) -> npt.NDArray[np.double]:
     """Computes an exact inversion using `sp.linalg.solve`, which uses a
     Cholesky factorization in the case of symmetric, positive definite matrices.
@@ -211,12 +214,16 @@ def inversion_exact_cholesky(
         C_DD.flat[:: C_DD.shape[1] + 1] += alpha * C_D
         K = sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
 
-    # Form C_MD = center(X) @ center(Y).T / (num_ensemble - 1)
-    X = X - np.mean(X, axis=1, keepdims=True)
+    # Center matrix
     Y = Y - np.mean(Y, axis=1, keepdims=True)
-    _, num_ensemble = X.shape
+    _, num_ensemble = Y.shape
 
-    return np.linalg.multi_dot([X / (num_ensemble - 1), Y.T, K])  # type: ignore
+    # Don't left-multiply the X
+    if return_K:
+        return (Y.T @ K) / (num_ensemble - 1)  # type: ignore
+
+    X = X - np.mean(X, axis=1, keepdims=True)
+    return np.linalg.multi_dot([X, Y.T / (num_ensemble - 1), K])  # type: ignore
 
 
 def inversion_exact_lstsq(
@@ -396,6 +403,7 @@ def inversion_subspace(
     Y: npt.NDArray[np.double],
     X: npt.NDArray[np.double],
     truncation: float = 1.0,
+    return_K: bool = False,
 ) -> npt.NDArray[np.double]:
     """See Appendix A.2 in Emerick et al (2012)
 
@@ -427,6 +435,9 @@ def inversion_subspace(
            [0., 0., 0.]])
 
     """
+    print(
+        {"alpha": alpha, "C_D": C_D, "D": D, "Y": Y, "X": X, "truncation": truncation}
+    )
 
     # N_n is the number of observations
     # N_e is the number of members in the ensemble
@@ -467,6 +478,11 @@ def inversion_subspace(
     #     = (N_e - 1) (term) * (1 / (1 + T)) (term)^T
     # and finally we multiiply by (D - Y)
     term = U_r_w_inv @ Z
+
+    if return_K:
+        return np.linalg.multi_dot(  # type: ignore
+            [D_delta.T, (term / (1 + T)), term.T, (D - Y)]
+        )
 
     # Compute C_MD = center(X) @ center(Y).T / (num_ensemble - 1)
     X_shift = X - np.mean(X, axis=1, keepdims=True)

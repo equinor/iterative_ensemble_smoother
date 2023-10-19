@@ -37,6 +37,40 @@ TRUNCATION_INVERSIONS = [
 
 
 class TestEsmdaInversion:
+    # Functions that take the parameter return_K
+    @pytest.mark.parametrize(
+        "function",
+        [inversion_exact_cholesky, inversion_subspace],
+    )
+    @pytest.mark.parametrize("ensemble_members", [5, 10, 15])
+    @pytest.mark.parametrize("num_outputs", [5, 10, 15])
+    @pytest.mark.parametrize("num_inputs", [5, 10, 15])
+    def test_that_returning_K_is_equivalent_to_full_computation(
+        self, function, ensemble_members, num_outputs, num_inputs
+    ):
+        # ensemble_members, num_outputs, num_inputs = 5, 10, 15
+
+        np.random.seed(ensemble_members * 100 + num_outputs * 10 + num_inputs)
+
+        # Create positive symmetric definite covariance C_D
+        E = np.random.randn(num_outputs, num_outputs)
+        C_D = E.T @ E
+
+        # Set alpha to something other than 1 to test that it works
+        alpha = 3
+
+        # Create observations
+        D = np.random.randn(num_outputs, ensemble_members)
+        Y = np.random.randn(num_outputs, ensemble_members)
+        X = np.random.randn(num_inputs, ensemble_members)
+
+        # Test both with and without X / return_K
+        ans = function(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X)
+        K = function(alpha=alpha, C_D=C_D, D=D, Y=Y, X=None, return_K=True)
+
+        X_centered = X - np.mean(X, axis=1, keepdims=True)
+        assert np.allclose(X + ans, X + X_centered @ K)
+
     @pytest.mark.parametrize("length", list(range(1, 101, 5)))
     def test_that_the_sum_of_normalize_alpha_is_one(self, length):
         # Generate random array
@@ -350,6 +384,6 @@ if __name__ == "__main__":
         args=[
             __file__,
             "-v",
-            "-k test_that_exact_inverions_are_equal_with_few_ensemble_members",
+            "-k test_that_returning_K_is_equivalent_to_full_computation",
         ]
     )
