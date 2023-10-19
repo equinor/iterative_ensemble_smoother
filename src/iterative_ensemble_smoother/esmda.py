@@ -171,17 +171,20 @@ class ESMDA:
     ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble X_posterior.
 
-        num_parameters, ensemble_size
-
         Parameters
         ----------
         X : np.ndarray
-            2D array of shape (num_parameters, ensemble_size).
+            A 2D array of shape (num_parameters, ensemble_size). Each row
+            corresponds to a parameter in the model, and each column corresponds
+            to an ensemble member (realization).
         Y : np.ndarray
-            2D array of shape (num_parameters, ensemble_size).
+            2D array of shape (num_parameters, ensemble_size), containing
+            responses when evaluating the model at X. In other words, Y = g(X),
+            where g is the forward model.
         overwrite : bool
-            If True, then arguments X and Y may be overwritten.
-            If False, then the method will not permute inputs in any way.
+            If True, then arguments X and Y may be overwritten and mutated.
+            If False, then the method will not mutate inputs in any way.
+            Setting this to True might save memory.
         truncation : float
             How large a fraction of the singular values to keep in the inversion
             routine. Must be a float in the range (0, 1]. A lower number means
@@ -254,24 +257,26 @@ class ESMDA:
         The purpose of this method is to facilitate row-by-row, or batch-by-batch,
         updates of X. This is useful if X is too large to fit in memory.
 
-
         Parameters
         ----------
-        Y : npt.NDArray[np.double]
-            DESCRIPTION.
-        * : TYPE
-            DESCRIPTION.
+        Y : np.ndarray
+            2D array of shape (num_parameters, ensemble_size), containing
+            responses when evaluating the model at X. In other words, Y = g(X),
+            where g is the forward model.
         alpha : float
-            DESCRIPTION.
-        truncation : float, optional
-            DESCRIPTION. The default is 1.0.
-         : TYPE
-            DESCRIPTION.
+            The covariance inflation factor. The sequence of alphas should
+            obey the equation sum_i (1/alpha_i) = 1. However, this is NOT enforced
+            in this method call. The user/caller is responsible for this.
+        truncation : float
+            How large a fraction of the singular values to keep in the inversion
+            routine. Must be a float in the range (0, 1]. A lower number means
+            a more approximate answer and a slightly faster computation.
 
         Returns
         -------
-        None.
-
+        K : np.ndarray
+            A matrix K such that X_posterior = X_prior + X_prior @ K.
+            It has shape (num_ensemble_members, num_ensemble_members).
         """
 
         D = self.get_D(size=Y.shape, alpha=alpha)
@@ -292,13 +297,14 @@ class ESMDA:
         In the Emerick (2013) paper, the matrix D is defined in section 6.
         See section 2(b) of the ES-MDA algorithm in the paper.
 
-
         Parameters
         ----------
         size : Tuple[int, int]
             The size, a tuple with (num_observations, ensemble_size).
         alpha : float
-            The inflation factor for the covariance.
+            The covariance inflation factor. The sequence of alphas should
+            obey the equation sum_i (1/alpha_i) = 1. However, this is NOT enforced
+            in this method call. The user/caller is responsible for this.
 
         Returns
         -------

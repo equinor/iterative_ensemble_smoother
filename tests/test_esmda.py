@@ -405,15 +405,12 @@ def test_row_by_row_assimilation(inversion):
         seed=1,
     )
     X = np.copy(X_prior)
-    print(X_prior)
     for iteration in range(smoother.num_assimilations()):
         X = smoother.assimilate(X, g(X))
-        print(X)
 
     X_posterior_highlevel_API = np.copy(X)
 
     # =========== Use the low-level level API ===========
-    print("# =========== Use the low-level level API ===========")
     smoother = ESMDA(
         covariance=covariance,
         observations=observations,
@@ -422,16 +419,15 @@ def test_row_by_row_assimilation(inversion):
         seed=1,
     )
     X = np.copy(X_prior)
-    print(X_prior)
     for alpha_i in smoother.alpha:
         K = smoother.get_K(Y=g(X), alpha=alpha_i)
 
-        # TODO: Why is this equivalent?
+        # TODO: Why is this equivalent? ...
         X_centered = X - np.mean(X, axis=1, keepdims=True)
         assert np.allclose(X_centered @ K, X @ K)
 
+        # Here we could loop over each row in X and multiply by K
         X += X_centered @ K
-        print(X)
 
     X_posterior_lowlevel_API = np.copy(X)
 
