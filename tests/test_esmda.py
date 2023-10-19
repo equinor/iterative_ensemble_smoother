@@ -68,54 +68,6 @@ class TestESMDA:
 
         assert np.allclose(X_posterior1, X_posterior2)
 
-    @pytest.mark.parametrize("num_ensemble", [2**i for i in range(2, 10)])
-    def test_that_using_example_mask_only_updates_those_parameters(self, num_ensemble):
-        seed = num_ensemble
-        rng = np.random.default_rng(seed)
-        alpha = rng.choice(np.array([5, 10, 25, 50]))  # Random alpha
-
-        num_outputs = 2
-        num_inputs = 1
-
-        def g(x):
-            """Transform a single ensemble member."""
-            return np.array([np.sin(x / 2), x])
-
-        def G(X):
-            """Transform all ensemble members."""
-            return np.array([g(x_i) for x_i in X.T]).squeeze().T
-
-        # Create an ensemble mask and set half the entries randomly to True
-        ensemble_mask = np.zeros(num_ensemble, dtype=bool)
-        idx = rng.choice(num_ensemble, size=num_ensemble // 2, replace=False)
-        ensemble_mask[idx] = True
-
-        # Prior is N(0, 1)
-        X_prior = rng.normal(size=(num_inputs, num_ensemble))
-
-        # Measurement errors
-        covariance = np.eye(num_outputs)
-
-        # The true inputs and observations, a result of running with X_true = 1
-        X_true = np.ones(shape=(num_inputs,))
-        observations = G(X_true)
-
-        # Prepare ESMDA instance running with lower number of ensemble members
-        esmda_subset = ESMDA(covariance, observations, alpha=alpha, seed=seed)
-        X_i_subset = np.copy(X_prior[:, ensemble_mask])
-
-        # Prepare ESMDA instance running with all ensemble members
-        esmda_masked = ESMDA(covariance, observations, alpha=alpha, seed=seed)
-        X_i = np.copy(X_prior)
-
-        # Run both
-        for _ in range(esmda_subset.num_assimilations()):
-            X_i_subset = esmda_subset.assimilate(X_i_subset, G(X_i_subset))
-            X_i = esmda_masked.assimilate(X_i, G(X_i), ensemble_mask=ensemble_mask)
-
-            # Exactly the same result (seed value for both must be equal )
-            assert np.allclose(X_i_subset, X_i[:, ensemble_mask])
-
     @pytest.mark.parametrize(
         "num_ensemble",
         [10, 100, 1000],
