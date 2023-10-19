@@ -66,9 +66,15 @@ def empirical_cross_covariance(
     assert X.shape[1] == Y.shape[1], "Ensemble size must be equal"
 
     # https://en.wikipedia.org/wiki/Estimation_of_covariance_matrices
-    # Subtract means
-    X = X - np.mean(X, axis=1, keepdims=True)
-    Y = Y - np.mean(Y, axis=1, keepdims=True)
+    # Subtract mean. Even though the equation says E[(X - E[X])(Y - E[Y])^T],
+    # we actually only need to subtract the mean value from one matrix, since
+    # (X - E[X])(Y - E[Y])^T = E[(X - E[X])Y] - E[(X - E[X])E[Y]^T]
+    # = E[(X - E[X])Y] - E[(0)E[Y]^T] = E[(X - E[X])Y]
+    # We choose to subtract from the matrix with the smaller number of rows
+    if X.shape[0] > Y.shape[0]:
+        Y = Y - np.mean(Y, axis=1, keepdims=True)
+    else:
+        X = X - np.mean(X, axis=1, keepdims=True)
 
     # Compute outer product and divide
     cov = X @ Y.T / (X.shape[1] - 1)
@@ -222,7 +228,6 @@ def inversion_exact_cholesky(
     if return_K:
         return (Y.T @ K) / (num_ensemble - 1)  # type: ignore
 
-    X = X - np.mean(X, axis=1, keepdims=True)
     return np.linalg.multi_dot([X, Y.T / (num_ensemble - 1), K])  # type: ignore
 
 
@@ -254,10 +259,9 @@ def inversion_exact_lstsq(
         lhs, D - Y, overwrite_a=True, overwrite_b=True, lapack_driver="gelsy"
     )
 
-    # Compute C_MD := center(X) @ center(Y).T / (X.shape[1] - 1)
-    X_shift = (X - np.mean(X, axis=1, keepdims=True)) / (X.shape[1] - 1)
-    Y_shift = Y - np.mean(Y, axis=1, keepdims=True)
-    return np.linalg.multi_dot([X_shift, Y_shift.T, ans])  # type: ignore
+    # Compute C_MD := X @ center(Y).T / (Y.shape[1] - 1)
+    Y_shift = (Y - np.mean(Y, axis=1, keepdims=True)) / (Y.shape[1] - 1)
+    return np.linalg.multi_dot([X, Y_shift.T, ans])  # type: ignore
 
 
 def inversion_exact_rescaled(
@@ -318,11 +322,10 @@ def inversion_exact_rescaled(
     term = C_D_L_inv.T @ U_r if C_D.ndim == 2 else (C_D_L_inv * U_r.T).T
 
     # Compute the first factors, which make up C_MD
-    X_shift = (X - np.mean(X, axis=1, keepdims=True)) / (N_e - 1)
-    Y_shift = Y - np.mean(Y, axis=1, keepdims=True)
+    Y_shift = (Y - np.mean(Y, axis=1, keepdims=True)) / (N_e - 1)
 
     return np.linalg.multi_dot(  # type: ignore
-        [X_shift, Y_shift.T, term / s_r, term.T, (D - Y)]
+        [X, Y_shift.T, term / s_r, term.T, (D - Y)]
     )
 
 
@@ -359,7 +362,7 @@ def inversion_exact_subspace_woodbury(
     D_delta /= np.sqrt(N_e - 1)
 
     # Compute the first factors, which make up C_MD
-    X_shift = (X - np.mean(X, axis=1, keepdims=True)) / np.sqrt(N_e - 1)
+    # X_shift = (X - np.mean(X, axis=1, keepdims=True)) / np.sqrt(N_e - 1)
 
     # A full covariance matrix was given
     if C_D.ndim == 2:
@@ -377,7 +380,7 @@ def inversion_exact_subspace_woodbury(
         # Compute the woodbury inversion, then return
         inverted = C_D_inv - np.linalg.multi_dot([term, sp.linalg.inv(center), term.T])
         return np.linalg.multi_dot(  # type: ignore
-            [X_shift, D_delta.T, inverted, (D - Y)]
+            [X, D_delta.T / np.sqrt(N_e - 1), inverted, (D - Y)]
         )
 
     # A diagonal covariance matrix was given as a 1D array.
@@ -391,7 +394,7 @@ def inversion_exact_subspace_woodbury(
             [UT_D.T, sp.linalg.inv(center), UT_D]
         )
         return np.linalg.multi_dot(  # type: ignore
-            [X_shift, D_delta.T, inverted, (D - Y)]
+            [X, D_delta.T / np.sqrt(N_e - 1), inverted, (D - Y)]
         )
 
 
@@ -482,9 +485,8 @@ def inversion_subspace(
         )
 
     # Compute C_MD = center(X) @ center(Y).T / (num_ensemble - 1)
-    X_shift = X - np.mean(X, axis=1, keepdims=True)
     return np.linalg.multi_dot(  # type: ignore
-        [X_shift, D_delta.T, (term / (1 + T)), term.T, (D - Y)]
+        [X, D_delta.T, (term / (1 + T)), term.T, (D - Y)]
     )
 
 
@@ -543,9 +545,8 @@ def inversion_rescaled_subspace(
     diag = 1 / (1 + T_r)
 
     # Compute C_MD
-    X_shift = X - np.mean(X, axis=1, keepdims=True)
     return np.linalg.multi_dot(  # type: ignore
-        [X_shift, D_delta.T, (term * diag), term.T, (D - Y)]
+        [X, D_delta.T, (term * diag), term.T, (D - Y)]
     )
 
 

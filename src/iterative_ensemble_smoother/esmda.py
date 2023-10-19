@@ -252,7 +252,7 @@ class ESMDA:
         alpha: float,
         truncation: float = 1.0,
     ) -> npt.NDArray[np.double]:
-        """Return a matrix K such that X_posterior = X_prior + center(X_prior) @ K.
+        """Return a matrix K such that X_posterior = X_prior + X_prior @ K.
 
         The purpose of this method is to facilitate row-by-row, or batch-by-batch,
         updates of X. This is useful if X is too large to fit in memory.
@@ -279,8 +279,14 @@ class ESMDA:
             It has shape (num_ensemble_members, num_ensemble_members).
         """
 
-        # Recall the update equation
+        # Recall the update equation:
         # X += C_MD @ (C_DD + alpha * C_D)^(-1)  @ (D - Y)
+        # X += X @ center(Y).T / (N-1) @ (C_DD + alpha * C_D)^(-1) @ (D - Y)
+        # We form K := center(Y).T / (N-1) @ (C_DD + alpha * C_D)^(-1) @ (D - Y),
+        # so that
+        # X_new = X_old + X_old @ K
+        # or
+        # X += X @ K
 
         D = self.perturb_observations(size=Y.shape, alpha=alpha)
         inversion_func = self._inversion_methods[self.inversion]
@@ -289,7 +295,7 @@ class ESMDA:
             C_D=self.C_D,
             D=D,
             Y=Y,
-            X=None,
+            X=None,  # We don't need X to compute the factor K
             truncation=truncation,
             return_K=True,  # Ensures that we don't need X
         )
