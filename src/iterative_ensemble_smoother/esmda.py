@@ -22,7 +22,7 @@ https://helper.ipam.ucla.edu/publications/oilws3/oilws3_14147.pdf
 
 """
 import numbers
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
@@ -42,7 +42,7 @@ class ESMDA:
 
     Parameters
     ----------
-    covariance : npt.NDArray[np.double]
+    covariance : np.ndarray
         Either a 1D array of diagonal covariances, or a 2D covariance matrix.
         The shape is either (num_observations,) or (num_observations, num_observations).
         This is C_D in Emerick (2013), and represents observation or measurement
@@ -236,14 +236,7 @@ class ESMDA:
         # a zero cented normal means that y := L @ z, where z ~ norm(0, 1)
         # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
         size = (num_outputs, ensemble_mask.sum())
-        if self.C_D.ndim == 2:
-            D = self.observations.reshape(-1, 1) + np.sqrt(
-                self.alpha[self.iteration]
-            ) * self.C_D_L @ self.rng.normal(size=size)
-        else:
-            D = self.observations.reshape(-1, 1) + np.sqrt(
-                self.alpha[self.iteration]
-            ) * self.rng.normal(size=size) * self.C_D_L.reshape(-1, 1)
+        D = self.get_D(size=size, alpha=self.alpha[self.iteration])
         assert D.shape == (num_outputs, ensemble_mask.sum())
 
         # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
@@ -263,6 +256,47 @@ class ESMDA:
 
         self.iteration += 1
         return X
+
+    def get_D(self, *, size: Tuple[int, int], alpha: float) -> npt.NDArray[np.double]:
+        """Create a matrix D with perturbed observations.
+
+        In the Emerick (2013) paper, the matrix D is defined in section 6.
+        See section 2(b) of the ES-MDA algorithm in the paper.
+
+
+        Parameters
+        ----------
+        size : Tuple[int, int]
+            The size, a tuple with (num_observations, ensemble_size).
+        alpha : float
+            The inflation factor for the covariance.
+
+        Returns
+        -------
+        D : np.ndarray
+            Each column consists of perturbed observations, scaled by alpha.
+
+        """
+        # Draw samples from zero-centered multivariate normal with cov=alpha * C_D,
+        # and add them to the observations. Notice that
+        # if C_D = L @ L.T by the cholesky factorization, then drawing y from
+        # a zero cented normal means that y := L @ z, where z ~ norm(0, 1).
+        # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha).
+
+        D: npt.NDArray[np.double]
+
+        # Two cases, depending on whether C_D was given as 1D or 2D array
+        if self.C_D.ndim == 2:
+            D = self.observations.reshape(-1, 1) + np.sqrt(
+                self.alpha[self.iteration]
+            ) * self.C_D_L @ self.rng.normal(size=size)
+        else:
+            D = self.observations.reshape(-1, 1) + np.sqrt(
+                self.alpha[self.iteration]
+            ) * self.rng.normal(size=size) * self.C_D_L.reshape(-1, 1)
+        assert D.shape == size
+
+        return D
 
 
 if __name__ == "__main__":
