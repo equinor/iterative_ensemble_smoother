@@ -224,7 +224,7 @@ class ESMDA:
         # a zero cented normal means that y := L @ z, where z ~ norm(0, 1)
         # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
         size = (num_outputs, num_ensemble)
-        D = self.get_D(size=size, alpha=self.alpha[self.iteration])
+        D = self.perturb_observations(size=size, alpha=self.alpha[self.iteration])
         assert D.shape == (num_outputs, num_ensemble)
 
         # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
@@ -245,7 +245,7 @@ class ESMDA:
         self.iteration += 1
         return X
 
-    def get_K(
+    def compute_transition_matrix(
         self,
         Y: npt.NDArray[np.double],
         *,
@@ -279,7 +279,10 @@ class ESMDA:
             It has shape (num_ensemble_members, num_ensemble_members).
         """
 
-        D = self.get_D(size=Y.shape, alpha=alpha)
+        # Recall the update equation
+        # X += C_MD @ (C_DD + alpha * C_D)^(-1)  @ (D - Y)
+
+        D = self.perturb_observations(size=Y.shape, alpha=alpha)
         inversion_func = self._inversion_methods[self.inversion]
         return inversion_func(
             alpha=alpha,
@@ -291,7 +294,9 @@ class ESMDA:
             return_K=True,  # Ensures that we don't need X
         )
 
-    def get_D(self, *, size: Tuple[int, int], alpha: float) -> npt.NDArray[np.double]:
+    def perturb_observations(
+        self, *, size: Tuple[int, int], alpha: float
+    ) -> npt.NDArray[np.double]:
         """Create a matrix D with perturbed observations.
 
         In the Emerick (2013) paper, the matrix D is defined in section 6.

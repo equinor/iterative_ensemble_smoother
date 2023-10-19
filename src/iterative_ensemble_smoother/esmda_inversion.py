@@ -435,9 +435,6 @@ def inversion_subspace(
            [0., 0., 0.]])
 
     """
-    print(
-        {"alpha": alpha, "C_D": C_D, "D": D, "Y": Y, "X": X, "truncation": truncation}
-    )
 
     # N_n is the number of observations
     # N_e is the number of members in the ensemble

@@ -420,7 +420,7 @@ def test_row_by_row_assimilation(inversion):
     )
     X = np.copy(X_prior)
     for alpha_i in smoother.alpha:
-        K = smoother.get_K(Y=g(X), alpha=alpha_i)
+        K = smoother.compute_transition_matrix(Y=g(X), alpha=alpha_i)
 
         # TODO: Why is this equivalent? ...
         X_centered = X - np.mean(X, axis=1, keepdims=True)
