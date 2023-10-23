@@ -39,19 +39,22 @@ text = "GPL-3.0"
 [project.optional-dependencies]
 doc = [
     "sphinx",
-    "sphinx-rtd-theme",
-    "nbsphinx",
+    "pydata_sphinx_theme",
+    "jupyter_sphinx",
     "sphinxcontrib.bibtex",
     "matplotlib",
+    "pygments",
     "jupytext",
     "pandas",
-    "scipy",
     "p_tqdm",
     "ipykernel",
     "ipywidgets",
     "numpydoc",
+    "scipy",
+    "jinja2",
+    "m2r2",
+    "myst_nb"
 ]
-
 dev = [
     "pytest",
     "pytest-snapshot",

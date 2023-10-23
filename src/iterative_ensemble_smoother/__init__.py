@@ -1,7 +1,31 @@
-""" Implementation of the iterative ensemble smoother history matching algorithms
-from Evensen et al. "Efficient Implementation of an Iterative Ensemble Smoother
-for Data Assimilation and Reservoir History Matching"
-https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full
+"""
+Purpose
+=======
+
+**iterative_ensemble_smoother** is an open-source, pure python,
+and object-oriented library that provides
+a user friendly implementation of history matching algorithms
+from :cite:t:`evensen2019efficient`.
+
+The following functionalities are directly provided on module-level.
+
+Classes
+=======
+
+.. autosummary::
+   :toctree: _autosummary
+
+   SIES
+   ESMDA
+
+Functions
+=========
+
+.. autosummary::
+   :toctree: _autosummary
+
+    steplength_exponential
+
 """
 try:
     from ._version import version as __version__

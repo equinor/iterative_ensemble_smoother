@@ -7,3 +7,5 @@ Example Usage
 
    Polynomial
    Oscillator
+
+* :ref:`genindex`

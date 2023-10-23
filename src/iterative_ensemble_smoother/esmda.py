@@ -21,6 +21,7 @@ https://gitlab.com/antoinecollet5/pyesmda
 https://helper.ipam.ucla.edu/publications/oilws3/oilws3_14147.pdf
 
 """
+
 import numbers
 from typing import Tuple, Union
 
@@ -36,9 +37,10 @@ from iterative_ensemble_smoother.esmda_inversion import (
 
 
 class ESMDA:
-    """Initialize Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
+    """
+    Implement an Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
 
-    The implementation follows the 2013 paper by Emerick et al.
+    The implementation follows :cite:t:`EMERICK2013`.
 
     Parameters
     ----------
@@ -89,6 +91,7 @@ class ESMDA:
         seed: Union[np.random._generator.Generator, int, None] = None,
         inversion: str = "exact",
     ) -> None:
+        """Initialize the instance."""
         # Validate inputs
         if not (isinstance(covariance, np.ndarray) and covariance.ndim in (1, 2)):
             raise TypeError(
