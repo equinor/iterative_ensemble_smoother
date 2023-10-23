@@ -22,7 +22,7 @@ https://helper.ipam.ucla.edu/publications/oilws3/oilws3_14147.pdf
 
 """
 import numbers
-from typing import Optional, Union
+from typing import Union
 
 import numpy as np
 import numpy.typing as npt
@@ -165,7 +165,6 @@ class ESMDA:
         self,
         X: npt.NDArray[np.double],
         Y: npt.NDArray[np.double],
-        ensemble_mask: Optional[npt.NDArray[np.bool_]] = None,
         overwrite: bool = False,
         truncation: float = 1.0,
     ) -> npt.NDArray[np.double]:
@@ -179,10 +178,6 @@ class ESMDA:
             2D array of shape (num_parameters, ensemble_size).
         Y : np.ndarray
             2D array of shape (num_parameters, ensemble_size).
-        ensemble_mask : np.ndarray
-            1D boolean array of length `ensemble_size`, describing which
-            ensemble members are active. Inactive realizations are ignored.
-            Defaults to all active.
         overwrite : bool
             If True, then arguments X and Y may be overwritten.
             If False, then the method will not permute inputs in any way.
@@ -206,9 +201,6 @@ class ESMDA:
         assert (
             num_ensemble == num_emsemble2
         ), "Number of ensemble members in X and Y must match"
-        assert (ensemble_mask is None) or (
-            ensemble_mask.ndim == 1 and len(ensemble_mask) == num_ensemble
-        )
         if not np.issubdtype(X.dtype, np.floating):
             raise TypeError("Argument `X` must be contain floats")
         if not np.issubdtype(Y.dtype, np.floating):
@@ -220,14 +212,6 @@ class ESMDA:
         if not overwrite:
             X, Y = np.copy(X), np.copy(Y)
 
-        # If no ensemble mask was given, we use the entire ensemble
-        if ensemble_mask is None:
-            ensemble_mask = np.ones(num_ensemble, dtype=bool)
-
-        # No ensemble members means no update
-        if ensemble_mask.sum() == 0:
-            return X
-
         # Line 2 (b) in the description of ES-MDA in the 2013 Emerick paper
 
         # Draw samples from zero-centered multivariate normal with cov=alpha * C_D,
@@ -235,7 +219,7 @@ class ESMDA:
         # if C_D = L L.T by the cholesky factorization, then drawing y from
         # a zero cented normal means that y := L @ z, where z ~ norm(0, 1)
         # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
-        size = (num_outputs, ensemble_mask.sum())
+        size = (num_outputs, num_ensemble)
         if self.C_D.ndim == 2:
             D = self.observations.reshape(-1, 1) + np.sqrt(
                 self.alpha[self.iteration]
@@ -244,7 +228,7 @@ class ESMDA:
             D = self.observations.reshape(-1, 1) + np.sqrt(
                 self.alpha[self.iteration]
             ) * self.rng.normal(size=size) * self.C_D_L.reshape(-1, 1)
-        assert D.shape == (num_outputs, ensemble_mask.sum())
+        assert D.shape == (num_outputs, num_ensemble)
 
         # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
         # Choose inversion method, e.g. 'exact'. The inversion method computes
@@ -252,12 +236,12 @@ class ESMDA:
         inversion_func = self._inversion_methods[self.inversion]
 
         # Update and return
-        X[:, ensemble_mask] += inversion_func(
+        X += inversion_func(
             alpha=self.alpha[self.iteration],
             C_D=self.C_D,
             D=D,
-            Y=Y[:, ensemble_mask],
-            X=X[:, ensemble_mask],
+            Y=Y,
+            X=X,
             truncation=truncation,
         )
 
