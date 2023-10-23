@@ -68,7 +68,6 @@ class TestEsmdaInversion:
         ans = function(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X)
         K = function(alpha=alpha, C_D=C_D, D=D, Y=Y, X=None, return_K=True)
 
-        X - np.mean(X, axis=1, keepdims=True)
         assert np.allclose(X + ans, X + X @ K)
 
     @pytest.mark.parametrize("length", list(range(1, 101, 5)))
