@@ -387,6 +387,62 @@ def test_that_float_dtypes_are_preserved(inversion, dtype, diagonal):
     assert X_posterior.dtype == dtype
 
 
+@pytest.mark.parametrize("inversion", ESMDA._inversion_methods.keys())
+def test_row_by_row_assimilation(inversion):
+    # Create problem instance
+    rng = np.random.default_rng(42)
+
+    num_outputs = 4
+    num_inputs = 5
+    num_ensemble = 3
+
+    A = rng.normal(size=(num_outputs, num_inputs))
+
+    def g(X):
+        return A @ X
+
+    # Prior is N(0, 1)
+    X_prior = rng.normal(size=(num_inputs, num_ensemble))
+
+    covariance = np.exp(rng.normal(size=num_outputs))
+    observations = A @ np.linspace(0, 1, num=num_inputs) + rng.normal(
+        size=num_outputs, scale=0.01
+    )
+
+    # =========== Use the high level API ===========
+    smoother = ESMDA(
+        covariance=covariance,
+        observations=observations,
+        alpha=2,
+        inversion=inversion,
+        seed=1,
+    )
+    X = np.copy(X_prior)
+    for iteration in range(smoother.num_assimilations()):
+        X = smoother.assimilate(X, g(X))
+
+    X_posterior_highlevel_API = np.copy(X)
+
+    # =========== Use the low-level level API ===========
+    smoother = ESMDA(
+        covariance=covariance,
+        observations=observations,
+        alpha=2,
+        inversion=inversion,
+        seed=1,
+    )
+    X = np.copy(X_prior)
+    for alpha_i in smoother.alpha:
+        K = smoother.compute_transition_matrix(Y=g(X), alpha=alpha_i)
+
+        # Here we could loop over each row in X and multiply by K
+        X += X @ K
+
+    X_posterior_lowlevel_API = np.copy(X)
+
+    assert np.allclose(X_posterior_highlevel_API, X_posterior_lowlevel_API)
+
+
 if __name__ == "__main__":
     import pytest
 
@@ -394,6 +450,6 @@ if __name__ == "__main__":
         args=[
             __file__,
             "-v",
-            "-k test_that_float_dtypes_are_preserved",
+            "-k test_row_by_row_assimilation",
         ]
     )

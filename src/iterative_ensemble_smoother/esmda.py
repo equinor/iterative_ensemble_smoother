@@ -22,7 +22,7 @@ https://helper.ipam.ucla.edu/publications/oilws3/oilws3_14147.pdf
 
 """
 import numbers
-from typing import Union
+from typing import Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
@@ -42,7 +42,7 @@ class ESMDA:
 
     Parameters
     ----------
-    covariance : npt.NDArray[np.double]
+    covariance : np.ndarray
         Either a 1D array of diagonal covariances, or a 2D covariance matrix.
         The shape is either (num_observations,) or (num_observations, num_observations).
         This is C_D in Emerick (2013), and represents observation or measurement
@@ -165,22 +165,26 @@ class ESMDA:
         self,
         X: npt.NDArray[np.double],
         Y: npt.NDArray[np.double],
+        *,
         overwrite: bool = False,
         truncation: float = 1.0,
     ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble X_posterior.
 
-        num_parameters, ensemble_size
-
         Parameters
         ----------
         X : np.ndarray
-            2D array of shape (num_parameters, ensemble_size).
+            A 2D array of shape (num_parameters, ensemble_size). Each row
+            corresponds to a parameter in the model, and each column corresponds
+            to an ensemble member (realization).
         Y : np.ndarray
-            2D array of shape (num_parameters, ensemble_size).
+            2D array of shape (num_parameters, ensemble_size), containing
+            responses when evaluating the model at X. In other words, Y = g(X),
+            where g is the forward model.
         overwrite : bool
-            If True, then arguments X and Y may be overwritten.
-            If False, then the method will not permute inputs in any way.
+            If True, then arguments X and Y may be overwritten and mutated.
+            If False, then the method will not mutate inputs in any way.
+            Setting this to True might save memory.
         truncation : float
             How large a fraction of the singular values to keep in the inversion
             routine. Must be a float in the range (0, 1]. A lower number means
@@ -220,14 +224,7 @@ class ESMDA:
         # a zero cented normal means that y := L @ z, where z ~ norm(0, 1)
         # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
         size = (num_outputs, num_ensemble)
-        if self.C_D.ndim == 2:
-            D = self.observations.reshape(-1, 1) + np.sqrt(
-                self.alpha[self.iteration]
-            ) * self.C_D_L @ self.rng.normal(size=size)
-        else:
-            D = self.observations.reshape(-1, 1) + np.sqrt(
-                self.alpha[self.iteration]
-            ) * self.rng.normal(size=size) * self.C_D_L.reshape(-1, 1)
+        D = self.perturb_observations(size=size, alpha=self.alpha[self.iteration])
         assert D.shape == (num_outputs, num_ensemble)
 
         # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
@@ -247,6 +244,105 @@ class ESMDA:
 
         self.iteration += 1
         return X
+
+    def compute_transition_matrix(
+        self,
+        Y: npt.NDArray[np.double],
+        *,
+        alpha: float,
+        truncation: float = 1.0,
+    ) -> npt.NDArray[np.double]:
+        """Return a matrix K such that X_posterior = X_prior + X_prior @ K.
+
+        The purpose of this method is to facilitate row-by-row, or batch-by-batch,
+        updates of X. This is useful if X is too large to fit in memory.
+
+        Parameters
+        ----------
+        Y : np.ndarray
+            2D array of shape (num_parameters, ensemble_size), containing
+            responses when evaluating the model at X. In other words, Y = g(X),
+            where g is the forward model.
+        alpha : float
+            The covariance inflation factor. The sequence of alphas should
+            obey the equation sum_i (1/alpha_i) = 1. However, this is NOT enforced
+            in this method call. The user/caller is responsible for this.
+        truncation : float
+            How large a fraction of the singular values to keep in the inversion
+            routine. Must be a float in the range (0, 1]. A lower number means
+            a more approximate answer and a slightly faster computation.
+
+        Returns
+        -------
+        K : np.ndarray
+            A matrix K such that X_posterior = X_prior + X_prior @ K.
+            It has shape (num_ensemble_members, num_ensemble_members).
+        """
+
+        # Recall the update equation:
+        # X += C_MD @ (C_DD + alpha * C_D)^(-1)  @ (D - Y)
+        # X += X @ center(Y).T / (N-1) @ (C_DD + alpha * C_D)^(-1) @ (D - Y)
+        # We form K := center(Y).T / (N-1) @ (C_DD + alpha * C_D)^(-1) @ (D - Y),
+        # so that
+        # X_new = X_old + X_old @ K
+        # or
+        # X += X @ K
+
+        D = self.perturb_observations(size=Y.shape, alpha=alpha)
+        inversion_func = self._inversion_methods[self.inversion]
+        return inversion_func(
+            alpha=alpha,
+            C_D=self.C_D,
+            D=D,
+            Y=Y,
+            X=None,  # We don't need X to compute the factor K
+            truncation=truncation,
+            return_K=True,  # Ensures that we don't need X
+        )
+
+    def perturb_observations(
+        self, *, size: Tuple[int, int], alpha: float
+    ) -> npt.NDArray[np.double]:
+        """Create a matrix D with perturbed observations.
+
+        In the Emerick (2013) paper, the matrix D is defined in section 6.
+        See section 2(b) of the ES-MDA algorithm in the paper.
+
+        Parameters
+        ----------
+        size : Tuple[int, int]
+            The size, a tuple with (num_observations, ensemble_size).
+        alpha : float
+            The covariance inflation factor. The sequence of alphas should
+            obey the equation sum_i (1/alpha_i) = 1. However, this is NOT enforced
+            in this method call. The user/caller is responsible for this.
+
+        Returns
+        -------
+        D : np.ndarray
+            Each column consists of perturbed observations, scaled by alpha.
+
+        """
+        # Draw samples from zero-centered multivariate normal with cov=alpha * C_D,
+        # and add them to the observations. Notice that
+        # if C_D = L @ L.T by the cholesky factorization, then drawing y from
+        # a zero cented normal means that y := L @ z, where z ~ norm(0, 1).
+        # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha).
+
+        D: npt.NDArray[np.double]
+
+        # Two cases, depending on whether C_D was given as 1D or 2D array
+        if self.C_D.ndim == 2:
+            D = self.observations.reshape(-1, 1) + np.sqrt(
+                self.alpha[self.iteration]
+            ) * self.C_D_L @ self.rng.normal(size=size)
+        else:
+            D = self.observations.reshape(-1, 1) + np.sqrt(
+                self.alpha[self.iteration]
+            ) * self.rng.normal(size=size) * self.C_D_L.reshape(-1, 1)
+        assert D.shape == size
+
+        return D
 
 
 if __name__ == "__main__":
