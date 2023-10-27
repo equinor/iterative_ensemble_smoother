@@ -13,6 +13,8 @@ from iterative_ensemble_smoother import ESMDA
 class RowScaling:
     def multiply(self, X, K):
         """Takes a matrix X and a matrix K and performs X @ K."""
+        # TODO: Not sure why a RowScaling class is needed if
+        # all that it's used for is matrix multiplication
         return X @ K
 
 
@@ -68,7 +70,9 @@ def ensemble_smoother_update_step_row_scaling(
     )
 
     # Create transition matrix - common to all parameters in X
-    transition_matrix = smoother.compute_transition_matrix(Y=Y, alpha=1, truncation=1.0)
+    transition_matrix = smoother.compute_transition_matrix(
+        Y=Y, alpha=1, truncation=truncation
+    )
 
     # Loop over groups of rows (parameters)
     for X, row_scale in X_with_row_scaling:
@@ -78,6 +82,7 @@ def ensemble_smoother_update_step_row_scaling(
 
 
 if __name__ == "__main__":
+    from copy import deepcopy
 
     # Example showing how to use row scaling
     num_parameters = 100
@@ -93,7 +98,7 @@ if __name__ == "__main__":
 
     row_groups = [(0,), (1, 2), (4, 5, 6), tuple(range(7, 100))]
     X_with_row_scaling = [(X[idx, :], RowScaling()) for idx in row_groups]
-    X_with_row_scaling = X_with_row_scaling.copy()
+    X_before = deepcopy(X_with_row_scaling)
 
     X_with_row_scaling_updated = ensemble_smoother_update_step_row_scaling(
         covariance=covariance,
@@ -102,3 +107,6 @@ if __name__ == "__main__":
         Y=Y,
         seed=rng,
     )
+
+    # Check that an update happened
+    assert not np.allclose(X_before[-1][0], X_with_row_scaling_updated[-1][0])
