@@ -2,68 +2,103 @@
 Contains (publicly available, but not officially supported) experimental
 features of iterative_ensemble_smoother
 """
+from typing import Union
+
 import numpy as np
+import numpy.typing as npt
 
-from iterative_ensemble_smoother.ies import create_coefficient_matrix
-from iterative_ensemble_smoother.utils import covariance_to_correlation
+from iterative_ensemble_smoother import ESMDA
 
-rng = np.random.default_rng()
+
+class RowScaling:
+    def multiply(self, X, K):
+        """Takes a matrix X and a matrix K and performs X @ K."""
+        return X @ K
 
 
 def ensemble_smoother_update_step_row_scaling(
-    response_ensemble,
-    A_with_row_scaling,
-    observation_errors,
-    observation_values,
-    noise=None,
-    truncation=0.98,
-    inversion="exact",
+    *,
+    covariance: npt.NDArray[np.double],
+    observations: npt.NDArray[np.double],
+    X_with_row_scaling: list[tuple[npt.NDArray[np.double], RowScaling]],
+    Y: npt.NDArray[np.double],
+    seed: Union[np.random._generator.Generator, int, None] = None,
+    inversion: str = "exact",
+    truncation: float = 1.0,
 ):
-    """This is an experimental feature."""
+    """Perform a single ESMDA update (ES) with row scaling.
+    The matrices in X_with_row_scaling WILL BE MUTATED.
 
-    # =============================================================================
-    #     # The old API used standard devisions for 1D arrays, but covariance for 2D
-    #     covariance = observation_values**2 if
-    #     observation_values.ndim == 1 else observation_values
-    #
-    #     smoother = SIES(parameters=,
-    #                     covariance=covariance, observations=observation_values)
-    # =============================================================================
 
-    ensemble_size = response_ensemble.shape[1]
-    if noise is None:
-        num_obs = len(observation_values)
-        noise = rng.standard_normal(size=(num_obs, ensemble_size))
+    Explanation of row scaling
+    --------------------------
 
-    # Columns of E should be sampled from N(0,Cdd) and centered, Evensen 2019
-    if len(observation_errors.shape) == 2:
-        E = np.linalg.cholesky(observation_errors) @ noise
-    else:
-        E = np.linalg.cholesky(np.diag(observation_errors**2)) @ noise
-    E = E @ (
-        np.identity(ensemble_size)
-        - np.ones((ensemble_size, ensemble_size)) / ensemble_size
+    The ESMDA update can be written as:
+
+        X_post = X_prior + X_prior @ K
+
+    where K is a transition matrix. The core of the row scaling approach is that
+    for each row i in the matrix X, we apply an update with strength alpha:
+
+        X_post = X_prior + alpha * X_prior @ K
+
+    Clearly 0 <= alpha <= 1 denotes the 'strength' of the update; alpha == 1
+    corresponds to a normal smoother update and alpha == 0 corresponds to no
+    update. With the per row transformation of X the operation is no longer matrix
+    multiplication but the pseudo code looks like:
+
+        for i in rows:
+            X_i_post = X_i_prior + alpha * X_i_prior @ K
+
+    See also original code:
+        https://github.com/equinor/ert/blob/963f9bc08ebc87374b7ed3403c8ba78c20909ae9/src/clib/lib/enkf/row_scaling.cpp#L51
+
+    """
+
+    # https://github.com/equinor/ert/blob/963f9bc08ebc87374b7ed3403c8ba78c20909ae9/src/clib/lib/enkf/row_scaling.cpp#L51
+
+    # Create ESMDA instance
+    # Setting alpha=1 means we run a single data assimilation
+    smoother = ESMDA(
+        covariance=covariance,
+        observations=observations,
+        seed=seed,
+        inversion=inversion,
+        alpha=1,
     )
 
-    R, observation_errors = covariance_to_correlation(observation_errors)
+    # Create transition matrix - common to all parameters in X
+    transition_matrix = smoother.compute_transition_matrix(Y=Y, alpha=1, truncation=1.0)
 
-    D = (E + observation_values.reshape(num_obs, 1)) - response_ensemble
-    D = (D.T / observation_errors).T
-    E = (E.T / observation_errors).T
-    response_ensemble = (response_ensemble.T / observation_errors).T
-    for A, row_scale in A_with_row_scaling:
-        W = create_coefficient_matrix(
-            (response_ensemble - response_ensemble.mean(axis=1, keepdims=True))
-            / np.sqrt(ensemble_size - 1),
-            R,
-            E,
-            D,
-            inversion,
-            truncation,
-            np.zeros((ensemble_size, ensemble_size)),
-            1.0,
-        )
-        I = np.identity(ensemble_size)  # noqa: E741
-        transition_matrix = I + W / np.sqrt(ensemble_size - 1)
-        row_scale.multiply(A, transition_matrix)
-    return A_with_row_scaling
+    # Loop over groups of rows (parameters)
+    for X, row_scale in X_with_row_scaling:
+        X += row_scale.multiply(X, transition_matrix)
+
+    return X_with_row_scaling
+
+
+if __name__ == "__main__":
+
+    # Example showing how to use row scaling
+    num_parameters = 100
+    num_observations = 20
+    num_ensemble = 10
+
+    rng = np.random.default_rng(42)
+
+    X = rng.normal(size=(num_parameters, num_ensemble))
+    Y = rng.normal(size=(num_observations, num_ensemble))
+    covariance = np.exp(rng.normal(size=num_observations))
+    observations = rng.normal(size=num_observations, loc=1)
+
+    row_groups = [(0,), (1, 2), (4, 5, 6), tuple(range(7, 100))]
+    X_with_row_scaling = [(X[idx, :], RowScaling()) for idx in row_groups]
+    X_with_row_scaling = X_with_row_scaling.copy()
+
+    X_with_row_scaling_updated = ensemble_smoother_update_step_row_scaling(
+        covariance=covariance,
+        observations=observations,
+        X_with_row_scaling=X_with_row_scaling,
+        Y=Y,
+        seed=rng,
+    )
