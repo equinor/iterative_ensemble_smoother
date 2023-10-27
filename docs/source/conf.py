@@ -115,6 +115,7 @@ pygments_style = "sphinx"
 # a list of builtin themes.
 # html_theme = "sphinx_rtd_theme"
 html_theme = "pydata_sphinx_theme"
+navigation_with_keys = False
 
 # TODO: when ies gets a nice logo
 # html_logo = '_static/logo.svg'
