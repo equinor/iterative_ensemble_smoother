@@ -115,7 +115,6 @@ pygments_style = "sphinx"
 # a list of builtin themes.
 # html_theme = "sphinx_rtd_theme"
 html_theme = "pydata_sphinx_theme"
-navigation_with_keys = False
 
 # TODO: when ies gets a nice logo
 # html_logo = '_static/logo.svg'
@@ -127,6 +126,7 @@ navigation_with_keys = False
 #
 html_theme_options = {
     # "google_analytics_id": "UA-140243896-1",
+    "navigation_with_keys": False,
     "show_prev_next": False,
     "github_url": "https://github.com/equinor/iterative_ensemble_smoother",
     "icon_links": [
