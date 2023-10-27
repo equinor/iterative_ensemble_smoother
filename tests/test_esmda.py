@@ -43,72 +43,30 @@ class TestESMDA:
         Y_prior = rng.normal(size=(num_outputs, num_ensemble))
 
         # Measurement errors
-        C_D = np.exp(rng.normal(size=num_outputs))
+        covariance = np.exp(rng.normal(size=num_outputs))
 
         # Observations
         observations = rng.normal(size=num_outputs, loc=1)
 
-        esmda = ESMDA(C_D, observations, alpha=alpha, seed=seed, inversion=inversion)
+        esmda = ESMDA(
+            covariance, observations, alpha=alpha, seed=seed, inversion=inversion
+        )
         X_posterior1 = np.copy(X_prior)
         for _ in range(esmda.num_assimilations()):
             X_posterior1 = esmda.assimilate(X_posterior1, Y_prior)
 
         esmda = ESMDA(
-            np.diag(C_D), observations, alpha=alpha, seed=seed, inversion=inversion
+            np.diag(covariance),
+            observations,
+            alpha=alpha,
+            seed=seed,
+            inversion=inversion,
         )
         X_posterior2 = np.copy(X_prior)
         for _ in range(esmda.num_assimilations()):
             X_posterior2 = esmda.assimilate(X_posterior2, Y_prior)
 
         assert np.allclose(X_posterior1, X_posterior2)
-
-    @pytest.mark.parametrize("num_ensemble", [2**i for i in range(2, 10)])
-    def test_that_using_example_mask_only_updates_those_parameters(self, num_ensemble):
-        seed = num_ensemble
-        rng = np.random.default_rng(seed)
-        alpha = rng.choice(np.array([5, 10, 25, 50]))  # Random alpha
-
-        num_outputs = 2
-        num_inputs = 1
-
-        def g(x):
-            """Transform a single ensemble member."""
-            return np.array([np.sin(x / 2), x])
-
-        def G(X):
-            """Transform all ensemble members."""
-            return np.array([g(x_i) for x_i in X.T]).squeeze().T
-
-        # Create an ensemble mask and set half the entries randomly to True
-        ensemble_mask = np.zeros(num_ensemble, dtype=bool)
-        idx = rng.choice(num_ensemble, size=num_ensemble // 2, replace=False)
-        ensemble_mask[idx] = True
-
-        # Prior is N(0, 1)
-        X_prior = rng.normal(size=(num_inputs, num_ensemble))
-
-        # Measurement errors
-        C_D = np.eye(num_outputs)
-
-        # The true inputs and observations, a result of running with X_true = 1
-        X_true = np.ones(shape=(num_inputs,))
-        observations = G(X_true)
-
-        # Prepare ESMDA instance running with lower number of ensemble members
-        esmda_subset = ESMDA(C_D, observations, alpha=alpha, seed=seed)
-        X_i_subset = np.copy(X_prior[:, ensemble_mask])
-
-        # Prepare ESMDA instance running with all ensemble members
-        esmda_masked = ESMDA(C_D, observations, alpha=alpha, seed=seed)
-        X_i = np.copy(X_prior)
-
-        # Run both
-        for _ in range(esmda_subset.num_assimilations()):
-            X_i_subset = esmda_subset.assimilate(X_i_subset, G(X_i_subset))
-            X_i = esmda_masked.assimilate(X_i, G(X_i), ensemble_mask=ensemble_mask)
-
-            # Exactly the same result (seed value for both must be equal )
-            assert np.allclose(X_i_subset, X_i[:, ensemble_mask])
 
     @pytest.mark.parametrize(
         "num_ensemble",
@@ -133,20 +91,20 @@ class TestESMDA:
         X_prior = rng.normal(size=(num_inputs, num_ensemble))
 
         # Measurement errors
-        C_D = np.eye(num_outputs)
+        covariance = np.eye(num_outputs)
 
         # The true inputs and observations, a result of running with N(1, 1)
         X_true = rng.normal(size=(num_inputs,)) + 1
         observations = G(X_true)
 
         # Create ESMDA instance from an integer `alpha` and run it
-        esmda_integer = ESMDA(C_D, observations, alpha=5, seed=seed)
+        esmda_integer = ESMDA(covariance, observations, alpha=5, seed=seed)
         X_i_int = np.copy(X_prior)
         for _ in range(esmda_integer.num_assimilations()):
             X_i_int = esmda_integer.assimilate(X_i_int, G(X_i_int))
 
         # Create another ESMDA instance from a vector `alpha` and run it
-        esmda_array = ESMDA(C_D, observations, alpha=np.ones(5), seed=seed)
+        esmda_array = ESMDA(covariance, observations, alpha=np.ones(5), seed=seed)
         X_i_array = np.copy(X_prior)
         for _ in range(esmda_array.num_assimilations()):
             X_i_array = esmda_array.assimilate(X_i_array, G(X_i_array))
@@ -355,65 +313,134 @@ class TestESMDAMemory:
         Y_prior = rng.normal(size=(num_outputs, num_ensemble))
 
         # Measurement errors
-        C_D = np.exp(rng.normal(size=num_outputs))
+        covariance = np.exp(rng.normal(size=num_outputs))
 
         # Observations
         observations = rng.normal(size=num_outputs, loc=1)
 
-        return X_prior, Y_prior, C_D, observations
+        return X_prior, Y_prior, covariance, observations
 
     @pytest.mark.limit_memory("138 MB")
-    def test_ESMDA_memory_usage_subspace_inversion(self, setup):
+    def test_ESMDA_memory_usage_subspace_inversion_without_overwrite(self, setup):
         # TODO: Currently this is a regression test. Work to improve memory usage.
 
-        X_prior, Y_prior, C_D, observations = setup
+        X_prior, Y_prior, covariance, observations = setup
 
         # Create ESMDA instance from an integer `alpha` and run it
-        esmda = ESMDA(C_D, observations, alpha=1, seed=1, inversion="subspace")
+        esmda = ESMDA(covariance, observations, alpha=1, seed=1, inversion="subspace")
 
         for _ in range(esmda.num_assimilations()):
             esmda.assimilate(X_prior, Y_prior)
 
-    @pytest.mark.parametrize("inversion", ["exact", "subspace"])
-    @pytest.mark.parametrize("dtype", [np.float32, np.float64])
-    @pytest.mark.parametrize("diagonal", [True, False])
-    def test_that_float_dtypes_are_preserved(self, inversion, dtype, diagonal):
-        """If every matrix passed is of a certain dtype, then the output
-        should also be of the same dtype. 'linalg' does not support float16
-        nor float128."""
+    @pytest.mark.limit_memory("129 MB")
+    def test_ESMDA_memory_usage_subspace_inversion_with_overwrite(self, setup):
+        # TODO: Currently this is a regression test. Work to improve memory usage.
 
-        rng = np.random.default_rng(42)
-
-        num_outputs = 20
-        num_inputs = 10
-        num_ensemble = 25
-
-        # Prior is N(0, 1)
-        X_prior = rng.normal(size=(num_inputs, num_ensemble))
-        Y_prior = rng.normal(size=(num_outputs, num_ensemble))
-
-        # Measurement errors
-        C_D = np.exp(rng.normal(size=num_outputs))
-        if not diagonal:
-            C_D = np.diag(C_D)
-
-        # Observations
-        observations = rng.normal(size=num_outputs, loc=1)
-
-        # Convert types
-        X_prior = X_prior.astype(dtype)
-        Y_prior = Y_prior.astype(dtype)
-        C_D = C_D.astype(dtype)
-        observations = observations.astype(dtype)
+        X_prior, Y_prior, covariance, observations = setup
 
         # Create ESMDA instance from an integer `alpha` and run it
-        esmda = ESMDA(C_D, observations, alpha=1, seed=1, inversion=inversion)
+        esmda = ESMDA(covariance, observations, alpha=1, seed=1, inversion="subspace")
 
         for _ in range(esmda.num_assimilations()):
-            X_posterior = esmda.assimilate(X_prior, Y_prior)
+            esmda.assimilate(X_prior, Y_prior, overwrite=True)
 
-        # Check that dtype of returned array matches input dtype
-        assert X_posterior.dtype == dtype
+
+@pytest.mark.parametrize("inversion", ["exact", "subspace"])
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+@pytest.mark.parametrize("diagonal", [True, False])
+def test_that_float_dtypes_are_preserved(inversion, dtype, diagonal):
+    """If every matrix passed is of a certain dtype, then the output
+    should also be of the same dtype. 'linalg' does not support float16
+    nor float128."""
+
+    rng = np.random.default_rng(42)
+
+    num_outputs = 20
+    num_inputs = 10
+    num_ensemble = 25
+
+    # Prior is N(0, 1)
+    X_prior = rng.normal(size=(num_inputs, num_ensemble))
+    Y_prior = rng.normal(size=(num_outputs, num_ensemble))
+
+    # Measurement errors
+    covariance = np.exp(rng.normal(size=num_outputs))
+    if not diagonal:
+        covariance = np.diag(covariance)
+
+    # Observations
+    observations = rng.normal(size=num_outputs, loc=1)
+
+    # Convert types
+    X_prior = X_prior.astype(dtype)
+    Y_prior = Y_prior.astype(dtype)
+    covariance = covariance.astype(dtype)
+    observations = observations.astype(dtype)
+
+    # Create ESMDA instance from an integer `alpha` and run it
+    esmda = ESMDA(covariance, observations, alpha=1, seed=1, inversion=inversion)
+
+    for _ in range(esmda.num_assimilations()):
+        X_posterior = esmda.assimilate(X_prior, Y_prior)
+
+    # Check that dtype of returned array matches input dtype
+    assert X_posterior.dtype == dtype
+
+
+@pytest.mark.parametrize("inversion", ESMDA._inversion_methods.keys())
+def test_row_by_row_assimilation(inversion):
+    # Create problem instance
+    rng = np.random.default_rng(42)
+
+    num_outputs = 4
+    num_inputs = 5
+    num_ensemble = 3
+
+    A = rng.normal(size=(num_outputs, num_inputs))
+
+    def g(X):
+        return A @ X
+
+    # Prior is N(0, 1)
+    X_prior = rng.normal(size=(num_inputs, num_ensemble))
+
+    covariance = np.exp(rng.normal(size=num_outputs))
+    observations = A @ np.linspace(0, 1, num=num_inputs) + rng.normal(
+        size=num_outputs, scale=0.01
+    )
+
+    # =========== Use the high level API ===========
+    smoother = ESMDA(
+        covariance=covariance,
+        observations=observations,
+        alpha=2,
+        inversion=inversion,
+        seed=1,
+    )
+    X = np.copy(X_prior)
+    for iteration in range(smoother.num_assimilations()):
+        X = smoother.assimilate(X, g(X))
+
+    X_posterior_highlevel_API = np.copy(X)
+
+    # =========== Use the low-level level API ===========
+    smoother = ESMDA(
+        covariance=covariance,
+        observations=observations,
+        alpha=2,
+        inversion=inversion,
+        seed=1,
+    )
+    X = np.copy(X_prior)
+    for alpha_i in smoother.alpha:
+        K = smoother.compute_transition_matrix(Y=g(X), alpha=alpha_i)
+
+        # Here we could loop over each row in X and multiply by K
+        X += X @ K
+
+    X_posterior_lowlevel_API = np.copy(X)
+
+    assert np.allclose(X_posterior_highlevel_API, X_posterior_lowlevel_API)
 
 
 if __name__ == "__main__":
@@ -423,6 +450,6 @@ if __name__ == "__main__":
         args=[
             __file__,
             "-v",
-            "-k test_that_float_dtypes_are_preserved",
+            "-k test_row_by_row_assimilation",
         ]
     )

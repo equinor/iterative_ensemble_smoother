@@ -14,13 +14,12 @@ def steplength_exponential(
     max_steplength: float = 0.6,
     halflife: float = 1.5,
 ) -> float:
-    """
-    This is an implementation of Eq. (49), which calculates a suitable step length for
-    the update step, from the book:
+    r"""
+    Compute a suitable step length for the update step.
 
-    Geir Evensen, Formulating the history matching problem with
-    consistent error statistics,
-    Computational Geosciences (2021) 25:945 –970
+    This is an implementation of Eq. (49), which calculates a suitable step length for
+    the update step, from the book: \"Formulating the history matching problem with
+    consistent error statistics", written by :cite:t:`evensen2021formulating`.
 
     Examples
     --------

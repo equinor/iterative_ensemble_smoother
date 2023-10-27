@@ -17,50 +17,13 @@ from iterative_ensemble_smoother.utils import _validate_inputs, sample_mvnormal
 
 
 class SIES:
-    """
-    Initialize a Subspace Iterative Ensemble Smoother (SIES) instance.
+    r"""
+    Implement a Sequential Iterative Ensemble Smoother (SIES) for Data Assimilation.
 
-    This is an implementation of the algorithm described in the paper:
-    Efficient Implementation of an Iterative Ensemble Smoother for
-    Data Assimilation and Reservoir History Matching
-    written by Evensen et al (2019),
-    URL: https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full
+    This is an implementation of the algorithm described in the paper: "Efficient
+    Implementation of an Iterative Ensemble Smoother for Data Assimilation
+    and Reservoir History Matching", written by :cite:t:`evensen2019efficient`.
 
-    Parameters
-    ----------
-    parameters : npt.NDArray[np.double]
-        A 2D array of shape (num_parameters, ensemble_size). Each row corresponds
-        to a parameter in the model, and each column corresponds to an ensemble
-        member (realization). This is X in Evensen (2019).
-    covariance : npt.NDArray[np.double]
-        Either a 1D array of diagonal covariances, or a 2D covariance matrix.
-        The shape is either (num_observations,) or (num_observations, num_observations).
-        This is C_dd in Evensen (2019), and represents observation or measurement
-        errors. We observe d from the real world, y from the model g(x), and
-        assume that d = y + e, where the error e is multivariate normal with
-        covariance given by `covariance`.
-    observations : npt.NDArray[np.double]
-        A 1D array of observations, with shape (num_observations,).
-        This is d in Evensen (2019).
-    inversion : str
-        The type of inversion used in the algorithm. Every inversion method
-        scales the variables. The default is `subspace.`
-        The options are:
-
-            - `direct`: Solve Eqn (42) directly, which involves inverting a
-               matrix of shape (num_parameters, num_parameters).
-            - `subspace_exact` : Solve Eqn (42) using Eqn (50), i.e., the Woodbury
-               lemma to invert a matrix of size (ensemble_size, ensemble_size).
-            - `subspace_projected` : Solve Eqn (42) using Section 3.3, i.e.,
-               by projecting the covariance onto S. This approach utilizes the
-               truncation factor `truncation`.
-
-    truncation : float
-        How much of the total energy (singular values squared) to keep in the
-        SVD when `inversion` equals `subspace_projected`. Choosing 1.0
-        retains all information, while 0.0 removes all information.
-    seed : Union[None, int, np.random._generator.Generator], optional
-        Integer used to seed the random number generator. The default is None.
     """
 
     inversion_funcs = {
@@ -78,7 +41,50 @@ class SIES:
         inversion: str = "subspace_exact",
         truncation: float = 1.0,
         seed: Union[None, int, np.random._generator.Generator] = None,
-    ):
+    ) -> None:
+        """
+        Initialize the instance.
+
+        Parameters
+        ----------
+        parameters : npt.NDArray[np.double]
+            A 2D array of shape (num_parameters, ensemble_size). Each row corresponds
+            to a parameter in the model, and each column corresponds to an ensemble
+            member (realization). This is X in Evensen (2019).
+        covariance : npt.NDArray[np.double]
+            Either a 1D array of diagonal covariances, or a 2D covariance matrix.
+            The shape is either (num_observations,) or (num_observations,
+            num_observations).
+            This is C_dd in Evensen (2019), and represents observation or measurement
+            errors. We observe d from the real world, y from the model g(x), and
+            assume that d = y + e, where the error e is multivariate normal with
+            covariance given by `covariance`.
+        observations : npt.NDArray[np.double]
+            A 1D array of observations, with shape (num_observations,).
+            This is d in Evensen (2019).
+        inversion : str
+            The type of inversion used in the algorithm. Every inversion method
+            scales the variables. The default is `subspace.`
+            The options are:
+
+                * `direct`:
+                    Solve Eqn (42) directly, which involves inverting a
+                    matrix of shape (num_parameters, num_parameters).
+                * `subspace_exact` :
+                    Solve Eqn (42) using Eqn (50), i.e., the Woodbury
+                    lemma to invert a matrix of size (ensemble_size, ensemble_size).
+                * `subspace_projected` :
+                    Solve Eqn (42) using Section 3.3, i.e., by projecting the covariance
+                    onto S. This approach utilizes the truncation factor `truncation`.
+
+        truncation : float
+            How much of the total energy (singular values squared) to keep in the
+            SVD when `inversion` equals `subspace_projected`. Choosing 1.0
+            retains all information, while 0.0 removes all information.
+            The default is 1.0.
+        seed : Union[None, int, np.random._generator.Generator], optional
+            Integer used to seed the random number generator. The default is None.
+        """
         _validate_inputs(
             parameters=parameters, covariance=covariance, observations=observations
         )
@@ -203,7 +209,6 @@ class SIES:
         This method implements lines 4-9 in Algorithm 1.
         It returns an updated X and updates the internal state W.
 
-
         Parameters
         ----------
         responses : npt.NDArray[np.double]
@@ -240,7 +245,7 @@ class SIES:
     def propose_W(
         self, responses: npt.NDArray[np.double], step_length: float = 0.5
     ) -> npt.NDArray[np.double]:
-        """Returns a proposal for W_i, without updating the internal W.
+        """Return a proposal for W_i, without updating the internal W.
 
         This is an implementation of lines 4-8 in Algorithm 1.
 
@@ -322,7 +327,7 @@ class SIES:
         ensemble_mask: npt.NDArray[np.bool_],
         step_length: float = 0.5,
     ) -> npt.NDArray[np.double]:
-        """Returns a proposal for W_i, without updating the internal W.
+        """Return a proposal for W_i, without updating the internal W.
 
         This is an implementation of lines 4-8 in Algorithm 1.
 

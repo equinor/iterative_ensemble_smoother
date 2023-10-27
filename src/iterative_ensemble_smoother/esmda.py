@@ -21,8 +21,9 @@ https://gitlab.com/antoinecollet5/pyesmda
 https://helper.ipam.ucla.edu/publications/oilws3/oilws3_14147.pdf
 
 """
+
 import numbers
-from typing import Optional, Union
+from typing import Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
@@ -36,18 +37,25 @@ from iterative_ensemble_smoother.esmda_inversion import (
 
 
 class ESMDA:
-    """Initialize Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
+    """
+    Implement an Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
 
-    The implementation follows the 2013 paper by Emerick et al.
+    The implementation follows :cite:t:`EMERICK2013`.
 
     Parameters
     ----------
-    C_D : np.ndarray
-        Covariance matrix of outputs of shape (num_outputs, num_outputs).
-        If a 1D array is passed, it represents a diagonal covariance matrix.
+    covariance : np.ndarray
+        Either a 1D array of diagonal covariances, or a 2D covariance matrix.
+        The shape is either (num_observations,) or (num_observations, num_observations).
+        This is C_D in Emerick (2013), and represents observation or measurement
+        errors. We observe d from the real world, y from the model g(x), and
+        assume that d = y + e, where the error e is multivariate normal with
+        covariance given by `covariance`.
     observations : np.ndarray
-        1D array of shape (num_inputs,) representing real-world observations.
+        1D array of shape (num_observations,) representing real-world observations.
+        This is d_obs in Emerick (2013).
     alpha : int or 1D np.ndarray, optional
+        Multiplicative factor for the covariance.
         If an integer `alpha` is given, an array with length `alpha` and
         elements `alpha` is constructed. If an 1D array is given, it is
         normalized so sum_i 1/alpha_i = 1 and used. The default is 5, which
@@ -58,12 +66,13 @@ class ESMDA:
         The default is None.
     inversion : str, optional
         Which inversion method to use. The default is "exact".
+        See the dictionary ESMDA._inversion_methods for more information.
 
     Examples
     --------
-    >>> C_D = np.diag([1, 1, 1])
+    >>> covariance = np.diag([1, 1, 1])
     >>> observations = np.array([1, 2, 3])
-    >>> esmda = ESMDA(C_D, observations)
+    >>> esmda = ESMDA(covariance, observations)
 
     """
 
@@ -76,24 +85,27 @@ class ESMDA:
 
     def __init__(
         self,
-        C_D: npt.NDArray[np.double],
+        covariance: npt.NDArray[np.double],
         observations: npt.NDArray[np.double],
         alpha: Union[int, npt.NDArray[np.double]] = 5,
         seed: Union[np.random._generator.Generator, int, None] = None,
         inversion: str = "exact",
     ) -> None:
+        """Initialize the instance."""
         # Validate inputs
-        if not (isinstance(C_D, np.ndarray) and C_D.ndim in (1, 2)):
-            raise TypeError("Argument `C_D` must be a NumPy array of dimension 1 or 2.")
+        if not (isinstance(covariance, np.ndarray) and covariance.ndim in (1, 2)):
+            raise TypeError(
+                "Argument `covariance` must be a NumPy array of dimension 1 or 2."
+            )
 
-        if C_D.ndim == 2 and C_D.shape[0] != C_D.shape[1]:
-            raise ValueError("Argument `C_D` must be square if it's 2D.")
+        if covariance.ndim == 2 and covariance.shape[0] != covariance.shape[1]:
+            raise ValueError("Argument `covariance` must be square if it's 2D.")
 
         if not (isinstance(observations, np.ndarray) and observations.ndim == 1):
             raise TypeError("Argument `observations` must be a 1D NumPy array.")
 
-        if not observations.shape[0] == C_D.shape[0]:
-            raise ValueError("Shapes of `observations` and `C_D` must match.")
+        if not observations.shape[0] == covariance.shape[0]:
+            raise ValueError("Shapes of `observations` and `covariance` must match.")
 
         if not (
             (isinstance(alpha, np.ndarray) and alpha.ndim == 1)
@@ -139,14 +151,14 @@ class ESMDA:
         # If it's a full matrix, we gain speedup by only computing cholesky once
         # If it's a diagonal, we gain speedup by never having to compute cholesky
 
-        if isinstance(C_D, np.ndarray) and C_D.ndim == 2:
-            self.C_D_L = sp.linalg.cholesky(C_D, lower=False)
-        elif isinstance(C_D, np.ndarray) and C_D.ndim == 1:
-            self.C_D_L = np.sqrt(C_D)
+        if isinstance(covariance, np.ndarray) and covariance.ndim == 2:
+            self.C_D_L = sp.linalg.cholesky(covariance, lower=False)
+        elif isinstance(covariance, np.ndarray) and covariance.ndim == 1:
+            self.C_D_L = np.sqrt(covariance)
         else:
-            raise TypeError("Argument `C_D` must be 1D or 2D array")
+            raise TypeError("Argument `covariance` must be 1D or 2D array")
 
-        self.C_D = C_D
+        self.C_D = covariance
         assert isinstance(self.C_D, np.ndarray) and self.C_D.ndim in (1, 2)
 
     def num_assimilations(self) -> int:
@@ -156,7 +168,7 @@ class ESMDA:
         self,
         X: npt.NDArray[np.double],
         Y: npt.NDArray[np.double],
-        ensemble_mask: Optional[npt.NDArray[np.bool_]] = None,
+        *,
         overwrite: bool = False,
         truncation: float = 1.0,
     ) -> npt.NDArray[np.double]:
@@ -165,16 +177,17 @@ class ESMDA:
         Parameters
         ----------
         X : np.ndarray
-            2D array of shape (num_inputs, num_ensemble_members).
+            A 2D array of shape (num_parameters, ensemble_size). Each row
+            corresponds to a parameter in the model, and each column corresponds
+            to an ensemble member (realization).
         Y : np.ndarray
-            2D array of shape (num_ouputs, num_ensemble_members).
-        ensemble_mask : np.ndarray
-            1D boolean array of length `num_ensemble_members`, describing which
-            ensemble members are active. Inactive realizations are ignored.
-            Defaults to all active.
+            2D array of shape (num_parameters, ensemble_size), containing
+            responses when evaluating the model at X. In other words, Y = g(X),
+            where g is the forward model.
         overwrite : bool
-            If True, then arguments X and Y may be overwritten.
-            If False, then the method will not permute inputs in any way.
+            If True, then arguments X and Y may be overwritten and mutated.
+            If False, then the method will not mutate inputs in any way.
+            Setting this to True might save memory.
         truncation : float
             How large a fraction of the singular values to keep in the inversion
             routine. Must be a float in the range (0, 1]. A lower number means
@@ -195,9 +208,6 @@ class ESMDA:
         assert (
             num_ensemble == num_emsemble2
         ), "Number of ensemble members in X and Y must match"
-        assert (ensemble_mask is None) or (
-            ensemble_mask.ndim == 1 and len(ensemble_mask) == num_ensemble
-        )
         if not np.issubdtype(X.dtype, np.floating):
             raise TypeError("Argument `X` must be contain floats")
         if not np.issubdtype(Y.dtype, np.floating):
@@ -209,14 +219,6 @@ class ESMDA:
         if not overwrite:
             X, Y = np.copy(X), np.copy(Y)
 
-        # If no ensemble mask was given, we use the entire ensemble
-        if ensemble_mask is None:
-            ensemble_mask = np.ones(num_ensemble, dtype=bool)
-
-        # No ensemble members means no update
-        if ensemble_mask.sum() == 0:
-            return X
-
         # Line 2 (b) in the description of ES-MDA in the 2013 Emerick paper
 
         # Draw samples from zero-centered multivariate normal with cov=alpha * C_D,
@@ -224,7 +226,115 @@ class ESMDA:
         # if C_D = L L.T by the cholesky factorization, then drawing y from
         # a zero cented normal means that y := L @ z, where z ~ norm(0, 1)
         # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
-        size = (num_outputs, ensemble_mask.sum())
+        size = (num_outputs, num_ensemble)
+        D = self.perturb_observations(size=size, alpha=self.alpha[self.iteration])
+        assert D.shape == (num_outputs, num_ensemble)
+
+        # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
+        # Choose inversion method, e.g. 'exact'. The inversion method computes
+        # C_MD @ sp.linalg.inv(C_DD + C_D_alpha) @ (D - Y)
+        inversion_func = self._inversion_methods[self.inversion]
+
+        # Update and return
+        X += inversion_func(
+            alpha=self.alpha[self.iteration],
+            C_D=self.C_D,
+            D=D,
+            Y=Y,
+            X=X,
+            truncation=truncation,
+        )
+
+        self.iteration += 1
+        return X
+
+    def compute_transition_matrix(
+        self,
+        Y: npt.NDArray[np.double],
+        *,
+        alpha: float,
+        truncation: float = 1.0,
+    ) -> npt.NDArray[np.double]:
+        """Return a matrix K such that X_posterior = X_prior + X_prior @ K.
+
+        The purpose of this method is to facilitate row-by-row, or batch-by-batch,
+        updates of X. This is useful if X is too large to fit in memory.
+
+        Parameters
+        ----------
+        Y : np.ndarray
+            2D array of shape (num_parameters, ensemble_size), containing
+            responses when evaluating the model at X. In other words, Y = g(X),
+            where g is the forward model.
+        alpha : float
+            The covariance inflation factor. The sequence of alphas should
+            obey the equation sum_i (1/alpha_i) = 1. However, this is NOT enforced
+            in this method call. The user/caller is responsible for this.
+        truncation : float
+            How large a fraction of the singular values to keep in the inversion
+            routine. Must be a float in the range (0, 1]. A lower number means
+            a more approximate answer and a slightly faster computation.
+
+        Returns
+        -------
+        K : np.ndarray
+            A matrix K such that X_posterior = X_prior + X_prior @ K.
+            It has shape (num_ensemble_members, num_ensemble_members).
+        """
+
+        # Recall the update equation:
+        # X += C_MD @ (C_DD + alpha * C_D)^(-1)  @ (D - Y)
+        # X += X @ center(Y).T / (N-1) @ (C_DD + alpha * C_D)^(-1) @ (D - Y)
+        # We form K := center(Y).T / (N-1) @ (C_DD + alpha * C_D)^(-1) @ (D - Y),
+        # so that
+        # X_new = X_old + X_old @ K
+        # or
+        # X += X @ K
+
+        D = self.perturb_observations(size=Y.shape, alpha=alpha)
+        inversion_func = self._inversion_methods[self.inversion]
+        return inversion_func(
+            alpha=alpha,
+            C_D=self.C_D,
+            D=D,
+            Y=Y,
+            X=None,  # We don't need X to compute the factor K
+            truncation=truncation,
+            return_K=True,  # Ensures that we don't need X
+        )
+
+    def perturb_observations(
+        self, *, size: Tuple[int, int], alpha: float
+    ) -> npt.NDArray[np.double]:
+        """Create a matrix D with perturbed observations.
+
+        In the Emerick (2013) paper, the matrix D is defined in section 6.
+        See section 2(b) of the ES-MDA algorithm in the paper.
+
+        Parameters
+        ----------
+        size : Tuple[int, int]
+            The size, a tuple with (num_observations, ensemble_size).
+        alpha : float
+            The covariance inflation factor. The sequence of alphas should
+            obey the equation sum_i (1/alpha_i) = 1. However, this is NOT enforced
+            in this method call. The user/caller is responsible for this.
+
+        Returns
+        -------
+        D : np.ndarray
+            Each column consists of perturbed observations, scaled by alpha.
+
+        """
+        # Draw samples from zero-centered multivariate normal with cov=alpha * C_D,
+        # and add them to the observations. Notice that
+        # if C_D = L @ L.T by the cholesky factorization, then drawing y from
+        # a zero cented normal means that y := L @ z, where z ~ norm(0, 1).
+        # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha).
+
+        D: npt.NDArray[np.double]
+
+        # Two cases, depending on whether C_D was given as 1D or 2D array
         if self.C_D.ndim == 2:
             D = self.observations.reshape(-1, 1) + np.sqrt(
                 self.alpha[self.iteration]
@@ -233,25 +343,9 @@ class ESMDA:
             D = self.observations.reshape(-1, 1) + np.sqrt(
                 self.alpha[self.iteration]
             ) * self.rng.normal(size=size) * self.C_D_L.reshape(-1, 1)
-        assert D.shape == (num_outputs, ensemble_mask.sum())
+        assert D.shape == size
 
-        # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
-        # Choose inversion method, e.g. 'exact'. The inversion method computes
-        # C_MD @ sp.linalg.inv(C_DD + C_D_alpha) @ (D - Y)
-        inversion_func = self._inversion_methods[self.inversion]
-
-        # Update and return
-        X[:, ensemble_mask] += inversion_func(
-            alpha=self.alpha[self.iteration],
-            C_D=self.C_D,
-            D=D,
-            Y=Y[:, ensemble_mask],
-            X=X[:, ensemble_mask],
-            truncation=truncation,
-        )
-
-        self.iteration += 1
-        return X
+        return D
 
 
 if __name__ == "__main__":
