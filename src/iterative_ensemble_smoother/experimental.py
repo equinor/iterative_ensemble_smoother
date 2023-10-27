@@ -52,7 +52,7 @@ def ensemble_smoother_update_step_row_scaling(
     for each row i in the matrix X, we apply an update with strength alpha:
 
         X_post = X_prior + alpha * X_prior @ K
-        X_post = (I + alpha * X_prior) @ K
+        X_post = X_prior @ (I + alpha * K)
 
     Clearly 0 <= alpha <= 1 denotes the 'strength' of the update; alpha == 1
     corresponds to a normal smoother update and alpha == 0 corresponds to no
@@ -60,7 +60,7 @@ def ensemble_smoother_update_step_row_scaling(
     multiplication but the pseudo code looks like:
 
         for i in rows:
-            X_i_post = (I + alpha * X_i_prior) @ K
+            X_i_post = X_i_prior @ (I + alpha_i * K)
 
     See also original code:
         https://github.com/equinor/ert/blob/84aad3c56e0e52be27b9966322d93dbb85024c1c/src/clib/lib/enkf/row_scaling.cpp#L51
@@ -91,14 +91,17 @@ def ensemble_smoother_update_step_row_scaling(
     # Loop over groups of rows (parameters)
     for X, row_scale in X_with_row_scaling:
 
-        # In the C++ code, multiply() will transform the transition matrix F
-        # as F_new = F * alpha + I * (1 - alpha)
+        # In the C++ code, multiply() will transform the transition matrix F as
+        #    F_new = F * alpha + I * (1 - alpha)
+        # but the transition matrix F that we pass below is F := K + I, so:
         #    F_new = (K + I) * alpha + I * (1 - alpha)
         #    F_new = K * alpha + I * alpha + I - I * alpha
         #    F_new = K * alpha + I
-        # which means that the two following equations are equivalent:
+        # And the update becomes : X_posterior = X_prior @ F_new
+        # The update in the C++ code is equivalent to
         #    X_posterior = X_prior + alpha * X_prior @ K
-        #    X_posterior = X_prior @ F_new
+        # if we had used the original transition matrix K that is returned from
+        # ESMDA.compute_transition_matrix
         row_scale.multiply(X, transition_matrix)
 
     return X_with_row_scaling
