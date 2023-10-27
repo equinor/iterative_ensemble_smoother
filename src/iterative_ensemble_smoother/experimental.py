@@ -18,6 +18,7 @@ class RowScaling:
 
     def multiply(self, X, K):
         """Takes a matrix X and a matrix K and performs alpha * X @ K."""
+        # Here K is the smallest matrix, so that's the one we multiply by alpha
         return X @ (K * self.alpha)
 
 
@@ -60,10 +61,7 @@ def ensemble_smoother_update_step_row_scaling(
 
     """
 
-    # https://github.com/equinor/ert/blob/963f9bc08ebc87374b7ed3403c8ba78c20909ae9/src/clib/lib/enkf/row_scaling.cpp#L51
-
-    # Create ESMDA instance
-    # Setting alpha=1 means we run a single data assimilation
+    # Create ESMDA instance and set alpha=1 => run single assimilation (ES)
     smoother = ESMDA(
         covariance=covariance,
         observations=observations,
