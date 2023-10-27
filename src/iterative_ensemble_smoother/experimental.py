@@ -2,7 +2,7 @@
 Contains (publicly available, but not officially supported) experimental
 features of iterative_ensemble_smoother
 """
-from typing import Union
+from typing import List, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
@@ -26,7 +26,7 @@ def ensemble_smoother_update_step_row_scaling(
     *,
     covariance: npt.NDArray[np.double],
     observations: npt.NDArray[np.double],
-    X_with_row_scaling: list[tuple[npt.NDArray[np.double], RowScaling]],
+    X_with_row_scaling: List[Tuple[npt.NDArray[np.double], RowScaling]],
     Y: npt.NDArray[np.double],
     seed: Union[np.random._generator.Generator, int, None] = None,
     inversion: str = "exact",
