@@ -53,11 +53,18 @@ if __name__ == "__main__":
     C_DD = empirical_cross_covariance(Y, Y)
     X_posterior = X + cov_XY @ sp.linalg.solve(C_DD + 1 * np.diag(covariance), (D - Y))
 
-    # Approach 2
+    # Approach 2 - iterative approach
+    smoother = ESMDA(covariance=covariance, observations=observations, alpha=1, seed=1)
+    D = smoother.perturb_observations(size=Y.shape, alpha=1)
+    X_posterior2 = np.copy(X)
+    for i in range(X.shape[0]):
+        j_mask = ~corr_XY_zero_mask[i]
+        X_posterior2[i, :] += (
+            cov_XY[i, j_mask]
+            @ (sp.linalg.solve(C_DD + 1 * np.diag(covariance), (D - Y)))[j_mask, :]
+        )
 
-    corr_XY_bool = corr_XY > correlation_threshold(ensemble_size=X.shape[1])
-
-    print(cov_XY.shape)
+    assert np.allclose(X_posterior, X_posterior2)
 
 
 class RowScaling:
