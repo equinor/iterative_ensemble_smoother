@@ -105,38 +105,3 @@ def ensemble_smoother_update_step_row_scaling(
         row_scale.multiply(X, transition_matrix)
 
     return X_with_row_scaling
-
-
-if __name__ == "__main__":
-    from copy import deepcopy
-
-    # Example showing how to use row scaling
-    num_parameters = 100
-    num_observations = 20
-    num_ensemble = 10
-
-    rng = np.random.default_rng(42)
-
-    X = rng.normal(size=(num_parameters, num_ensemble))
-    Y = rng.normal(size=(num_observations, num_ensemble))
-    covariance = np.exp(rng.normal(size=num_observations))
-    observations = rng.normal(size=num_observations, loc=1)
-
-    # Split up X into groups of parameters as needed
-    row_groups = [(0,), (1, 2), (4, 5, 6), tuple(range(7, 100))]
-    X_with_row_scaling = [
-        (X[idx, :], RowScaling(alpha=1 / (i + 1))) for i, idx in enumerate(row_groups)
-    ]
-    # Make a copy so we can check that update happened, since input is mutated
-    X_before = deepcopy(X_with_row_scaling)
-
-    X_with_row_scaling_updated = ensemble_smoother_update_step_row_scaling(
-        covariance=covariance,
-        observations=observations,
-        X_with_row_scaling=X_with_row_scaling,
-        Y=Y,
-        seed=rng,
-    )
-
-    # Check that an update happened
-    assert not np.allclose(X_before[-1][0], X_with_row_scaling_updated[-1][0])
