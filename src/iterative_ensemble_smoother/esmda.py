@@ -124,12 +124,12 @@ class ESMDA:
         if not isinstance(inversion, str):
             raise TypeError(
                 "Argument `inversion` must be a string in "
-                f"{tuple(self._inversion_methods.keys())}"
+                f"{tuple(self._inversion_methods.keys())}, but got {inversion}"
             )
         if inversion not in self._inversion_methods.keys():
             raise ValueError(
                 "Argument `inversion` must be a string in "
-                f"{tuple(self._inversion_methods.keys())}"
+                f"{tuple(self._inversion_methods.keys())}, but got {inversion}"
             )
 
         # Store data
