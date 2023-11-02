@@ -6,8 +6,58 @@ from typing import List, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
+import scipy as sp
 
 from iterative_ensemble_smoother import ESMDA
+
+
+def correlation_threshold(ensemble_size: int) -> float:
+    """Decides whether or not to use user-defined or default threshold.
+
+    Default threshold taken from luo2022,
+    Continuous Hyper-parameter OPtimization (CHOP) in an ensemble Kalman filter
+    Section 2.3 - Localization in the CHOP problem
+    """
+    # return 3 / np.sqrt(ensemble_size)
+    return 0.33
+
+
+if __name__ == "__main__":
+    # Example showing how to use row scaling
+    num_parameters = 20
+    num_observations = 15
+    num_ensemble = 10
+
+    rng = np.random.default_rng(42)
+
+    X = rng.normal(size=(num_parameters, num_ensemble))
+    A = np.exp(np.random.randn(num_observations, num_parameters))
+    Y = rng.normal(size=(num_observations, num_ensemble))
+    covariance = np.exp(rng.normal(size=num_observations))
+    observations = rng.normal(size=num_observations, loc=1)
+
+    # Compute correlation matrix between parameters X and responses Y
+    from iterative_ensemble_smoother.esmda_inversion import empirical_cross_covariance
+
+    cov_XY = empirical_cross_covariance(X, Y)
+    stds_X = np.std(X, axis=1, ddof=1)
+    stds_Y = np.std(Y, axis=1, ddof=1)
+    corr_XY = (cov_XY / stds_X[:, np.newaxis]) / stds_Y[np.newaxis, :]
+
+    corr_XY_zero_mask = corr_XY < correlation_threshold(ensemble_size=X.shape[1])
+
+    # Approach 1 - naive approach
+    smoother = ESMDA(covariance=covariance, observations=observations, alpha=1, seed=1)
+    D = smoother.perturb_observations(size=Y.shape, alpha=1)
+    cov_XY[corr_XY_zero_mask] = 0  # Set covariance to zero
+    C_DD = empirical_cross_covariance(Y, Y)
+    X_posterior = X + cov_XY @ sp.linalg.solve(C_DD + 1 * np.diag(covariance), (D - Y))
+
+    # Approach 2
+
+    corr_XY_bool = corr_XY > correlation_threshold(ensemble_size=X.shape[1])
+
+    print(cov_XY.shape)
 
 
 class RowScaling:
