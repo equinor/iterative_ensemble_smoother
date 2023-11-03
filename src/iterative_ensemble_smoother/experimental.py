@@ -97,7 +97,6 @@ class AdaptiveESMDA(ESMDA):
         cov_XY[corr_XY < thres] = 0  # Set small values to zero
         print("Number of entries in cov_XY set to zero", np.isclose(cov_XY, 0).sum())
 
-        print(X.shape, cov_XY.shape, transition_matrix.shape)
         return X + cov_XY @ transition_matrix
 
 
@@ -123,11 +122,11 @@ if __name__ == "__main__":
 
     # Create observations
     x_true = np.linspace(-1, 1, num=num_parameters)
-    observations = g(x_true) + rng.standard_normal(size=num_observations) / 100
+    observations = g(x_true) + rng.standard_normal(size=num_observations) / 10
 
-    # Initial ensemble
+    # Initial ensemble and covariance
     X = rng.normal(size=(num_parameters, num_ensemble))
-    covariance = np.ones(num_observations)
+    covariance = rng.triangular(0.1, 1, 1, size=num_observations)
 
     # Split the parameters into two groups - simulating retrieving from storage
     split_index = rng.choice(range(num_parameters))
@@ -141,7 +140,7 @@ if __name__ == "__main__":
     # =============================================================================
     start_time = time.perf_counter()
     smoother = AdaptiveESMDA(
-        covariance=covariance, observations=observations, alpha=3, seed=1
+        covariance=covariance, observations=observations, alpha=10, seed=1
     )
 
     # Simulate realization that die
