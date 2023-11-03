@@ -23,7 +23,7 @@ def correlation_threshold(ensemble_size: int) -> float:
     Section 2.3 - Localization in the CHOP problem
     """
     # return 3 / np.sqrt(ensemble_size)
-    return 0.33
+    return -1
 
 
 def compute_cross_covariance_multiplier(
@@ -90,122 +90,133 @@ class AdaptiveESMDA(ESMDA):
         stds_Y = np.std(Y, axis=1, ddof=1)
         stds_X = np.std(X, axis=1, ddof=1)
         corr_XY = (cov_XY / stds_X[:, np.newaxis]) / stds_Y[np.newaxis, :]
+        assert corr_XY.max() <= 1
 
         # These will be set to zero
-        thres = correlation_threshold(ensemble_size=X)
+        thres = correlation_threshold(ensemble_size=X.shape[1])
         cov_XY[corr_XY < thres] = 0  # Set small values to zero
+        print("Number of entries in cov_XY set to zero", np.isclose(cov_XY, 0).sum())
 
-        return X_i + cov_XY @ transition_matrix
+        print(X.shape, cov_XY.shape, transition_matrix.shape)
+        return X + cov_XY @ transition_matrix
 
 
 if __name__ == "__main__":
 
     import time
 
+    # =============================================================================
+    # CREATE A PROBLEM - LINEAR REGRESSION
+    # =============================================================================
+
     # Create a problem
-    num_parameters = 10_000
+    rng = np.random.default_rng(42)
+    num_parameters = 100
     num_observations = 1000
     num_ensemble = 25
 
-    rng = np.random.default_rng(42)
-
-    X = rng.normal(size=(num_parameters, num_ensemble))
     A = np.exp(np.random.randn(num_observations, num_parameters))
-    Y = rng.normal(size=(num_observations, num_ensemble))
-    covariance = np.exp(rng.normal(size=num_observations))
-    observations = rng.normal(size=num_observations, loc=1)
 
-    # Split the parameters into groups
+    def g(X):
+        """Forward model."""
+        return A @ X
+
+    # Create observations
+    x_true = np.linspace(-1, 1, num=num_parameters)
+    observations = g(x_true) + rng.standard_normal(size=num_observations) / 100
+
+    # Initial ensemble
+    X = rng.normal(size=(num_parameters, num_ensemble))
+    covariance = np.ones(num_observations)
+
+    # Split the parameters into two groups - simulating retrieving from storage
     split_index = rng.choice(range(num_parameters))
     parameters_groups = [
         tuple(range(split_index)),
         tuple(range(split_index, num_parameters)),
     ]
 
-    # Approach 0 - API approach
-    # ----------------------------------------------------
+    # =============================================================================
+    # SETUP ESMDA FOR LOCALIZATION AND SOLVE PROBLEM
+    # =============================================================================
     start_time = time.perf_counter()
     smoother = AdaptiveESMDA(
-        covariance=covariance, observations=observations, alpha=1, seed=1
-    )
-    D = smoother.perturb_observations(size=Y.shape, alpha=1)
-    transition_matrix = compute_cross_covariance_multiplier(
-        alpha=1, C_D=smoother.C_D, D=D, Y=Y
+        covariance=covariance, observations=observations, alpha=3, seed=1
     )
 
-    X_posterior0 = np.empty(shape=X.shape)
+    # Simulate realization that die
+    living_mask = rng.choice(
+        [True, False], size=(len(smoother.alpha), num_ensemble), p=[0.9, 0.1]
+    )
 
-    for parameter_idx in parameters_groups:
-        X_i = X[parameter_idx, :]
+    X_i = np.copy(X)
+    for i, alpha_i in enumerate(smoother.alpha, 1):
+        print(f"ESMDA iteration {i} with alpha_i={alpha_i}")
 
-        X_posterior0[parameter_idx, :] = smoother.adaptive_assimilate(
-            X_i, Y, transition_matrix
+        Y_i = g(X_i)
+
+        # We simulate loss of realizations due to compute clusters going down.
+        # Figure out which realizations are still alive:
+        alive_mask_i = np.all(living_mask[:i, :], axis=0)
+        num_alive = alive_mask_i.sum()
+        print(f"  Total realizations still alive: {num_alive} / {num_ensemble}")
+
+        # Create noise D - common to this ESMDA update
+        D_i = smoother.perturb_observations(
+            size=(num_observations, num_alive), alpha=alpha_i
         )
 
-    print(f"Approach 1 in {time.perf_counter() - start_time} s")
+        # Create transition matrix K, independent of X
+        transition_matrix = compute_cross_covariance_multiplier(
+            alpha=alpha_i, C_D=smoother.C_D, D=D_i, Y=Y_i[:, alive_mask_i]
+        )
 
-    # Approach 1 - naive approach
-    # ----------------------------------------------------
+        # Loop over parameter groups and update
+        for parameter_mask_j in parameters_groups:
+            print("  Updating parameter group.")
+
+            # Update the relevant parameters
+            X_i[np.ix_(parameter_mask_j, alive_mask_i)] = smoother.adaptive_assimilate(
+                X_i[np.ix_(parameter_mask_j, alive_mask_i)],
+                Y_i[:, alive_mask_i],
+                transition_matrix,
+            )
+        print()
+
+    print(f"ESMDA with localization - Ran in {time.perf_counter() - start_time} s")
+
+    # =============================================================================
+    # VERIFY RESULT AGAINST NORMAL ESMDA ITERATIONS
+    # =============================================================================
     start_time = time.perf_counter()
-    smoother = ESMDA(covariance=covariance, observations=observations, alpha=1, seed=1)
-    D = smoother.perturb_observations(size=Y.shape, alpha=1)
+    smoother = AdaptiveESMDA(
+        covariance=covariance,
+        observations=observations,
+        alpha=len(smoother.alpha),
+        seed=1,
+    )
 
-    X_posterior = np.empty(shape=X.shape)
+    X_i2 = np.copy(X)
+    for i in range(smoother.num_assimilations()):
 
-    # Compute an update matrix, independent of X
-    K = compute_cross_covariance_multiplier(alpha=1, C_D=covariance, D=D, Y=Y)
+        # Run simulations
+        Y_i = g(X_i2)
 
-    stds_Y = np.std(Y, axis=1, ddof=1)
-    for parameter_idx in parameters_groups:
-        X_i = X[parameter_idx, :]
+        # We simulate loss of realizations due to compute clusters going down.
+        # Figure out which realizations are still alive:
+        alive_mask_i = np.all(living_mask[: i + 1, :], axis=0)
+        num_alive = alive_mask_i.sum()
 
-        # Step 1: # Compute cross-correlation between parameters X and responses Y
-        # Note: let the number of parameters be n and the number of responses be m.
-        # This step requires both O(mn) computation and O(mn) storage, which is
-        # larger than the O(n + m^2) computation used in ESMDA, which never explicitly
-        # forms the cross-covariance matrix between X and Y
-        cov_XY = empirical_cross_covariance(X_i, Y)
-        stds_X = np.std(X_i, axis=1, ddof=1)
-        corr_XY = (cov_XY / stds_X[:, np.newaxis]) / stds_Y[np.newaxis, :]
+        X_i2[:, alive_mask_i] = smoother.assimilate(
+            X_i2[:, alive_mask_i], Y_i[:, alive_mask_i]
+        )
 
-        # These will be set to zero
-        corr_XY_zero_mask = corr_XY < correlation_threshold(ensemble_size=X_i.shape[1])
-        cov_XY[corr_XY_zero_mask] = 0  # Set covariance to zero
+    # For this test to pass, correlation_threshold() should be be <= 0
+    assert np.allclose(X_i, X_i2)
 
-        X_posterior[parameter_idx, :] = X_i + cov_XY @ K
+    print(f"ESMDA without localization - Ran in {time.perf_counter() - start_time} s")
 
-    print(f"Approach 1 in {time.perf_counter() - start_time} s")
-
-    # Approach 2 - iterative approach
-    # ----------------------------------------------------
-    start_time = time.perf_counter()
-
-    # Step 1: # Compute cross-correlation matrix between parameters X and responses Y
-    # Note: let the number of parameters be n and the number of responses be m.
-    # This step requires both O(mn) computation and O(mn) storage, which is
-    # larger than the O(n + m^2) computation used in ESMDA, which never explicitly
-    # forms the cross-covariance matrix between X and Y
-    cov_XY = empirical_cross_covariance(X, Y)
-    stds_X = np.std(X, axis=1, ddof=1)
-    stds_Y = np.std(Y, axis=1, ddof=1)
-    corr_XY = (cov_XY / stds_X[:, np.newaxis]) / stds_Y[np.newaxis, :]
-
-    # These will be set to zero
-    corr_XY_zero_mask = corr_XY < correlation_threshold(ensemble_size=X.shape[1])
-    cov_XY[corr_XY_zero_mask] = 0  # Set covariance to zero
-
-    smoother = ESMDA(covariance=covariance, observations=observations, alpha=1, seed=1)
-    D = smoother.perturb_observations(size=Y.shape, alpha=1)
-    # Compute an update matrix, independent of X
-    K = compute_cross_covariance_multiplier(alpha=1, C_D=covariance, D=D, Y=Y)
-    X_posterior2 = np.copy(X)
-    for i in range(X.shape[0]):
-        j_mask = ~corr_XY_zero_mask[i]
-        X_posterior2[i, :] += cov_XY[i, j_mask] @ K[j_mask, :]
-
-    print(f"Approach 2 in {time.perf_counter() - start_time} s")
-    assert np.allclose(X_posterior, X_posterior2)
-    assert np.allclose(X_posterior, X_posterior0)
+    print("------------------------------------------")
 
 
 class RowScaling:

@@ -174,6 +174,8 @@ class ESMDA:
     ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble X_posterior.
 
+            X_posterior = smoother.assimilate(X, Y)
+
         Parameters
         ----------
         X : np.ndarray
