@@ -70,8 +70,32 @@ def compute_cross_covariance_multiplier(
     return sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
 
 
-# def empirical_cross_correlation(X, Y):
-#    co
+class AdaptiveESMDA(ESMDA):
+    def adaptive_transition_matrix(self, X, Y, D, alpha=1):
+        assert X.shape[1] == Y.shape[1]
+        assert D.shape == Y.shape
+
+        # Compute an update matrix, independent of X
+        return compute_cross_covariance_multiplier(alpha=alpha, C_D=self.C_D, D=D, Y=Y)
+
+    def adaptive_assimilate(self, X, Y, transition_matrix):
+        assert X.shape[1] == Y.shape[1]
+
+        # Step 1: # Compute cross-correlation between parameters X and responses Y
+        # Note: let the number of parameters be n and the number of responses be m.
+        # This step requires both O(mn) computation and O(mn) storage, which is
+        # larger than the O(n + m^2) computation used in ESMDA, which never explicitly
+        # forms the cross-covariance matrix between X and Y
+        cov_XY = empirical_cross_covariance(X, Y)
+        stds_Y = np.std(Y, axis=1, ddof=1)
+        stds_X = np.std(X, axis=1, ddof=1)
+        corr_XY = (cov_XY / stds_X[:, np.newaxis]) / stds_Y[np.newaxis, :]
+
+        # These will be set to zero
+        thres = correlation_threshold(ensemble_size=X)
+        cov_XY[corr_XY < thres] = 0  # Set small values to zero
+
+        return X_i + cov_XY @ transition_matrix
 
 
 if __name__ == "__main__":
@@ -79,8 +103,8 @@ if __name__ == "__main__":
     import time
 
     # Create a problem
-    num_parameters = 200
-    num_observations = 150
+    num_parameters = 10_000
+    num_observations = 1000
     num_ensemble = 25
 
     rng = np.random.default_rng(42)
@@ -97,6 +121,28 @@ if __name__ == "__main__":
         tuple(range(split_index)),
         tuple(range(split_index, num_parameters)),
     ]
+
+    # Approach 0 - API approach
+    # ----------------------------------------------------
+    start_time = time.perf_counter()
+    smoother = AdaptiveESMDA(
+        covariance=covariance, observations=observations, alpha=1, seed=1
+    )
+    D = smoother.perturb_observations(size=Y.shape, alpha=1)
+    transition_matrix = compute_cross_covariance_multiplier(
+        alpha=1, C_D=smoother.C_D, D=D, Y=Y
+    )
+
+    X_posterior0 = np.empty(shape=X.shape)
+
+    for parameter_idx in parameters_groups:
+        X_i = X[parameter_idx, :]
+
+        X_posterior0[parameter_idx, :] = smoother.adaptive_assimilate(
+            X_i, Y, transition_matrix
+        )
+
+    print(f"Approach 1 in {time.perf_counter() - start_time} s")
 
     # Approach 1 - naive approach
     # ----------------------------------------------------
@@ -159,6 +205,7 @@ if __name__ == "__main__":
 
     print(f"Approach 2 in {time.perf_counter() - start_time} s")
     assert np.allclose(X_posterior, X_posterior2)
+    assert np.allclose(X_posterior, X_posterior0)
 
 
 class RowScaling:
