@@ -31,6 +31,7 @@ If you want to do development, then run:
 ```text
 git clone https://github.com/equinor/iterative_ensemble_smoother.git
 cd iterative_ensemble_smoother
+<create environment>
 pip install --editable '.[doc,dev]'
 ```
 
