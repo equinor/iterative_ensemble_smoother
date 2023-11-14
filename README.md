@@ -26,21 +26,18 @@ This algorithm is particularly effective for problems with a large number of par
 pip install iterative_ensemble_smoother
 ```
 
-## Usage
+If you want to do development, then run:
 
-**iterative_ensemble_smoother** mainly implements `SIES` and `ESMDA` classes. Check out
-the examples section to see how to use them.
-
-
-## Building from source
-
-To build **iterative_ensemble_smoother** from source:
-
-```bash
+```text
 git clone https://github.com/equinor/iterative_ensemble_smoother.git
 cd iterative_ensemble_smoother
-pip install .
+pip install --editable '.[doc,dev]'
 ```
+
+## Usage
+
+**iterative_ensemble_smoother** mainly implements `SIES` and `ESMDA` classes. 
+Check out the examples section to see how to use them.
 
 ## Building the documentation
 
