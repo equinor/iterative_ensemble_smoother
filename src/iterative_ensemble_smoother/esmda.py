@@ -23,6 +23,7 @@ https://helper.ipam.ucla.edu/publications/oilws3/oilws3_14147.pdf
 """
 
 import numbers
+from abc import ABC
 from typing import Tuple, Union
 
 import numpy as np
@@ -36,7 +37,101 @@ from iterative_ensemble_smoother.esmda_inversion import (
 )
 
 
-class ESMDA:
+class BaseESMDA(ABC):
+    def __init__(
+        self,
+        covariance: npt.NDArray[np.double],
+        observations: npt.NDArray[np.double],
+        seed: Union[np.random._generator.Generator, int, None] = None,
+    ) -> None:
+        """Initialize the instance."""
+        # Validate inputs
+        if not (isinstance(covariance, np.ndarray) and covariance.ndim in (1, 2)):
+            raise TypeError(
+                "Argument `covariance` must be a NumPy array of dimension 1 or 2."
+            )
+
+        if covariance.ndim == 2 and covariance.shape[0] != covariance.shape[1]:
+            raise ValueError("Argument `covariance` must be square if it's 2D.")
+
+        if not (isinstance(observations, np.ndarray) and observations.ndim == 1):
+            raise TypeError("Argument `observations` must be a 1D NumPy array.")
+
+        if not observations.shape[0] == covariance.shape[0]:
+            raise ValueError("Shapes of `observations` and `covariance` must match.")
+
+        if not (
+            isinstance(seed, (int, np.random._generator.Generator)) or seed is None
+        ):
+            raise TypeError(
+                "Argument `seed` must be an integer "
+                "or numpy.random._generator.Generator."
+            )
+
+        # Store data
+        self.observations = observations
+        self.iteration = 0
+        self.rng = np.random.default_rng(seed)
+
+        # Only compute the covariance factorization once
+        # If it's a full matrix, we gain speedup by only computing cholesky once
+        # If it's a diagonal, we gain speedup by never having to compute cholesky
+        if isinstance(covariance, np.ndarray) and covariance.ndim == 2:
+            self.C_D_L = sp.linalg.cholesky(covariance, lower=False)
+        elif isinstance(covariance, np.ndarray) and covariance.ndim == 1:
+            self.C_D_L = np.sqrt(covariance)
+        else:
+            raise TypeError("Argument `covariance` must be 1D or 2D array")
+
+        self.C_D = covariance
+        assert isinstance(self.C_D, np.ndarray) and self.C_D.ndim in (1, 2)
+
+    def perturb_observations(
+        self, *, size: Tuple[int, int], alpha: float
+    ) -> npt.NDArray[np.double]:
+        """Create a matrix D with perturbed observations.
+
+        In the Emerick (2013) paper, the matrix D is defined in section 6.
+        See section 2(b) of the ES-MDA algorithm in the paper.
+
+        Parameters
+        ----------
+        size : Tuple[int, int]
+            The size, a tuple with (num_observations, ensemble_size).
+        alpha : float
+            The covariance inflation factor. The sequence of alphas should
+            obey the equation sum_i (1/alpha_i) = 1. However, this is NOT enforced
+            in this method call. The user/caller is responsible for this.
+
+        Returns
+        -------
+        D : np.ndarray
+            Each column consists of perturbed observations, scaled by alpha.
+
+        """
+        # Draw samples from zero-centered multivariate normal with cov=alpha * C_D,
+        # and add them to the observations. Notice that
+        # if C_D = L @ L.T by the cholesky factorization, then drawing y from
+        # a zero cented normal means that y := L @ z, where z ~ norm(0, 1).
+        # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha).
+
+        D: npt.NDArray[np.double]
+
+        # Two cases, depending on whether C_D was given as 1D or 2D array
+        if self.C_D.ndim == 2:
+            D = self.observations.reshape(-1, 1) + np.sqrt(
+                alpha
+            ) * self.C_D_L @ self.rng.normal(size=size)
+        else:
+            D = self.observations.reshape(-1, 1) + np.sqrt(alpha) * self.rng.normal(
+                size=size
+            ) * self.C_D_L.reshape(-1, 1)
+        assert D.shape == size
+
+        return D
+
+
+class ESMDA(BaseESMDA):
     """
     Implement an Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
 
@@ -92,34 +187,15 @@ class ESMDA:
         inversion: str = "exact",
     ) -> None:
         """Initialize the instance."""
-        # Validate inputs
-        if not (isinstance(covariance, np.ndarray) and covariance.ndim in (1, 2)):
-            raise TypeError(
-                "Argument `covariance` must be a NumPy array of dimension 1 or 2."
-            )
 
-        if covariance.ndim == 2 and covariance.shape[0] != covariance.shape[1]:
-            raise ValueError("Argument `covariance` must be square if it's 2D.")
-
-        if not (isinstance(observations, np.ndarray) and observations.ndim == 1):
-            raise TypeError("Argument `observations` must be a 1D NumPy array.")
-
-        if not observations.shape[0] == covariance.shape[0]:
-            raise ValueError("Shapes of `observations` and `covariance` must match.")
+        # Initialize the super-class
+        super().__init__(covariance=covariance, observations=observations, seed=seed)
 
         if not (
             (isinstance(alpha, np.ndarray) and alpha.ndim == 1)
             or isinstance(alpha, numbers.Integral)
         ):
             raise TypeError("Argument `alpha` must be an integer or a 1D NumPy array.")
-
-        if not (
-            isinstance(seed, (int, np.random._generator.Generator)) or seed is None
-        ):
-            raise TypeError(
-                "Argument `seed` must be an integer "
-                "or numpy.random._generator.Generator."
-            )
 
         if not isinstance(inversion, str):
             raise TypeError(
@@ -133,9 +209,6 @@ class ESMDA:
             )
 
         # Store data
-        self.observations = observations
-        self.iteration = 0
-        self.rng = np.random.default_rng(seed)
         self.inversion = inversion
 
         # Alpha can either be an integer (num iterations) or a list of weights
@@ -146,20 +219,6 @@ class ESMDA:
             assert np.allclose(self.alpha, normalize_alpha(self.alpha))
         else:
             raise TypeError("Alpha must be integer or 1D array.")
-
-        # Only compute the covariance factorization once
-        # If it's a full matrix, we gain speedup by only computing cholesky once
-        # If it's a diagonal, we gain speedup by never having to compute cholesky
-
-        if isinstance(covariance, np.ndarray) and covariance.ndim == 2:
-            self.C_D_L = sp.linalg.cholesky(covariance, lower=False)
-        elif isinstance(covariance, np.ndarray) and covariance.ndim == 1:
-            self.C_D_L = np.sqrt(covariance)
-        else:
-            raise TypeError("Argument `covariance` must be 1D or 2D array")
-
-        self.C_D = covariance
-        assert isinstance(self.C_D, np.ndarray) and self.C_D.ndim in (1, 2)
 
     def num_assimilations(self) -> int:
         return len(self.alpha)
@@ -304,50 +363,6 @@ class ESMDA:
             truncation=truncation,
             return_K=True,  # Ensures that we don't need X
         )
-
-    def perturb_observations(
-        self, *, size: Tuple[int, int], alpha: float
-    ) -> npt.NDArray[np.double]:
-        """Create a matrix D with perturbed observations.
-
-        In the Emerick (2013) paper, the matrix D is defined in section 6.
-        See section 2(b) of the ES-MDA algorithm in the paper.
-
-        Parameters
-        ----------
-        size : Tuple[int, int]
-            The size, a tuple with (num_observations, ensemble_size).
-        alpha : float
-            The covariance inflation factor. The sequence of alphas should
-            obey the equation sum_i (1/alpha_i) = 1. However, this is NOT enforced
-            in this method call. The user/caller is responsible for this.
-
-        Returns
-        -------
-        D : np.ndarray
-            Each column consists of perturbed observations, scaled by alpha.
-
-        """
-        # Draw samples from zero-centered multivariate normal with cov=alpha * C_D,
-        # and add them to the observations. Notice that
-        # if C_D = L @ L.T by the cholesky factorization, then drawing y from
-        # a zero cented normal means that y := L @ z, where z ~ norm(0, 1).
-        # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha).
-
-        D: npt.NDArray[np.double]
-
-        # Two cases, depending on whether C_D was given as 1D or 2D array
-        if self.C_D.ndim == 2:
-            D = self.observations.reshape(-1, 1) + np.sqrt(
-                self.alpha[self.iteration]
-            ) * self.C_D_L @ self.rng.normal(size=size)
-        else:
-            D = self.observations.reshape(-1, 1) + np.sqrt(
-                self.alpha[self.iteration]
-            ) * self.rng.normal(size=size) * self.C_D_L.reshape(-1, 1)
-        assert D.shape == size
-
-        return D
 
 
 if __name__ == "__main__":

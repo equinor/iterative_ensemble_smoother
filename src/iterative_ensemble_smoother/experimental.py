@@ -9,9 +9,10 @@ import numpy.typing as npt
 import scipy as sp
 
 from iterative_ensemble_smoother import ESMDA
+from iterative_ensemble_smoother.esmda import BaseESMDA
 from iterative_ensemble_smoother.esmda_inversion import (
-    empirical_covariance_upper,
     empirical_cross_covariance,
+    normalize_alpha,
 )
 
 
@@ -46,7 +47,11 @@ def compute_cross_covariance_multiplier(
     cov_XY, then we can apply the same K to a reduced number of rows (parameters)
     in cov_XY.
     """
-    C_DD = empirical_covariance_upper(Y)  # Only compute upper part
+    C_DD = empirical_cross_covariance(Y, Y)  # Only compute upper part
+
+    # import matplotlib.pyplot as plt
+    # plt.imshow((Y))
+    # plt.show()
 
     # Arguments for sp.linalg.solve
     solver_kwargs = {
@@ -55,6 +60,10 @@ def compute_cross_covariance_multiplier(
         "assume_a": "pos",  # Assume positive definite matrix (use cholesky)
         "lower": False,  # Only use the upper part while solving
     }
+
+    # import matplotlib.pyplot as plt
+    # plt.imshow((C_DD))
+    # plt.show()
 
     # Compute K := sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)
     # by solving the system (C_DD + alpha * C_D) @ K = (D - Y)
@@ -65,10 +74,27 @@ def compute_cross_covariance_multiplier(
         # C_D is an array, so add it to the diagonal without forming diag(C_D)
         np.fill_diagonal(C_DD, C_DD.diagonal() + alpha * C_D)
 
+    # import matplotlib.pyplot as plt
+    # plt.imshow((C_DD))
+    # plt.show()
+
     return sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
 
+    try:
+        return sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
+    except sp.linalg.LinAlgError:
+        ans, *_ = sp.linalg.lstsq(
+            a=C_DD,
+            b=D - Y,
+            cond=None,
+            overwrite_a=True,
+            overwrite_b=True,
+            check_finite=True,
+        )
+        return ans
 
-class AdaptiveESMDA(ESMDA):
+
+class AdaptiveESMDA(BaseESMDA):
     def correlation_threshold(self, ensemble_size: int) -> float:
         """Decides whether or not to use user-defined or default threshold.
 
@@ -76,21 +102,19 @@ class AdaptiveESMDA(ESMDA):
         Continuous Hyper-parameter OPtimization (CHOP) in an ensemble Kalman filter
         Section 2.3 - Localization in the CHOP problem
         """
-        # return 3 / np.sqrt(ensemble_size)
-        return -1e10
+        return 3 / np.sqrt(ensemble_size)
 
-    def adaptive_transition_matrix(self, X, Y, D, alpha=1):
+    def adaptive_transition_matrix(self, Y, D, alpha):
         """Compute a transition matrix K, such that:
 
         X_posterior = X_prior + cov_XY @ K
         """
-        assert X.shape[1] == Y.shape[1]
         assert D.shape == Y.shape
 
         # Compute an update matrix, independent of X
         return compute_cross_covariance_multiplier(alpha=alpha, C_D=self.C_D, D=D, Y=Y)
 
-    def adaptive_assimilate(self, X, Y, transition_matrix):
+    def adaptive_assimilate(self, X, Y, transition_matrix, correlation_threshold=None):
         """Use X, or possibly a subset of variables (rows) in X, as well as Y,
         to compute the cross covariance matrix cov_XY.
         Then compute the update as:
@@ -99,6 +123,8 @@ class AdaptiveESMDA(ESMDA):
         """
         assert X.shape[1] == Y.shape[1] == transition_matrix.shape[1]
         assert Y.shape[0] == transition_matrix.shape[0]
+        if correlation_threshold is None:
+            correlation_threshold = self.correlation_threshold
 
         # Step 1: # Compute cross-correlation between parameters X and responses Y
         # Note: let the number of parameters be n and the number of responses be m.
@@ -118,9 +144,9 @@ class AdaptiveESMDA(ESMDA):
 
         # Determine which elements in the cross covariance matrix that will
         # be set to zero
-        thres = self.correlation_threshold(ensemble_size=X.shape[1])
-        cov_XY[corr_XY < thres] = 0  # Set small values to zero
-        # print("  Entries in cov_XY set to zero", np.isclose(cov_XY, 0).sum())
+        thres = correlation_threshold(ensemble_size=X.shape[1])
+        cov_XY[np.abs(corr_XY) < thres] = 0  # Set small values to zero
+        print("  Entries in cov_XY set to zero", np.isclose(cov_XY, 0).sum())
 
         return X + cov_XY @ transition_matrix
 
@@ -134,9 +160,9 @@ if __name__ == "__main__":
 
     # Create a problem with g(x) = A @ x
     rng = np.random.default_rng(42)
-    num_parameters = 10000
+    num_parameters = 100
     num_observations = 100
-    num_ensemble = 25
+    num_ensemble = 80
 
     A = np.exp(rng.standard_normal(size=(num_observations, num_parameters)))
 
@@ -162,18 +188,18 @@ if __name__ == "__main__":
     # =============================================================================
     # SETUP ESMDA FOR LOCALIZATION AND SOLVE PROBLEM
     # =============================================================================
+    alpha = normalize_alpha(np.ones(5))
+
     start_time = time.perf_counter()
-    smoother = AdaptiveESMDA(
-        covariance=covariance, observations=observations, alpha=5, seed=1
-    )
+    smoother = AdaptiveESMDA(covariance=covariance, observations=observations, seed=1)
 
     # Simulate realization that die
     living_mask = rng.choice(
-        [True, False], size=(len(smoother.alpha), num_ensemble), p=[0.9, 0.1]
+        [True, False], size=(len(alpha), num_ensemble), p=[0.9, 0.1]
     )
 
     X_i = np.copy(X)
-    for i, alpha_i in enumerate(smoother.alpha, 1):
+    for i, alpha_i in enumerate(alpha, 1):
         print(f"ESMDA iteration {i} with alpha_i={alpha_i}")
 
         # Run forward model
@@ -208,7 +234,14 @@ if __name__ == "__main__":
                 X_i[mask],
                 Y_i[:, alive_mask_i],
                 transition_matrix,
+                correlation_threshold=lambda ensemble_size: 0.5,
             )
+
+        # import matplotlib.pyplot as plt
+        # plt.title("X_i")
+        # plt.imshow(X_i)
+        # plt.show()
+
         print()
 
     print(f"ESMDA with localization - Ran in {time.perf_counter() - start_time} s")
@@ -217,10 +250,10 @@ if __name__ == "__main__":
     # VERIFY RESULT AGAINST NORMAL ESMDA ITERATIONS
     # =============================================================================
     start_time = time.perf_counter()
-    smoother = AdaptiveESMDA(
+    smoother = ESMDA(
         covariance=covariance,
         observations=observations,
-        alpha=len(smoother.alpha),
+        alpha=alpha,
         seed=1,
     )
 

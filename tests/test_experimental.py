@@ -4,9 +4,219 @@ import numpy as np
 import pytest
 
 from iterative_ensemble_smoother import ESMDA
+from iterative_ensemble_smoother.esmda_inversion import normalize_alpha
 from iterative_ensemble_smoother.experimental import (
+    AdaptiveESMDA,
     ensemble_smoother_update_step_row_scaling,
 )
+
+
+@pytest.fixture()
+def linear_problem(request):
+
+    # Seed the problem using indirect parametrization:
+    # https://docs.pytest.org/en/latest/example/parametrize.html#indirect-parametrization
+    rng = np.random.default_rng(request.param)
+
+    # Create a problem with g(x) = A @ x
+    num_parameters = 50
+    num_observations = 10
+    num_ensemble = 100
+
+    A = np.exp(rng.standard_normal(size=(num_observations, num_parameters)))
+
+    def g(X):
+        """Forward model."""
+        return A @ X
+
+    # Create observations
+    x_true = np.linspace(-1, 1, num=num_parameters)
+    observations = g(x_true) + rng.standard_normal(size=num_observations) / 10
+
+    # Initial ensemble and covariance
+    X = rng.normal(size=(num_parameters, num_ensemble))
+    covariance = rng.triangular(0.1, 1, 1, size=num_observations)
+    yield X, g, observations, covariance
+
+
+class TestAdaptiveESMDA:
+    @pytest.mark.parametrize(
+        "linear_problem",
+        range(25),
+        indirect=True,
+        ids=[f"seed-{i+1}" for i in range(25)],
+    )
+    def test_that_adaptive_localization_with_cutoff_1_equals_ensemble_prior(
+        self, linear_problem
+    ):
+
+        # Create a problem with g(x) = A @ x
+        X, g, observations, covariance = linear_problem
+
+        # Create adaptive smoother
+        smoother = AdaptiveESMDA(
+            covariance=covariance, observations=observations, seed=1
+        )
+
+        X_i = np.copy(X)
+        alpha = normalize_alpha(np.ones(5))
+        for i, alpha_i in enumerate(alpha, 1):
+
+            # Run forward model
+            Y_i = g(X_i)
+
+            # Create noise D - common to this ESMDA update
+            D_i = smoother.perturb_observations(size=Y_i.shape, alpha=alpha_i)
+
+            # Create transition matrix K, independent of X
+            transition_matrix = smoother.adaptive_transition_matrix(
+                Y=Y_i, D=D_i, alpha=alpha_i
+            )
+
+            X_i = smoother.adaptive_assimilate(
+                X_i,
+                Y_i,
+                transition_matrix,
+                correlation_threshold=lambda ensemble_size: 1,
+            )
+
+        assert np.allclose(X, X_i)
+
+    @pytest.mark.parametrize(
+        "linear_problem",
+        range(25),
+        indirect=True,
+        ids=[f"seed-{i+1}" for i in range(25)],
+    )
+    def test_that_adaptive_localization_with_cutoff_0_equals_standard_ESMDA_update(
+        self, linear_problem
+    ):
+
+        # Create a problem with g(x) = A @ x
+        X, g, observations, covariance = linear_problem
+
+        # =============================================================================
+        # SETUP ESMDA FOR LOCALIZATION AND SOLVE PROBLEM
+        # =============================================================================
+        alpha = normalize_alpha(np.ones(5))
+
+        smoother = AdaptiveESMDA(
+            covariance=covariance, observations=observations, seed=1
+        )
+
+        X_i = np.copy(X)
+        for i, alpha_i in enumerate(alpha, 1):
+
+            # Run forward model
+            Y_i = g(X_i)
+
+            # Create noise D - common to this ESMDA update
+            D_i = smoother.perturb_observations(size=Y_i.shape, alpha=alpha_i)
+
+            # Create transition matrix K, independent of X
+            transition_matrix = smoother.adaptive_transition_matrix(
+                Y=Y_i, D=D_i, alpha=alpha_i
+            )
+
+            X_i = smoother.adaptive_assimilate(
+                X_i,
+                Y_i,
+                transition_matrix,
+                correlation_threshold=lambda ensemble_size: 0,
+            )
+
+        # =============================================================================
+        # VERIFY RESULT AGAINST NORMAL ESMDA ITERATIONS
+        # =============================================================================
+        smoother = ESMDA(
+            covariance=covariance,
+            observations=observations,
+            alpha=alpha,
+            seed=1,
+        )
+
+        X_i2 = np.copy(X)
+        for i in range(smoother.num_assimilations()):
+            X_i2 = smoother.assimilate(X_i2, g(X_i2))
+
+        assert np.allclose(X_i, X_i2)
+
+    @pytest.mark.parametrize(
+        "linear_problem",
+        range(25),
+        indirect=True,
+        ids=[f"seed-{i+1}" for i in range(25)],
+    )
+    @pytest.mark.parametrize(
+        "cutoffs", [(0, 1e-3), (0.1, 0.2), (0.9, 1), (1 - 1e-3, 1)]
+    )
+    def test_that_posterior_generalized_variance_increases_in_cutoff(
+        self, linear_problem, cutoffs
+    ):
+        """As the number of ensemble members decrease, this test starts to fail
+        more often. The property only holds in the limit as the number of
+        ensemble members goes to infinity."""
+
+        # Create a problem with g(x) = A @ x
+        X, g, observations, covariance = linear_problem
+
+        # =============================================================================
+        # SETUP ESMDA FOR LOCALIZATION AND SOLVE PROBLEM
+        # =============================================================================
+        alpha = normalize_alpha(np.ones(1))
+
+        smoother = AdaptiveESMDA(
+            covariance=covariance, observations=observations, seed=1
+        )
+
+        X_i = np.copy(X)
+        for i, alpha_i in enumerate(alpha, 1):
+
+            # Run forward model
+            Y_i = g(X_i)
+
+            # Create noise D - common to this ESMDA update
+            D_i = smoother.perturb_observations(size=Y_i.shape, alpha=alpha_i)
+
+            # Create transition matrix K, independent of X
+            transition_matrix = smoother.adaptive_transition_matrix(
+                Y=Y_i, D=D_i, alpha=alpha_i
+            )
+
+            cutoff_low, cutoff_high = cutoffs
+            assert cutoff_low <= cutoff_high
+
+            X_i_low_cutoff = smoother.adaptive_assimilate(
+                X_i,
+                Y_i,
+                transition_matrix,
+                correlation_threshold=lambda ensemble_size: cutoff_low,
+            )
+            X_i_high_cutoff = smoother.adaptive_assimilate(
+                X_i,
+                Y_i,
+                transition_matrix,
+                correlation_threshold=lambda ensemble_size: cutoff_high,
+            )
+
+            prior_cov = np.cov(X, rowvar=False)
+            posterior_cutoff1_cov = np.cov(X_i_low_cutoff, rowvar=False)
+            posterior_cutoff2_cov = np.cov(X_i_high_cutoff, rowvar=False)
+
+            generalized_variance_prior = np.linalg.det(prior_cov)
+            generalized_variance_1 = np.linalg.det(posterior_cutoff1_cov)
+            generalized_variance_2 = np.linalg.det(posterior_cutoff2_cov)
+
+            # Numerical tolerance for comparisons below
+            EPSILON = 1e-12
+
+            assert generalized_variance_1 > -EPSILON, f"1 Failed with cutoff={cutoffs}"
+            assert (
+                generalized_variance_1 <= generalized_variance_2 + EPSILON
+            ), f"2 Failed with cutoff_low={cutoff_low} and cutoff_high={cutoff_high}"
+            assert (
+                generalized_variance_2 <= generalized_variance_prior + EPSILON
+            ), f"3 Failed with cutoff_high={cutoff_high}"
 
 
 class TestRowScaling:
