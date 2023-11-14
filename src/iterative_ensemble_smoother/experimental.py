@@ -49,10 +49,6 @@ def compute_cross_covariance_multiplier(
     """
     C_DD = empirical_cross_covariance(Y, Y)  # Only compute upper part
 
-    # import matplotlib.pyplot as plt
-    # plt.imshow((Y))
-    # plt.show()
-
     # Arguments for sp.linalg.solve
     solver_kwargs = {
         "overwrite_a": True,
@@ -60,10 +56,6 @@ def compute_cross_covariance_multiplier(
         "assume_a": "pos",  # Assume positive definite matrix (use cholesky)
         "lower": False,  # Only use the upper part while solving
     }
-
-    # import matplotlib.pyplot as plt
-    # plt.imshow((C_DD))
-    # plt.show()
 
     # Compute K := sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)
     # by solving the system (C_DD + alpha * C_D) @ K = (D - Y)
@@ -74,12 +66,8 @@ def compute_cross_covariance_multiplier(
         # C_D is an array, so add it to the diagonal without forming diag(C_D)
         np.fill_diagonal(C_DD, C_DD.diagonal() + alpha * C_D)
 
-    # import matplotlib.pyplot as plt
-    # plt.imshow((C_DD))
-    # plt.show()
-
-    return sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
-
+    # Sometimes we get an error:
+    # LinAlgError: Matrix is singular.
     try:
         return sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
     except sp.linalg.LinAlgError:
@@ -161,10 +149,10 @@ if __name__ == "__main__":
     # Create a problem with g(x) = A @ x
     rng = np.random.default_rng(42)
     num_parameters = 100
-    num_observations = 100
-    num_ensemble = 80
+    num_observations = 50
+    num_ensemble = 20
 
-    A = np.exp(rng.standard_normal(size=(num_observations, num_parameters)))
+    A = rng.standard_normal(size=(num_observations, num_parameters))
 
     def g(X):
         """Forward model."""
@@ -172,11 +160,11 @@ if __name__ == "__main__":
 
     # Create observations
     x_true = np.linspace(-1, 1, num=num_parameters)
-    observations = g(x_true) + rng.standard_normal(size=num_observations) / 10
+    observations = g(x_true) + rng.standard_normal(size=num_observations)
 
     # Initial ensemble and covariance
     X = rng.normal(size=(num_parameters, num_ensemble))
-    covariance = rng.triangular(0.1, 1, 1, size=num_observations)
+    covariance = np.ones(num_observations)
 
     # Split the parameters into two groups of equal size
     num_groups = 10
@@ -217,8 +205,8 @@ if __name__ == "__main__":
         )
 
         # Create transition matrix K, independent of X
-        transition_matrix = compute_cross_covariance_multiplier(
-            alpha=alpha_i, C_D=smoother.C_D, D=D_i, Y=Y_i[:, alive_mask_i]
+        transition_matrix = smoother.adaptive_transition_matrix(
+            Y=Y_i[:, alive_mask_i], D=D_i, alpha=alpha_i
         )
 
         # Loop over parameter groups and update
@@ -234,13 +222,8 @@ if __name__ == "__main__":
                 X_i[mask],
                 Y_i[:, alive_mask_i],
                 transition_matrix,
-                correlation_threshold=lambda ensemble_size: 0.5,
+                correlation_threshold=lambda ensemble_size: 0,
             )
-
-        # import matplotlib.pyplot as plt
-        # plt.title("X_i")
-        # plt.imshow(X_i)
-        # plt.show()
 
         print()
 
