@@ -18,11 +18,15 @@
 
 # %%
 import numpy as np
+import scipy as sp
 from matplotlib import pyplot as plt
 from sklearn.linear_model import Ridge
 
 from iterative_ensemble_smoother import ESMDA
-from iterative_ensemble_smoother.esmda_inversion import normalize_alpha
+from iterative_ensemble_smoother.esmda_inversion import (
+    empirical_cross_covariance,
+    normalize_alpha,
+)
 
 # %%
 # %#load_ext autoreload
@@ -211,3 +215,114 @@ plt.scatter(
 
 plt.legend()
 plt.show()
+
+
+# %% [markdown]
+# # ESMDA with masking Y
+
+# %%
+def empirical_cross_correlation(X, Y):
+    cov_XY = empirical_cross_covariance(X, Y)
+    assert cov_XY.shape == (X.shape[0], Y.shape[0])
+    stds_Y = np.std(Y, axis=1, ddof=1)
+    stds_X = np.std(X, axis=1, ddof=1)
+
+    # Compute the correlation matrix from the covariance matrix
+    corr_XY = (cov_XY / stds_X[:, np.newaxis]) / stds_Y[np.newaxis, :]
+    assert corr_XY.max() <= 1
+    assert corr_XY.min() >= -1
+    return corr_XY
+
+
+# %%
+
+
+plt.scatter(
+    np.arange(len(x_true)),
+    x_true,
+    color="black",
+    zorder=99,
+    label="True parameter values",
+)
+plt.scatter(
+    np.arange(len(x_true)),
+    model.coef_,
+    zorder=80,
+    label="Linear regression coefs",
+    alpha=ALPHA_PLOT,
+)
+plt.scatter(
+    np.arange(len(x_true)),
+    X.mean(axis=1),
+    zorder=80,
+    label="Prior means",
+    alpha=ALPHA_PLOT,
+)
+
+THRESHOLD = 0.5
+plt.title(f"ESMDA with adaptive localization - threshold={THRESHOLD}")
+
+alpha = normalize_alpha(np.ones(5))
+
+X_i = np.copy(X)
+for i, alpha_i in enumerate(alpha, 1):
+    print(f"ESMDA iteration {i} with alpha_i={alpha_i}")
+
+    # Run forward model
+    Y_i = g(X_i)
+
+    # Create noise D - common to this ESMDA update
+    D_i = smoother.perturb_observations(size=Y_i.shape, alpha=alpha_i)
+
+    # Compute covariance, correlation and masked matrix
+    cov_XY = empirical_cross_covariance(X_i, Y_i)
+    corr_XY = empirical_cross_correlation(X_i, Y_i)
+    corr_XY_large = corr_XY > THRESHOLD
+
+    # Loop over each p parameter in X
+    for p in range(X.shape[0]):
+
+        # Which y values should be updated?
+        y_mask = corr_XY_large[p, :]
+
+        # Compute cov(Y, Y)
+        cov_YY = empirical_cross_covariance(Y_i, Y_i)
+        yy_mask = np.ix_(y_mask, y_mask)
+
+        # Compute : transition_matrix = Sigma_d^-1 (d - y)
+        Sigma_d = cov_YY[yy_mask] + alpha_i * covariance[y_mask]
+        transition_matrix = sp.linalg.solve(Sigma_d, (D_i - Y_i)[y_mask, :])
+
+        # Perform update
+        X_i[p, :] = X_i[p, :] + cov_XY[p, y_mask] @ transition_matrix
+
+    X_i_means_masked_y = X_i.mean(axis=1)
+
+
+# Finish the plot
+plt.scatter(
+    np.arange(len(x_true)),
+    X_i_means_masked_y,
+    zorder=i,
+    label=f"ESMDA-mask-y estimated parameters (iter={i})",
+    alpha=ALPHA_PLOT,
+)
+
+
+plt.scatter(
+    np.arange(len(x_true)),
+    X_i_means,
+    zorder=i,
+    label=f"ESMDA estimated parameters (iter={i+1})",
+    alpha=ALPHA_PLOT,
+)
+
+
+plt.legend()
+plt.show()
+
+# %%
+
+# %%
+
+# %%
