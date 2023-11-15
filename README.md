@@ -37,7 +37,7 @@ pip install --editable '.[doc,dev]'
 
 ## Usage
 
-**iterative_ensemble_smoother** mainly implements `SIES` and `ESMDA` classes. 
+**iterative_ensemble_smoother** mainly implements the two classes `SIES` and `ESMDA`.
 Check out the examples section to see how to use them.
 
 ## Building the documentation
