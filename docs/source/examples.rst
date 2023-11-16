@@ -7,5 +7,6 @@ Example Usage
 
    Polynomial
    Oscillator
+   LinearRegression
 
 * :ref:`genindex`
