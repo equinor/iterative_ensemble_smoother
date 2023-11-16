@@ -20,11 +20,10 @@ copyright = f"2022-{datetime.datetime.today().year}, {author}"
 version = re.sub(r"\.dev.*$", r".dev", ies.__version__)
 release = version
 
-# convert the python file to a notebook
+# Convert Python files to notebooks
 check_output(["jupytext", "Polynomial.py", "-o", "Polynomial.ipynb"])
-
-# Do the same for this file
 check_output(["jupytext", "Oscillator.py", "-o", "Oscillator.ipynb"])
+check_output(["jupytext", "LinearRegression.py", "-o", "LinearRegression.ipynb"])
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
