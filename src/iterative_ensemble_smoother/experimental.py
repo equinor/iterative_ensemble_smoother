@@ -16,6 +16,32 @@ from iterative_ensemble_smoother.esmda_inversion import (
 )
 
 
+def groupby_indices(X):
+    """Yield pairs of (unique_row, indices_of_row).
+
+    Examples
+    --------
+    >>> X = np.array([[1, 0],
+    ...               [1, 0],
+    ...               [1, 1],
+    ...               [1, 1],
+    ...               [1, 0]])
+    >>> list(groupby_indices(X))
+    [(array([1, 0]), array([0, 1, 4])), (array([1, 1]), array([2, 3]))]
+
+    """
+    assert X.ndim == 2
+
+    # https://stackoverflow.com/questions/30003068/how-to-get-a-list-of-all-indices-of-repeated-elements-in-a-numpy-array
+    idx_sort = np.lexsort(X.T[::-1, :], axis=0)
+    sorted_X = X[idx_sort, :]
+    vals, idx_start, count = np.unique(
+        sorted_X, return_counts=True, return_index=True, axis=0
+    )
+    res = np.split(idx_sort, idx_start[1:])
+    yield from zip(vals, res)
+
+
 def compute_cross_covariance_multiplier(
     *,
     alpha: float,
@@ -102,15 +128,25 @@ class AdaptiveESMDA(BaseESMDA):
         # Compute an update matrix, independent of X
         return compute_cross_covariance_multiplier(alpha=alpha, C_D=self.C_D, D=D, Y=Y)
 
-    def adaptive_assimilate(self, X, Y, transition_matrix, correlation_threshold=None):
+    def correlation_matrix(self, cov_XY, X, Y):
+        assert cov_XY.shape == (X.shape[0], Y.shape[0])
+        stds_Y = np.std(Y, axis=1, ddof=1)
+        stds_X = np.std(X, axis=1, ddof=1)
+        # Compute the correlation matrix from the covariance matrix
+        corr_XY = (cov_XY / stds_X[:, np.newaxis]) / stds_Y[np.newaxis, :]
+        assert corr_XY.max() <= 1
+        assert corr_XY.min() >= -1
+        return corr_XY
+
+    def adaptive_assimilate(self, X, Y, D, alpha, correlation_threshold=None):
         """Use X, or possibly a subset of variables (rows) in X, as well as Y,
         to compute the cross covariance matrix cov_XY.
         Then compute the update as:
 
             X + cov_XY @ transition_matrix
         """
-        assert X.shape[1] == Y.shape[1] == transition_matrix.shape[1]
-        assert Y.shape[0] == transition_matrix.shape[0]
+        assert X.shape[1] == Y.shape[1]
+
         if correlation_threshold is None:
             correlation_threshold = self.correlation_threshold
 
@@ -122,21 +158,37 @@ class AdaptiveESMDA(BaseESMDA):
         # X by parameter group (rows), the storage requirement decreases
         cov_XY = empirical_cross_covariance(X, Y)
         assert cov_XY.shape == (X.shape[0], Y.shape[0])
-        stds_Y = np.std(Y, axis=1, ddof=1)
-        stds_X = np.std(X, axis=1, ddof=1)
-
-        # Compute the correlation matrix from the covariance matrix
-        corr_XY = (cov_XY / stds_X[:, np.newaxis]) / stds_Y[np.newaxis, :]
-        assert corr_XY.max() <= 1
-        assert corr_XY.min() >= -1
+        corr_XY = self.correlation_matrix(cov_XY, X, Y)
+        assert corr_XY.shape == cov_XY.shape
 
         # Determine which elements in the cross covariance matrix that will
         # be set to zero
         thres = correlation_threshold(ensemble_size=X.shape[1])
-        cov_XY[np.abs(corr_XY) < thres] = 0  # Set small values to zero
-        print("  Entries in cov_XY set to zero", np.isclose(cov_XY, 0).sum())
+        significant_corr_XY = np.abs(corr_XY) > thres
 
-        return X + cov_XY @ transition_matrix
+        X_out = np.copy(X)
+        for (unique_row, indices_of_row) in groupby_indices(significant_corr_XY):
+
+            # Get the parameters (X) that have identical significant responses (Y)
+            X_subset = X[indices_of_row, :]
+            Y_subset = Y[unique_row, :]
+
+            # Compute the update
+            cov_XY_mask = np.ix_(indices_of_row, unique_row)
+            cov_XY_subset = cov_XY[cov_XY_mask]
+
+            C_D_subset = self.C_D[unique_row]
+            D_subset = D[unique_row, :]
+
+            K = compute_cross_covariance_multiplier(
+                alpha=alpha,
+                C_D=C_D_subset,
+                D=D_subset,
+                Y=Y_subset,
+            )
+            X_out[indices_of_row, :] = X_subset + cov_XY_subset @ K
+
+        return X_out
 
 
 if __name__ == "__main__":
@@ -204,11 +256,6 @@ if __name__ == "__main__":
             size=(num_observations, num_alive), alpha=alpha_i
         )
 
-        # Create transition matrix K, independent of X
-        transition_matrix = smoother.adaptive_transition_matrix(
-            Y=Y_i[:, alive_mask_i], D=D_i, alpha=alpha_i
-        )
-
         # Loop over parameter groups and update
         for j, parameter_mask_j in enumerate(parameters_groups, 1):
             print(f"  Updating parameter group {j}/{len(parameters_groups)}")
@@ -219,9 +266,10 @@ if __name__ == "__main__":
 
             # Update the relevant parameters and write to X (storage)
             X_i[mask] = smoother.adaptive_assimilate(
-                X_i[mask],
-                Y_i[:, alive_mask_i],
-                transition_matrix,
+                X=X_i[mask],
+                Y=Y_i[:, alive_mask_i],
+                D=D_i,
+                alpha=alpha_i,
                 correlation_threshold=lambda ensemble_size: 0,
             )
 
@@ -360,3 +408,15 @@ def ensemble_smoother_update_step_row_scaling(
         row_scale.multiply(X, transition_matrix)
 
     return X_with_row_scaling
+
+
+if __name__ == "__main__":
+    import pytest
+
+    pytest.main(
+        args=[
+            __file__,
+            "--doctest-modules",
+            "-v",
+        ]
+    )

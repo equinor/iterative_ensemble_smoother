@@ -1,3 +1,4 @@
+import functools
 from copy import deepcopy
 
 import numpy as np
@@ -8,7 +9,39 @@ from iterative_ensemble_smoother.esmda_inversion import normalize_alpha
 from iterative_ensemble_smoother.experimental import (
     AdaptiveESMDA,
     ensemble_smoother_update_step_row_scaling,
+    groupby_indices,
 )
+
+
+@pytest.mark.parametrize("seed", range(25))
+def test_groupby_indices(seed):
+
+    rng = np.random.default_rng(seed)
+    rows = rng.integers(10, 100)
+    columns = rng.integers(2, 9)
+
+    # Create data matrix
+    X = rng.integers(0, 10, size=(rows, columns))
+
+    groups = list(groupby_indices(X))
+    indices = [set(idx) for (_, idx) in groups]
+
+    # Verify that every row is included
+    union_idx = functools.reduce(set.union, indices)
+    assert union_idx == set(range(rows))
+
+    # Verify that no duplicate rows occur
+    intersection_idx = functools.reduce(set.intersection, indices)
+    assert intersection_idx == set()
+
+    # Verify each entry in the groups
+    for (unique_row, indices_of_row) in groups:
+
+        # Repeat this unique row the number of times it occurs in X
+        repeated = np.repeat(
+            unique_row[np.newaxis, :], repeats=len(indices_of_row), axis=0
+        )
+        assert np.allclose(X[indices_of_row, :], repeated)
 
 
 @pytest.fixture()
@@ -333,9 +366,4 @@ class TestRowScaling:
 
 if __name__ == "__main__":
 
-    pytest.main(
-        args=[
-            __file__,
-            "-v",
-        ]
-    )
+    pytest.main(args=[__file__, "-v", "-k test_groupby_indices"])
