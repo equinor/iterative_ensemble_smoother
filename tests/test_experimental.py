@@ -101,15 +101,12 @@ class TestAdaptiveESMDA:
             # Create noise D - common to this ESMDA update
             D_i = smoother.perturb_observations(size=Y_i.shape, alpha=alpha_i)
 
-            # Create transition matrix K, independent of X
-            transition_matrix = smoother.adaptive_transition_matrix(
-                Y=Y_i, D=D_i, alpha=alpha_i
-            )
-
+            # Update the relevant parameters and write to X (storage)
             X_i = smoother.adaptive_assimilate(
-                X_i,
-                Y_i,
-                transition_matrix,
+                X=X_i,
+                Y=Y_i,
+                D=D_i,
+                alpha=alpha_i,
                 correlation_threshold=lambda ensemble_size: 1,
             )
 
@@ -146,15 +143,12 @@ class TestAdaptiveESMDA:
             # Create noise D - common to this ESMDA update
             D_i = smoother.perturb_observations(size=Y_i.shape, alpha=alpha_i)
 
-            # Create transition matrix K, independent of X
-            transition_matrix = smoother.adaptive_transition_matrix(
-                Y=Y_i, D=D_i, alpha=alpha_i
-            )
-
+            # Update the relevant parameters and write to X (storage)
             X_i = smoother.adaptive_assimilate(
-                X_i,
-                Y_i,
-                transition_matrix,
+                X=X_i,
+                Y=Y_i,
+                D=D_i,
+                alpha=alpha_i,
                 correlation_threshold=lambda ensemble_size: 0,
             )
 
@@ -181,7 +175,7 @@ class TestAdaptiveESMDA:
         ids=[f"seed-{i+1}" for i in range(25)],
     )
     @pytest.mark.parametrize(
-        "cutoffs", [(0, 1e-3), (0.1, 0.2), (0.9, 1), (1 - 1e-3, 1)]
+        "cutoffs", [(0, 1e-3), (0.1, 0.2), (0.5, 0.5 + 1e-12), (0.9, 1), (1 - 1e-3, 1)]
     )
     def test_that_posterior_generalized_variance_increases_in_cutoff(
         self, linear_problem, cutoffs
@@ -211,45 +205,51 @@ class TestAdaptiveESMDA:
             # Create noise D - common to this ESMDA update
             D_i = smoother.perturb_observations(size=Y_i.shape, alpha=alpha_i)
 
-            # Create transition matrix K, independent of X
-            transition_matrix = smoother.adaptive_transition_matrix(
-                Y=Y_i, D=D_i, alpha=alpha_i
-            )
-
             cutoff_low, cutoff_high = cutoffs
             assert cutoff_low <= cutoff_high
 
+            # Update twice, one with low cutoff, once with low cutoff
             X_i_low_cutoff = smoother.adaptive_assimilate(
-                X_i,
-                Y_i,
-                transition_matrix,
+                X=X_i,
+                Y=Y_i,
+                D=D_i,
+                alpha=alpha_i,
                 correlation_threshold=lambda ensemble_size: cutoff_low,
             )
             X_i_high_cutoff = smoother.adaptive_assimilate(
-                X_i,
-                Y_i,
-                transition_matrix,
+                X=X_i,
+                Y=Y_i,
+                D=D_i,
+                alpha=alpha_i,
                 correlation_threshold=lambda ensemble_size: cutoff_high,
             )
 
+            # Compute covariances
             prior_cov = np.cov(X, rowvar=False)
-            posterior_cutoff1_cov = np.cov(X_i_low_cutoff, rowvar=False)
-            posterior_cutoff2_cov = np.cov(X_i_high_cutoff, rowvar=False)
+            posterior_cutoff_low_cov = np.cov(X_i_low_cutoff, rowvar=False)
+            posterior_cutoff_high_cov = np.cov(X_i_high_cutoff, rowvar=False)
 
+            # Compute determinants of covariance matrices
+            # https://en.wikipedia.org/wiki/Generalized_variance
+            # intuitively: large determintant => high covariancce
+            #  => smaller volume of multivariate normal
+            # => less information contained in multivariate normal
             generalized_variance_prior = np.linalg.det(prior_cov)
-            generalized_variance_1 = np.linalg.det(posterior_cutoff1_cov)
-            generalized_variance_2 = np.linalg.det(posterior_cutoff2_cov)
+            generalized_variance_low = np.linalg.det(posterior_cutoff_low_cov)
+            generalized_variance_high = np.linalg.det(posterior_cutoff_high_cov)
 
-            # Numerical tolerance for comparisons below
-            EPSILON = 1e-12
+            # The covariance is positive (semi) definite, so the determinant is >= 0
+            assert generalized_variance_low >= 0, f"1 Failed with cutoff={cutoffs}"
 
-            assert generalized_variance_1 > -EPSILON, f"1 Failed with cutoff={cutoffs}"
+            # Assimilating information always leads to more information,
+            # which means a smaller lower determinant
+            assert generalized_variance_low <= generalized_variance_prior
+            assert generalized_variance_high <= generalized_variance_prior
+
+            # A higher threshold means we assimilate less information
             assert (
-                generalized_variance_1 <= generalized_variance_2 + EPSILON
+                generalized_variance_low <= generalized_variance_high
             ), f"2 Failed with cutoff_low={cutoff_low} and cutoff_high={cutoff_high}"
-            assert (
-                generalized_variance_2 <= generalized_variance_prior + EPSILON
-            ), f"3 Failed with cutoff_high={cutoff_high}"
 
 
 class TestRowScaling:
@@ -366,4 +366,9 @@ class TestRowScaling:
 
 if __name__ == "__main__":
 
-    pytest.main(args=[__file__, "-v", "-k test_groupby_indices"])
+    pytest.main(
+        args=[
+            __file__,
+            "-v",
+        ]
+    )

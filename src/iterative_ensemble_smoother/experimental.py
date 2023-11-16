@@ -32,12 +32,11 @@ def groupby_indices(X):
     """
     assert X.ndim == 2
 
+    # Code was modified from this answer:
     # https://stackoverflow.com/questions/30003068/how-to-get-a-list-of-all-indices-of-repeated-elements-in-a-numpy-array
     idx_sort = np.lexsort(X.T[::-1, :], axis=0)
     sorted_X = X[idx_sort, :]
-    vals, idx_start, count = np.unique(
-        sorted_X, return_counts=True, return_index=True, axis=0
-    )
+    vals, idx_start = np.unique(sorted_X, return_index=True, axis=0)
     res = np.split(idx_sort, idx_start[1:])
     yield from zip(vals, res)
 
@@ -73,7 +72,9 @@ def compute_cross_covariance_multiplier(
     cov_XY, then we can apply the same K to a reduced number of rows (parameters)
     in cov_XY.
     """
-    C_DD = empirical_cross_covariance(Y, Y)  # Only compute upper part
+
+    # TODO: This is re-computed in each call
+    C_DD = empirical_cross_covariance(Y, Y)
 
     # Arguments for sp.linalg.solve
     solver_kwargs = {
@@ -110,38 +111,38 @@ def compute_cross_covariance_multiplier(
 
 class AdaptiveESMDA(BaseESMDA):
     def correlation_threshold(self, ensemble_size: int) -> float:
-        """Decides whether or not to use user-defined or default threshold.
+        """Return a number that determines whether a correlation is significant.
 
         Default threshold taken from luo2022,
         Continuous Hyper-parameter OPtimization (CHOP) in an ensemble Kalman filter
         Section 2.3 - Localization in the CHOP problem
         """
-        return 3 / np.sqrt(ensemble_size)
-
-    def adaptive_transition_matrix(self, Y, D, alpha):
-        """Compute a transition matrix K, such that:
-
-        X_posterior = X_prior + cov_XY @ K
-        """
-        assert D.shape == Y.shape
-
-        # Compute an update matrix, independent of X
-        return compute_cross_covariance_multiplier(alpha=alpha, C_D=self.C_D, D=D, Y=Y)
+        return min(1, max(0, 3 / np.sqrt(ensemble_size)))
 
     def correlation_matrix(self, cov_XY, X, Y):
+        """Compute a correlation matrix given a covariance matrix."""
         assert cov_XY.shape == (X.shape[0], Y.shape[0])
+
         stds_Y = np.std(Y, axis=1, ddof=1)
         stds_X = np.std(X, axis=1, ddof=1)
+
         # Compute the correlation matrix from the covariance matrix
         corr_XY = (cov_XY / stds_X[:, np.newaxis]) / stds_Y[np.newaxis, :]
+
+        # Perform checks
         assert corr_XY.max() <= 1
         assert corr_XY.min() >= -1
         return corr_XY
 
-    def adaptive_assimilate(self, X, Y, D, alpha, correlation_threshold=None):
+    def adaptive_assimilate(
+        self, X, Y, D, alpha, correlation_threshold=None, verbose=False
+    ):
         """Use X, or possibly a subset of variables (rows) in X, as well as Y,
-        to compute the cross covariance matrix cov_XY.
-        Then compute the update as:
+        to compute the cross covariance matrix cov_XY. Then threshold cov_XY
+        based on the correlation matrix corr_XY and update each parameter with
+        responses deemed significant.
+
+        Computes the update as:
 
             X + cov_XY @ transition_matrix
         """
@@ -163,11 +164,22 @@ class AdaptiveESMDA(BaseESMDA):
 
         # Determine which elements in the cross covariance matrix that will
         # be set to zero
-        thres = correlation_threshold(ensemble_size=X.shape[1])
-        significant_corr_XY = np.abs(corr_XY) > thres
+        threshold = correlation_threshold(ensemble_size=X.shape[1])
+        significant_corr_XY = np.abs(corr_XY) > threshold
 
+        # TODO: memory could be saved by overwriting the input X
         X_out = np.copy(X)
         for (unique_row, indices_of_row) in groupby_indices(significant_corr_XY):
+
+            if verbose:
+                print(
+                    f"    Assimilating {len(indices_of_row)} parameters"
+                    + " with identical correlation thresholds to responses."
+                )
+                print(
+                    "    The parameters are significant wrt "
+                    + f"{np.sum(unique_row)} / {len(unique_row)} responses."
+                )
 
             # Get the parameters (X) that have identical significant responses (Y)
             X_subset = X[indices_of_row, :]
@@ -200,9 +212,9 @@ if __name__ == "__main__":
 
     # Create a problem with g(x) = A @ x
     rng = np.random.default_rng(42)
-    num_parameters = 100
-    num_observations = 50
-    num_ensemble = 20
+    num_parameters = 1000
+    num_observations = 200
+    num_ensemble = 1000
 
     A = rng.standard_normal(size=(num_observations, num_parameters))
 
@@ -270,7 +282,8 @@ if __name__ == "__main__":
                 Y=Y_i[:, alive_mask_i],
                 D=D_i,
                 alpha=alpha_i,
-                correlation_threshold=lambda ensemble_size: 0,
+                # correlation_threshold=lambda ensemble_size: 0,
+                verbose=True,
             )
 
         print()
