@@ -235,6 +235,37 @@ def empirical_cross_correlation(X, Y):
 
 
 # %%
+def solve_transition(covariance, Y, y_mask, rhs, alpha):
+    cov_YY = empirical_cross_covariance(Y, Y)
+    yy_mask = np.ix_(y_mask, y_mask)
+
+    Sigma_d = cov_YY[yy_mask] + alpha * covariance[y_mask]
+    return sp.linalg.solve(Sigma_d, rhs[y_mask, :])
+
+
+num_outputs = 1000
+num_ensemble = 25
+
+covariance = np.exp(np.random.randn(num_outputs))
+Y = np.random.randn(num_outputs, num_ensemble)
+y_mask = np.random.randn(num_outputs) > 0.5
+rhs = np.random.randn(num_outputs, num_ensemble)
+alpha = 1
+
+
+# %%
+# %timeit solve_transition(covariance, Y, y_mask, rhs, alpha)
+
+# %%
+def solve_transition_wb(covariance, Y, y_mask, rhs, alpha):
+    cov_YY = empirical_cross_covariance(Y, Y)
+    yy_mask = np.ix_(y_mask, y_mask)
+
+    Sigma_d = cov_YY[yy_mask] + alpha * covariance[y_mask]
+    return sp.linalg.solve(Sigma_d, rhs[y_mask, :])
+
+
+# %%
 
 
 plt.scatter(
@@ -285,13 +316,9 @@ for i, alpha_i in enumerate(alpha, 1):
         # Which y values should be updated?
         y_mask = corr_XY_large[p, :]
 
-        # Compute cov(Y, Y)
-        cov_YY = empirical_cross_covariance(Y_i, Y_i)
-        yy_mask = np.ix_(y_mask, y_mask)
-
-        # Compute : transition_matrix = Sigma_d^-1 (d - y)
-        Sigma_d = cov_YY[yy_mask] + alpha_i * covariance[y_mask]
-        transition_matrix = sp.linalg.solve(Sigma_d, (D_i - Y_i)[y_mask, :])
+        transition_matrix = solve_transition(
+            covariance, Y_i, y_mask, (D_i - Y_i), alpha_i
+        )
 
         # Perform update
         X_i[p, :] = X_i[p, :] + cov_XY[p, y_mask] @ transition_matrix
