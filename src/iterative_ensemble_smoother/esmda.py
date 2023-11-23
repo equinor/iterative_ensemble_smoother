@@ -159,7 +159,6 @@ class ESMDA:
             raise TypeError("Argument `covariance` must be 1D or 2D array")
 
         self.C_D = covariance
-        assert isinstance(self.C_D, np.ndarray) and self.C_D.ndim in (1, 2)
 
     def num_assimilations(self) -> int:
         return len(self.alpha)
