@@ -188,16 +188,16 @@ def inversion_exact_cholesky(
     Y: npt.NDArray[np.double],
     X: Optional[npt.NDArray[np.double]],
     truncation: float = 1.0,
-    return_K: bool = False,
+    return_T: bool = False,
 ) -> npt.NDArray[np.double]:
     """Computes an exact inversion using `sp.linalg.solve`, which uses a
     Cholesky factorization in the case of symmetric, positive definite matrices.
 
     The goal is to compute: C_MD @ inv(C_DD + alpha * C_D) @ (D - Y)
 
-    First we solve (C_DD + alpha * C_D) @ K = (D - Y) for K, so that
-    K = inv(C_DD + alpha * C_D) @ (D - Y), then we compute
-    C_MD @ K, but we don't explicitly form C_MD, since it might be more
+    First we solve (C_DD + alpha * C_D) @ T = (D - Y) for T, so that
+    T = inv(C_DD + alpha * C_D) @ (D - Y), then we compute
+    C_MD @ T, but we don't explicitly form C_MD, since it might be more
     efficient to perform the matrix products in another order.
     """
     C_DD = empirical_covariance_upper(Y)  # Only compute upper part
@@ -210,25 +210,25 @@ def inversion_exact_cholesky(
         "lower": False,  # Only use the upper part while solving
     }
 
-    # Compute K := sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)
+    # Compute T := sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)
     if C_D.ndim == 2:
         # C_D is a covariance matrix
         C_DD += alpha * C_D  # Save memory by mutating
-        K = sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
+        T = sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
     elif C_D.ndim == 1:
         # C_D is an array, so add it to the diagonal without forming diag(C_D)
         C_DD.flat[:: C_DD.shape[1] + 1] += alpha * C_D
-        K = sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
+        T = sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
 
     # Center matrix
     Y = Y - np.mean(Y, axis=1, keepdims=True)
     _, num_ensemble = Y.shape
 
     # Don't left-multiply the X
-    if return_K:
-        return (Y.T @ K) / (num_ensemble - 1)  # type: ignore
+    if return_T:
+        return (Y.T @ T) / (num_ensemble - 1)  # type: ignore
 
-    return np.linalg.multi_dot([X, Y.T / (num_ensemble - 1), K])  # type: ignore
+    return np.linalg.multi_dot([X, Y.T / (num_ensemble - 1), T])  # type: ignore
 
 
 def inversion_exact_lstsq(
@@ -253,8 +253,8 @@ def inversion_exact_lstsq(
         lhs = C_DD
         lhs.flat[:: lhs.shape[0] + 1] += alpha * C_D
 
-    # K = lhs^-1 @ (D - Y)
-    # lhs @ K = (D - Y)
+    # T = lhs^-1 @ (D - Y)
+    # lhs @ T = (D - Y)
     ans, *_ = sp.linalg.lstsq(
         lhs, D - Y, overwrite_a=True, overwrite_b=True, lapack_driver="gelsy"
     )
@@ -405,7 +405,7 @@ def inversion_subspace(
     Y: npt.NDArray[np.double],
     X: npt.NDArray[np.double],
     truncation: float = 1.0,
-    return_K: bool = False,
+    return_T: bool = False,
 ) -> npt.NDArray[np.double]:
     """See Appendix A.2 in :cite:t:`emerickHistoryMatchingTimelapse2012`.
 
@@ -478,7 +478,7 @@ def inversion_subspace(
     # and finally we multiiply by (D - Y)
     term = U_r_w_inv @ Z
 
-    if return_K:
+    if return_T:
         return np.linalg.multi_dot(  # type: ignore
             [D_delta.T, (term / (1 + T)), term.T, (D - Y)]
         )
