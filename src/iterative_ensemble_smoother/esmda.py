@@ -180,7 +180,7 @@ class ESMDA:
             corresponds to a parameter in the model, and each column corresponds
             to an ensemble member (realization).
         Y : np.ndarray
-            2D array of shape (num_parameters, ensemble_size), containing
+            2D array of shape (num_observations, ensemble_size), containing
             responses when evaluating the model at X. In other words, Y = g(X),
             where g is the forward model.
         overwrite : bool
@@ -195,7 +195,7 @@ class ESMDA:
         Returns
         -------
         X_posterior : np.ndarray
-            2D array of shape (num_inputs, num_ensemble_members).
+            2D array of shape (num_parameters, num_ensemble_members).
 
         """
         if self.iteration >= self.num_assimilations():
@@ -208,9 +208,9 @@ class ESMDA:
             num_ensemble == num_emsemble2
         ), "Number of ensemble members in X and Y must match"
         if not np.issubdtype(X.dtype, np.floating):
-            raise TypeError("Argument `X` must be contain floats")
+            raise TypeError("Argument `X` must contain floats")
         if not np.issubdtype(Y.dtype, np.floating):
-            raise TypeError("Argument `Y` must be contain floats")
+            raise TypeError("Argument `Y` must contain floats")
 
         assert 0 < truncation <= 1.0
 
@@ -254,7 +254,7 @@ class ESMDA:
         alpha: float,
         truncation: float = 1.0,
     ) -> npt.NDArray[np.double]:
-        """Return a matrix K such that X_posterior = X_prior + X_prior @ K.
+        """Return a matrix T such that X_posterior = X_prior + X_prior @ T.
 
         The purpose of this method is to facilitate row-by-row, or batch-by-batch,
         updates of X. This is useful if X is too large to fit in memory.
@@ -262,7 +262,7 @@ class ESMDA:
         Parameters
         ----------
         Y : np.ndarray
-            2D array of shape (num_parameters, ensemble_size), containing
+            2D array of shape (num_observations, ensemble_size), containing
             responses when evaluating the model at X. In other words, Y = g(X),
             where g is the forward model.
         alpha : float
@@ -276,19 +276,19 @@ class ESMDA:
 
         Returns
         -------
-        K : np.ndarray
-            A matrix K such that X_posterior = X_prior + X_prior @ K.
+        T : np.ndarray
+            A matrix T such that X_posterior = X_prior + X_prior @ T.
             It has shape (num_ensemble_members, num_ensemble_members).
         """
 
         # Recall the update equation:
         # X += C_MD @ (C_DD + alpha * C_D)^(-1)  @ (D - Y)
         # X += X @ center(Y).T / (N-1) @ (C_DD + alpha * C_D)^(-1) @ (D - Y)
-        # We form K := center(Y).T / (N-1) @ (C_DD + alpha * C_D)^(-1) @ (D - Y),
+        # We form T := center(Y).T / (N-1) @ (C_DD + alpha * C_D)^(-1) @ (D - Y),
         # so that
-        # X_new = X_old + X_old @ K
+        # X_new = X_old + X_old @ T
         # or
-        # X += X @ K
+        # X += X @ T
 
         D = self.perturb_observations(size=Y.shape)
         inversion_func = self._inversion_methods[self.inversion]
@@ -297,9 +297,9 @@ class ESMDA:
             C_D=self.C_D,
             D=D,
             Y=Y,
-            X=None,  # We don't need X to compute the factor K
+            X=None,  # We don't need X to compute the factor T
             truncation=truncation,
-            return_K=True,  # Ensures that we don't need X
+            return_T=True,  # Ensures that we don't need X
         )
 
     def perturb_observations(self, *, size: Tuple[int, int]) -> npt.NDArray[np.double]:
