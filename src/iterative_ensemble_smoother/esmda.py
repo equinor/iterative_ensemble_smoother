@@ -227,7 +227,7 @@ class ESMDA:
         # a zero cented normal means that y := L @ z, where z ~ norm(0, 1)
         # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
         size = (num_outputs, num_ensemble)
-        D = self.perturb_observations(size=size, alpha=self.alpha[self.iteration])
+        D = self.perturb_observations(size=size)
         assert D.shape == (num_outputs, num_ensemble)
 
         # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
@@ -291,7 +291,7 @@ class ESMDA:
         # or
         # X += X @ K
 
-        D = self.perturb_observations(size=Y.shape, alpha=alpha)
+        D = self.perturb_observations(size=Y.shape)
         inversion_func = self._inversion_methods[self.inversion]
         return inversion_func(
             alpha=alpha,
@@ -303,9 +303,7 @@ class ESMDA:
             return_K=True,  # Ensures that we don't need X
         )
 
-    def perturb_observations(
-        self, *, size: Tuple[int, int], alpha: float
-    ) -> npt.NDArray[np.double]:
+    def perturb_observations(self, *, size: Tuple[int, int]) -> npt.NDArray[np.double]:
         """Create a matrix D with perturbed observations.
 
         In the Emerick (2013) paper, the matrix D is defined in section 6.
@@ -315,10 +313,6 @@ class ESMDA:
         ----------
         size : Tuple[int, int]
             The size, a tuple with (num_observations, ensemble_size).
-        alpha : float
-            The covariance inflation factor. The sequence of alphas should
-            obey the equation sum_i (1/alpha_i) = 1. However, this is NOT enforced
-            in this method call. The user/caller is responsible for this.
 
         Returns
         -------
