@@ -32,7 +32,7 @@ class TestESMDA:
     @pytest.mark.parametrize("num_inputs", [10, 25, 50])
     @pytest.mark.parametrize("num_outputs", [5, 25, 50])
     @pytest.mark.parametrize("sies_inversion", ["direct", "subspace_exact"])
-    @pytest.mark.parametrize("seed", list(range(1)))
+    @pytest.mark.parametrize("seed", list(range(10)))
     def test_that_ESMDA_and_SIES_produce_same_result_with_one_step(
         self, seed, sies_inversion, num_outputs, num_inputs
     ):
@@ -53,7 +53,9 @@ class TestESMDA:
         observations = rng.normal(size=num_outputs, loc=1)
 
         # Create ESMDA instance and perform one iteration
-        esmda = ESMDA(covariance, observations, alpha=alpha, seed=0, inversion="exact")
+        esmda = ESMDA(
+            covariance, observations, alpha=alpha, seed=seed + 99, inversion="exact"
+        )
         X_ESMDA = np.copy(X)
         for _ in range(esmda.num_assimilations()):
             X_ESMDA = esmda.assimilate(X_ESMDA, Y)
@@ -65,7 +67,7 @@ class TestESMDA:
             observations=observations,
             inversion=sies_inversion,
             truncation=1.0,
-            seed=0,
+            seed=seed + 99,
         )
 
         X_SIES = sies.sies_iteration(responses=Y, step_length=1)
