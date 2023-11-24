@@ -35,6 +35,7 @@ from iterative_ensemble_smoother.esmda_inversion import (
     inversion_subspace,
     normalize_alpha,
 )
+from iterative_ensemble_smoother.utils import sample_mvnormal
 
 
 class BaseESMDA(ABC):
@@ -115,18 +116,13 @@ class BaseESMDA(ABC):
         # a zero cented normal means that y := L @ z, where z ~ norm(0, 1).
         # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha).
 
-        D: npt.NDArray[np.double]
-
         # Two cases, depending on whether C_D was given as 1D or 2D array
-        if self.C_D.ndim == 2:
-            D = self.observations.reshape(-1, 1) + np.sqrt(
-                alpha
-            ) * self.C_D_L @ self.rng.normal(size=size)
-        else:
-            D = self.observations.reshape(-1, 1) + np.sqrt(alpha) * self.rng.normal(
-                size=size
-            ) * self.C_D_L.reshape(-1, 1)
-        assert D.shape == size
+        D: npt.NDArray[np.double]
+        # TODO: what if we have cov = [1, 2, 3] and we mask?
+        # we must pick out correct indices. 'size' is not enough...
+        D = self.observations.reshape(-1, 1) + np.sqrt(alpha) * sample_mvnormal(
+            C_dd_cholesky=self.C_D_L, rng=self.rng, size=size[1]
+        )
 
         return D
 
