@@ -254,7 +254,7 @@ class ESMDA(BaseESMDA):
         Returns
         -------
         X_posterior : np.ndarray
-            2D array of shape (num_parameters, num_ensemble_members).
+            2D array of shape (num_parameters, ensemble_size).
 
         """
         if self.iteration >= self.num_assimilations():

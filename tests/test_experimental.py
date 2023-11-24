@@ -105,7 +105,7 @@ class TestAdaptiveESMDA:
             )
 
             # Update the relevant parameters and write to X (storage)
-            X_i = smoother.adaptive_assimilate(
+            X_i = smoother.assimilate(
                 X=X_i,
                 Y=Y_i,
                 D=D_i,
@@ -149,7 +149,7 @@ class TestAdaptiveESMDA:
             )
 
             # Update the relevant parameters and write to X (storage)
-            X_i = smoother.adaptive_assimilate(
+            X_i = smoother.assimilate(
                 X=X_i,
                 Y=Y_i,
                 D=D_i,
@@ -216,14 +216,14 @@ class TestAdaptiveESMDA:
             assert cutoff_low <= cutoff_high
 
             # Update twice, one with low cutoff, once with low cutoff
-            X_i_low_cutoff = smoother.adaptive_assimilate(
+            X_i_low_cutoff = smoother.assimilate(
                 X=X_i,
                 Y=Y_i,
                 D=D_i,
                 alpha=alpha_i,
                 correlation_threshold=lambda ensemble_size: cutoff_low,
             )
-            X_i_high_cutoff = smoother.adaptive_assimilate(
+            X_i_high_cutoff = smoother.assimilate(
                 X=X_i,
                 Y=Y_i,
                 D=D_i,
@@ -333,7 +333,7 @@ class TestAdaptiveESMDA:
                 mask = np.ix_(parameter_mask_j, alive_mask_i)
 
                 # Update the relevant parameters and write to X (storage)
-                X_i[mask] = smoother.adaptive_assimilate(
+                X_i[mask] = smoother.assimilate(
                     X=X_i[mask],
                     Y=Y_i[:, alive_mask_i],
                     D=D_i,

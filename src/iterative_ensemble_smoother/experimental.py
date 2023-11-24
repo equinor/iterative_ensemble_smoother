@@ -28,6 +28,17 @@ def groupby_indices(X):
     >>> list(groupby_indices(X))
     [(array([1, 0]), array([0, 1, 4])), (array([1, 1]), array([2, 3]))]
 
+    Another example:
+    >>> X = np.array([[1, 2, 3],
+    ...               [0, 0, 0],
+    ...               [1, 2, 3],
+    ...               [1, 1, 1],
+    ...               [1, 1, 1],
+    ...               [1, 2, 3]])
+    >>> list(groupby_indices(X))
+    [(array([0, 0, 0]), array([1])), (array([1, 1, 1]), \
+array([3, 4])), (array([1, 2, 3]), array([0, 2, 5]))]
+
     """
     assert X.ndim == 2
 
@@ -47,7 +58,7 @@ def compute_cross_covariance_multiplier(
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
 ) -> npt.NDArray[np.double]:
-    """Compute transition matrix K such that:
+    """Compute transition matrix T such that:
 
         X + cov_XY @ transition_matrix
 
@@ -55,11 +66,11 @@ def compute_cross_covariance_multiplier(
 
         X_posterior = X_prior + cov_XY @ inv(C_DD + alpha * C_D) @ (D - Y)
 
-    This function computes a transition matrix K, defined as:
+    This function computes a transition matrix T, defined as:
 
-        K := inv(C_DD + alpha * C_D) @ (D - Y)
+        T := inv(C_DD + alpha * C_D) @ (D - Y)
 
-    Note that this is not the most efficient way to compute the update equation,
+    Note that this might not be the most efficient way to compute the update,
     since cov_XY := center(X) @ center(Y) / (N - 1), and we can avoid creating
     this (huge) covariance matrix by performing multiplications right-to-left:
 
@@ -67,12 +78,12 @@ def compute_cross_covariance_multiplier(
         center(X) @ center(Y) / (N - 1) @ inv(C_DD + alpha * C_D) @ (D - Y)
         center(X) @ [center(Y) / (N - 1) @ inv(C_DD + alpha * C_D) @ (D - Y)]
 
-    The advantage of forming K instead is that if we already have computed
-    cov_XY, then we can apply the same K to a reduced number of rows (parameters)
+    The advantage of forming T instead is that if we already have computed
+    cov_XY, then we can apply the same T to a reduced number of rows (parameters)
     in cov_XY.
     """
 
-    # TODO: This is re-computed in each call
+    # TODO: This is re-computed in each call. Can we pre compute it?
     C_DD = empirical_cross_covariance(Y, Y)
 
     # Arguments for sp.linalg.solve
@@ -83,8 +94,8 @@ def compute_cross_covariance_multiplier(
         "lower": False,  # Only use the upper part while solving
     }
 
-    # Compute K := sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)
-    # by solving the system (C_DD + alpha * C_D) @ K = (D - Y)
+    # Compute T := sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)
+    # by solving the system (C_DD + alpha * C_D) @ T = (D - Y)
     if C_D.ndim == 2:
         # C_D is a covariance matrix
         C_DD += alpha * C_D  # Save memory by mutating
@@ -92,33 +103,34 @@ def compute_cross_covariance_multiplier(
         # C_D is an array, so add it to the diagonal without forming diag(C_D)
         np.fill_diagonal(C_DD, C_DD.diagonal() + alpha * C_D)
 
-    # Sometimes we get an error:
-    # LinAlgError: Matrix is singular.
-    try:
-        return sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
-    except sp.linalg.LinAlgError:
-        ans, *_ = sp.linalg.lstsq(
-            a=C_DD,
-            b=D - Y,
-            cond=None,
-            overwrite_a=True,
-            overwrite_b=True,
-            check_finite=True,
-        )
-        return ans
+    return sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
 
 
 class AdaptiveESMDA(BaseESMDA):
-    def correlation_threshold(self, ensemble_size: int) -> float:
+    @staticmethod
+    def correlation_threshold(ensemble_size: int) -> float:
         """Return a number that determines whether a correlation is significant.
 
         Default threshold taken from luo2022,
         Continuous Hyper-parameter OPtimization (CHOP) in an ensemble Kalman filter
         Section 2.3 - Localization in the CHOP problem
+
+        Examples
+        --------
+        >>> AdaptiveESMDA.correlation_threshold(0)
+        1
+        >>> AdaptiveESMDA.correlation_threshold(4)
+        1
+        >>> AdaptiveESMDA.correlation_threshold(9)
+        1
+        >>> AdaptiveESMDA.correlation_threshold(16)
+        0.75
+        >>> AdaptiveESMDA.correlation_threshold(36)
+        0.5
         """
         return min(1, max(0, 3 / np.sqrt(ensemble_size)))
 
-    def correlation_matrix(self, cov_XY, X, Y):
+    def _correlation_matrix(self, cov_XY, X, Y):
         """Compute a correlation matrix given a covariance matrix."""
         assert cov_XY.shape == (X.shape[0], Y.shape[0])
 
@@ -133,20 +145,48 @@ class AdaptiveESMDA(BaseESMDA):
         assert corr_XY.min() >= -1
         return corr_XY
 
-    def adaptive_assimilate(
-        self, X, Y, D, alpha, correlation_threshold=None, verbose=False
-    ):
-        """Use X, or possibly a subset of variables (rows) in X, as well as Y,
-        to compute the cross covariance matrix cov_XY. Then threshold cov_XY
-        based on the correlation matrix corr_XY and update each parameter with
-        responses deemed significant.
+    def assimilate(self, X, Y, D, alpha, correlation_threshold=None, verbose=False):
+        """Assimilate data and return an updated ensemble X_posterior.
 
-        Computes the update as:
+            X_posterior = smoother.assimilate(X, Y, D, alpha)
 
-            X + cov_XY @ transition_matrix
+        This method first computes the cross-covariance and cross-correlation
+        matrices between X and Y. Then it sets correlations that are below the
+        threshold to zero. It then loops over parameters in X that are deemed
+        significant with respect to Y (based on the threshold), and updates
+        these groups together.
+
+        Parameters
+        ----------
+        X : np.ndarray
+            A 2D array of shape (num_parameters, ensemble_size). Each row
+            corresponds to a parameter in the model, and each column corresponds
+            to an ensemble member (realization).
+        Y : np.ndarray
+            2D array of shape (num_observations, ensemble_size), containing
+            responses when evaluating the model at X. In other words, Y = g(X),
+            where g is the forward model.
+        D : np.ndarray
+            2D array of shape (num_observations, ensemble_size), containing
+            perturbed observations. D = observations + mv_normal(0, covariance),
+            and D may be computed by the method `perturb_observations`.
+        alpha : float
+            The covariance inflation factor. The sequence of alphas should
+            obey the equation sum_i (1/alpha_i) = 1. However, this is NOT
+            enforced in this method. The user/caller is responsible for this.
+        verbose : bool
+            Whether to print information.
+
+        Returns
+        -------
+        X_posterior : np.ndarray
+            2D array of shape (num_parameters, ensemble_size).
         """
         assert X.shape[1] == Y.shape[1]
+        msg = "`correlation_threshold` must be a callable f(ensemble_size) -> threshold"
+        assert callable(correlation_threshold), msg
 
+        # Default correlation threshold function
         if correlation_threshold is None:
             correlation_threshold = self.correlation_threshold
 
@@ -158,7 +198,7 @@ class AdaptiveESMDA(BaseESMDA):
         # X by parameter group (rows), the storage requirement decreases
         cov_XY = empirical_cross_covariance(X, Y)
         assert cov_XY.shape == (X.shape[0], Y.shape[0])
-        corr_XY = self.correlation_matrix(cov_XY, X, Y)
+        corr_XY = self._correlation_matrix(cov_XY, X, Y)
         assert corr_XY.shape == cov_XY.shape
 
         # Determine which elements in the cross covariance matrix that will
@@ -191,13 +231,14 @@ class AdaptiveESMDA(BaseESMDA):
             C_D_subset = self.C_D[unique_row]
             D_subset = D[unique_row, :]
 
-            K = compute_cross_covariance_multiplier(
+            # Compute transition matrix T
+            T = compute_cross_covariance_multiplier(
                 alpha=alpha,
                 C_D=C_D_subset,
                 D=D_subset,
                 Y=Y_subset,
             )
-            X_out[indices_of_row, :] = X_subset + cov_XY_subset @ K
+            X_out[indices_of_row, :] = X_subset + cov_XY_subset @ T
 
         return X_out
 
