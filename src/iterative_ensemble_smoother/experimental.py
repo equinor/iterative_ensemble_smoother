@@ -51,61 +51,6 @@ array([3, 4])), (array([1, 2, 3]), array([0, 2, 5]))]
     yield from zip(vals, res)
 
 
-def compute_cross_covariance_multiplier(
-    *,
-    alpha: float,
-    C_D: npt.NDArray[np.double],
-    D: npt.NDArray[np.double],
-    Y: npt.NDArray[np.double],
-) -> npt.NDArray[np.double]:
-    """Compute transition matrix T such that:
-
-        X + cov_XY @ transition_matrix
-
-    In the notation of Emerick et al, recall that the update equation is:
-
-        X_posterior = X_prior + cov_XY @ inv(C_DD + alpha * C_D) @ (D - Y)
-
-    This function computes a transition matrix T, defined as:
-
-        T := inv(C_DD + alpha * C_D) @ (D - Y)
-
-    Note that this might not be the most efficient way to compute the update,
-    since cov_XY := center(X) @ center(Y) / (N - 1), and we can avoid creating
-    this (huge) covariance matrix by performing multiplications right-to-left:
-
-        cov_XY @ inv(C_DD + alpha * C_D) @ (D - Y)
-        center(X) @ center(Y) / (N - 1) @ inv(C_DD + alpha * C_D) @ (D - Y)
-        center(X) @ [center(Y) / (N - 1) @ inv(C_DD + alpha * C_D) @ (D - Y)]
-
-    The advantage of forming T instead is that if we already have computed
-    cov_XY, then we can apply the same T to a reduced number of rows (parameters)
-    in cov_XY.
-    """
-
-    # TODO: This is re-computed in each call. Can we pre compute it?
-    C_DD = empirical_cross_covariance(Y, Y)
-
-    # Arguments for sp.linalg.solve
-    solver_kwargs = {
-        "overwrite_a": True,
-        "overwrite_b": True,
-        "assume_a": "pos",  # Assume positive definite matrix (use cholesky)
-        "lower": False,  # Only use the upper part while solving
-    }
-
-    # Compute T := sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)
-    # by solving the system (C_DD + alpha * C_D) @ T = (D - Y)
-    if C_D.ndim == 2:
-        # C_D is a covariance matrix
-        C_DD += alpha * C_D  # Save memory by mutating
-    elif C_D.ndim == 1:
-        # C_D is an array, so add it to the diagonal without forming diag(C_D)
-        np.fill_diagonal(C_DD, C_DD.diagonal() + alpha * C_D)
-
-    return sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
-
-
 class AdaptiveESMDA(BaseESMDA):
     @staticmethod
     def correlation_threshold(ensemble_size: int) -> float:
@@ -129,6 +74,61 @@ class AdaptiveESMDA(BaseESMDA):
         0.5
         """
         return min(1, max(0, 3 / np.sqrt(ensemble_size)))
+
+    @staticmethod
+    def compute_cross_covariance_multiplier(
+        *,
+        alpha: float,
+        C_D: npt.NDArray[np.double],
+        D: npt.NDArray[np.double],
+        Y: npt.NDArray[np.double],
+    ) -> npt.NDArray[np.double]:
+        """Compute transition matrix T such that:
+
+            X + cov_XY @ transition_matrix
+
+        In the notation of Emerick et al, recall that the update equation is:
+
+            X_posterior = X_prior + cov_XY @ inv(C_DD + alpha * C_D) @ (D - Y)
+
+        This function computes a transition matrix T, defined as:
+
+            T := inv(C_DD + alpha * C_D) @ (D - Y)
+
+        Note that this might not be the most efficient way to compute the update,
+        since cov_XY := center(X) @ center(Y) / (N - 1), and we can avoid creating
+        this (huge) covariance matrix by performing multiplications right-to-left:
+
+            cov_XY @ inv(C_DD + alpha * C_D) @ (D - Y)
+            center(X) @ center(Y) / (N - 1) @ inv(C_DD + alpha * C_D) @ (D - Y)
+            center(X) @ [center(Y) / (N - 1) @ inv(C_DD + alpha * C_D) @ (D - Y)]
+
+        The advantage of forming T instead is that if we already have computed
+        cov_XY, then we can apply the same T to a reduced number of rows (parameters)
+        in cov_XY.
+        """
+
+        # TODO: This is re-computed in each call. Can we pre compute it?
+        C_DD = empirical_cross_covariance(Y, Y)
+
+        # Arguments for sp.linalg.solve
+        solver_kwargs = {
+            "overwrite_a": True,
+            "overwrite_b": True,
+            "assume_a": "pos",  # Assume positive definite matrix (use cholesky)
+            "lower": False,  # Only use the upper part while solving
+        }
+
+        # Compute T := sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)
+        # by solving the system (C_DD + alpha * C_D) @ T = (D - Y)
+        if C_D.ndim == 2:
+            # C_D is a covariance matrix
+            C_DD += alpha * C_D  # Save memory by mutating
+        elif C_D.ndim == 1:
+            # C_D is an array, so add it to the diagonal without forming diag(C_D)
+            np.fill_diagonal(C_DD, C_DD.diagonal() + alpha * C_D)
+
+        return sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
 
     def _correlation_matrix(self, cov_XY, X, Y):
         """Compute a correlation matrix given a covariance matrix."""
@@ -232,7 +232,7 @@ class AdaptiveESMDA(BaseESMDA):
             D_subset = D[unique_row, :]
 
             # Compute transition matrix T
-            T = compute_cross_covariance_multiplier(
+            T = self.compute_cross_covariance_multiplier(
                 alpha=alpha,
                 C_D=C_D_subset,
                 D=D_subset,
