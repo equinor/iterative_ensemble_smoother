@@ -24,7 +24,7 @@ https://helper.ipam.ucla.edu/publications/oilws3/oilws3_14147.pdf
 
 import numbers
 from abc import ABC
-from typing import Tuple, Union
+from typing import Union
 
 import numpy as np
 import numpy.typing as npt
@@ -88,7 +88,7 @@ class BaseESMDA(ABC):
         assert isinstance(self.C_D, np.ndarray) and self.C_D.ndim in (1, 2)
 
     def perturb_observations(
-        self, *, size: Tuple[int, int], alpha: float
+        self, *, ensemble_size: int, alpha: float
     ) -> npt.NDArray[np.double]:
         """Create a matrix D with perturbed observations.
 
@@ -97,8 +97,10 @@ class BaseESMDA(ABC):
 
         Parameters
         ----------
-        size : Tuple[int, int]
-            The size, a tuple with (num_observations, ensemble_size).
+        ensemble_size : int
+            The ensemble size, i.e., the number of perturbed observations.
+            This represents the number of columns in the returned matrix, which
+            is of shape (num_observations, ensemble_size).
         alpha : float
             The covariance inflation factor. The sequence of alphas should
             obey the equation sum_i (1/alpha_i) = 1. However, this is NOT enforced
@@ -118,11 +120,10 @@ class BaseESMDA(ABC):
 
         # Two cases, depending on whether C_D was given as 1D or 2D array
         D: npt.NDArray[np.double]
-        # TODO: what if we have cov = [1, 2, 3] and we mask?
-        # we must pick out correct indices. 'size' is not enough...
         D = self.observations.reshape(-1, 1) + np.sqrt(alpha) * sample_mvnormal(
-            C_dd_cholesky=self.C_D_L, rng=self.rng, size=size[1]
+            C_dd_cholesky=self.C_D_L, rng=self.rng, size=ensemble_size
         )
+        assert D.shape == (len(self.observations), ensemble_size)
 
         return D
 
@@ -283,8 +284,9 @@ class ESMDA(BaseESMDA):
         # if C_D = L L.T by the cholesky factorization, then drawing y from
         # a zero cented normal means that y := L @ z, where z ~ norm(0, 1)
         # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
-        size = (num_outputs, num_ensemble)
-        D = self.perturb_observations(size=size, alpha=self.alpha[self.iteration])
+        D = self.perturb_observations(
+            ensemble_size=num_ensemble, alpha=self.alpha[self.iteration]
+        )
         assert D.shape == (num_outputs, num_ensemble)
 
         # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
@@ -348,7 +350,7 @@ class ESMDA(BaseESMDA):
         # or
         # X += X @ T
 
-        D = self.perturb_observations(size=Y.shape, alpha=alpha)
+        D = self.perturb_observations(ensemble_size=Y.shape[1], alpha=alpha)
         inversion_func = self._inversion_methods[self.inversion]
         return inversion_func(
             alpha=alpha,

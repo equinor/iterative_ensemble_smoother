@@ -99,7 +99,9 @@ class TestAdaptiveESMDA:
             Y_i = g(X_i)
 
             # Create noise D - common to this ESMDA update
-            D_i = smoother.perturb_observations(size=Y_i.shape, alpha=alpha_i)
+            D_i = smoother.perturb_observations(
+                ensemble_size=Y_i.shape[1], alpha=alpha_i
+            )
 
             # Update the relevant parameters and write to X (storage)
             X_i = smoother.adaptive_assimilate(
@@ -141,7 +143,9 @@ class TestAdaptiveESMDA:
             Y_i = g(X_i)
 
             # Create noise D - common to this ESMDA update
-            D_i = smoother.perturb_observations(size=Y_i.shape, alpha=alpha_i)
+            D_i = smoother.perturb_observations(
+                ensemble_size=Y_i.shape[1], alpha=alpha_i
+            )
 
             # Update the relevant parameters and write to X (storage)
             X_i = smoother.adaptive_assimilate(
@@ -203,7 +207,9 @@ class TestAdaptiveESMDA:
             Y_i = g(X_i)
 
             # Create noise D - common to this ESMDA update
-            D_i = smoother.perturb_observations(size=Y_i.shape, alpha=alpha_i)
+            D_i = smoother.perturb_observations(
+                ensemble_size=Y_i.shape[1], alpha=alpha_i
+            )
 
             cutoff_low, cutoff_high = cutoffs
             assert cutoff_low <= cutoff_high
