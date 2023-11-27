@@ -287,8 +287,7 @@ class TestAdaptiveESMDA:
         # Split parameters into groups of equal size
         num_groups = 10
         assert num_observations % num_groups == 0, "Num groups must divide parameters"
-        group_size = num_parameters // num_groups
-        parameters_groups = list(zip(*(iter(range(num_parameters)),) * group_size))
+        parameters_groups = np.array_split(np.arange(num_parameters), num_groups)
         assert len(parameters_groups) == num_groups
 
         # =============================================================================
