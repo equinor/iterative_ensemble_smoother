@@ -98,9 +98,8 @@ class BaseESMDA(ABC):
         Parameters
         ----------
         ensemble_size : int
-            The ensemble size, i.e., the number of perturbed observations.
-            This represents the number of columns in the returned matrix, which
-            is of shape (num_observations, ensemble_size).
+            The ensemble size, i.e., the number of columns in the returned array,
+            which is of shape (num_observations, ensemble_size).
         alpha : float
             The covariance inflation factor. The sequence of alphas should
             obey the equation sum_i (1/alpha_i) = 1. However, this is NOT enforced
@@ -118,13 +117,10 @@ class BaseESMDA(ABC):
         # a zero cented normal means that y := L @ z, where z ~ norm(0, 1).
         # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha).
 
-        # Two cases, depending on whether C_D was given as 1D or 2D array
-        D: npt.NDArray[np.double]
-        D = self.observations.reshape(-1, 1) + np.sqrt(alpha) * sample_mvnormal(
-            C_dd_cholesky=self.C_D_L, rng=self.rng, size=ensemble_size
-        )
+        D: npt.NDArray[np.double] = self.observations[:, None] + np.sqrt(
+            alpha
+        ) * sample_mvnormal(C_dd_cholesky=self.C_D_L, rng=self.rng, size=ensemble_size)
         assert D.shape == (len(self.observations), ensemble_size)
-
         return D
 
 
@@ -185,7 +181,6 @@ class ESMDA(BaseESMDA):
     ) -> None:
         """Initialize the instance."""
 
-        # Initialize the super-class
         super().__init__(covariance=covariance, observations=observations, seed=seed)
 
         if not (

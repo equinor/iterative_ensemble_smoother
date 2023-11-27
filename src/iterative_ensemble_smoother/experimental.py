@@ -2,7 +2,7 @@
 Contains (publicly available, but not officially supported) experimental
 features of iterative_ensemble_smoother
 """
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
@@ -82,6 +82,7 @@ class AdaptiveESMDA(BaseESMDA):
         C_D: npt.NDArray[np.double],
         D: npt.NDArray[np.double],
         Y: npt.NDArray[np.double],
+        cov_YY: Optional[npt.NDArray[np.double]] = None,
     ) -> npt.NDArray[np.double]:
         """Compute transition matrix T such that:
 
@@ -107,9 +108,16 @@ class AdaptiveESMDA(BaseESMDA):
         cov_XY, then we can apply the same T to a reduced number of rows (parameters)
         in cov_XY.
         """
+        # Compute cov(Y, Y) if it was not passed to the function.
+        # Pre-computation might be faster, since covariance is commutative with
+        # respect to indexing, ie, cov(Y[mask, :], YY[mask, :]) = cov(Y, Y)[mask, mask]
+        if cov_YY is None:
+            C_DD = empirical_cross_covariance(Y, Y)
+        else:
+            C_DD = cov_YY
 
-        # TODO: This is re-computed in each call. Can we pre compute it?
-        C_DD = empirical_cross_covariance(Y, Y)
+        assert C_DD.shape[0] == C_DD.shape[1]
+        assert C_DD.shape[0] == Y.shape[0]
 
         # Arguments for sp.linalg.solve
         solver_kwargs = {
@@ -206,6 +214,9 @@ class AdaptiveESMDA(BaseESMDA):
         threshold = correlation_threshold(ensemble_size=X.shape[1])
         significant_corr_XY = np.abs(corr_XY) > threshold
 
+        # Pre-compute the covariance cov(Y, Y) here, and index on it later
+        cov_YY = empirical_cross_covariance(Y, Y)
+
         # TODO: memory could be saved by overwriting the input X
         X_out = np.copy(X)
         for (unique_row, indices_of_row) in groupby_indices(significant_corr_XY):
@@ -224,9 +235,12 @@ class AdaptiveESMDA(BaseESMDA):
             X_subset = X[indices_of_row, :]
             Y_subset = Y[unique_row, :]
 
-            # Compute the update
+            # Compute the masked arrays for these variables
             cov_XY_mask = np.ix_(indices_of_row, unique_row)
             cov_XY_subset = cov_XY[cov_XY_mask]
+
+            cov_YY_mask = np.ix_(unique_row, unique_row)
+            cov_YY_subset = cov_YY[cov_YY_mask]
 
             C_D_subset = self.C_D[unique_row]
             D_subset = D[unique_row, :]
@@ -237,6 +251,7 @@ class AdaptiveESMDA(BaseESMDA):
                 C_D=C_D_subset,
                 D=D_subset,
                 Y=Y_subset,
+                cov_YY=cov_YY_subset,  # Passing cov(Y, Y) avoids re-computation
             )
             X_out[indices_of_row, :] = X_subset + cov_XY_subset @ T
 

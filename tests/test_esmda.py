@@ -57,8 +57,9 @@ class TestESMDA:
             covariance, observations, alpha=alpha, seed=seed + 99, inversion="exact"
         )
         X_ESMDA = np.copy(X)
-        for _ in range(esmda.num_assimilations()):
-            X_ESMDA = esmda.assimilate(X_ESMDA, Y)
+
+        # Perform one iteration of ESMDA
+        X_ESMDA = esmda.assimilate(X_ESMDA, Y)
 
         # Create SIES instance and perform one iteration
         sies = SIES(
