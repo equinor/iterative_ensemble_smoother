@@ -85,7 +85,7 @@ class TestAdaptiveESMDA:
     ):
 
         # Create a problem with g(x) = A @ x
-        X, g, observations, covariance, rng = linear_problem
+        X, g, observations, covariance, _ = linear_problem
 
         # Create adaptive smoother
         smoother = AdaptiveESMDA(
@@ -94,7 +94,7 @@ class TestAdaptiveESMDA:
 
         X_i = np.copy(X)
         alpha = normalize_alpha(np.ones(5))
-        for i, alpha_i in enumerate(alpha, 1):
+        for alpha_i in alpha:
 
             # Run forward model
             Y_i = g(X_i)
