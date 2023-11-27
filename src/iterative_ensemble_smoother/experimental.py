@@ -2,6 +2,7 @@
 Contains (publicly available, but not officially supported) experimental
 features of iterative_ensemble_smoother
 """
+import numbers
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -182,6 +183,11 @@ class AdaptiveESMDA(BaseESMDA):
             The covariance inflation factor. The sequence of alphas should
             obey the equation sum_i (1/alpha_i) = 1. However, this is NOT
             enforced in this method. The user/caller is responsible for this.
+        correlation_threshold : callable or float or None
+            Either a callable with signature f(ensemble_size) -> float, or a
+            float in the range [0, 1]. Entries in the covariance matrix that
+            are lower than the correlation threshold will be set to zero.
+            If None, the default 3/sqrt(ensemble_size) is used.
         verbose : bool
             Whether to print information.
 
@@ -191,12 +197,33 @@ class AdaptiveESMDA(BaseESMDA):
             2D array of shape (num_parameters, ensemble_size).
         """
         assert X.shape[1] == Y.shape[1]
-        msg = "`correlation_threshold` must be a callable f(ensemble_size) -> threshold"
-        assert callable(correlation_threshold), msg
+
+        # Check the correlation threshold
+        is_callable = callable(correlation_threshold)
+        is_float = (
+            isinstance(correlation_threshold, numbers.Real)
+            and correlation_threshold >= 0
+            and correlation_threshold <= 1
+        )
+        is_None = correlation_threshold is None
+        if not (is_callable or is_float or is_None):
+            raise TypeError(
+                "`correlation_threshold` must be a callable or a float in [0, 1]"
+            )
+
+        # Create `correlation_threshold` if the argument is a float
+        if is_float:
+            corr_threshold = correlation_threshold
+
+            def correlation_threshold(ensemble_size):
+                return corr_threshold
 
         # Default correlation threshold function
         if correlation_threshold is None:
             correlation_threshold = self.correlation_threshold
+        assert callable(
+            correlation_threshold
+        ), "`correlation_threshold` should be callable"
 
         # Step 1: # Compute cross-correlation between parameters X and responses Y
         # Note: let the number of parameters be n and the number of responses be m.

@@ -55,7 +55,7 @@ def linear_problem(request):
     # Create a problem with g(x) = A @ x
     num_parameters = 50
     num_observations = 10
-    num_ensemble = 100
+    num_ensemble = 200
 
     A = np.exp(rng.standard_normal(size=(num_observations, num_parameters)))
 
@@ -104,13 +104,13 @@ class TestAdaptiveESMDA:
                 ensemble_size=Y_i.shape[1], alpha=alpha_i
             )
 
-            # Update the relevant parameters and write to X (storage)
+            # Update the relevant parameters and write to X
             X_i = smoother.assimilate(
                 X=X_i,
                 Y=Y_i,
                 D=D_i,
                 alpha=alpha_i,
-                correlation_threshold=lambda ensemble_size: 1,
+                correlation_threshold=1,
             )
 
         assert np.allclose(X, X_i)
@@ -148,7 +148,7 @@ class TestAdaptiveESMDA:
                 ensemble_size=Y_i.shape[1], alpha=alpha_i
             )
 
-            # Update the relevant parameters and write to X (storage)
+            # Update the relevant parameters and write to X
             X_i = smoother.assimilate(
                 X=X_i,
                 Y=Y_i,
@@ -185,9 +185,9 @@ class TestAdaptiveESMDA:
     def test_that_posterior_generalized_variance_increases_in_cutoff(
         self, linear_problem, cutoffs
     ):
-        """As the number of ensemble members decrease, this test starts to fail
-        more often. The property only holds in the limit as the number of
-        ensemble members goes to infinity."""
+        """This property only holds in the limit as the number of
+        ensemble members goes to infinity. As the number of ensemble
+        members decrease, this test starts to fail more often."""
 
         # Create a problem with g(x) = A @ x
         X, g, observations, covariance, rng = linear_problem
@@ -215,7 +215,6 @@ class TestAdaptiveESMDA:
             cutoff_low, cutoff_high = cutoffs
             assert cutoff_low <= cutoff_high
 
-            # Update twice, one with low cutoff, once with low cutoff
             X_i_low_cutoff = smoother.assimilate(
                 X=X_i,
                 Y=Y_i,
@@ -232,14 +231,15 @@ class TestAdaptiveESMDA:
             )
 
             # Compute covariances
-            prior_cov = np.cov(X, rowvar=False)
-            posterior_cutoff_low_cov = np.cov(X_i_low_cutoff, rowvar=False)
-            posterior_cutoff_high_cov = np.cov(X_i_high_cutoff, rowvar=False)
+            prior_cov = np.cov(X, rowvar=True)
+            posterior_cutoff_low_cov = np.cov(X_i_low_cutoff, rowvar=True)
+            posterior_cutoff_high_cov = np.cov(X_i_high_cutoff, rowvar=True)
+            assert prior_cov.shape == (X.shape[0], X.shape[0])
 
             # Compute determinants of covariance matrices
             # https://en.wikipedia.org/wiki/Generalized_variance
             # intuitively: large determintant => high covariancce
-            #  => smaller volume of multivariate normal
+            #  => larger volume of multivariate normal
             # => less information contained in multivariate normal
             generalized_variance_prior = np.linalg.det(prior_cov)
             generalized_variance_low = np.linalg.det(posterior_cutoff_low_cov)
@@ -283,9 +283,8 @@ class TestAdaptiveESMDA:
         X, g, observations, covariance, rng = linear_problem
         num_parameters, num_ensemble = X.shape
         num_observations = len(observations)
-        rng = np.random.default_rng()
 
-        # Split the parameters into two groups of equal size
+        # Split parameters into groups of equal size
         num_groups = 10
         assert num_observations % num_groups == 0, "Num groups must divide parameters"
         group_size = num_parameters // num_groups
@@ -295,15 +294,13 @@ class TestAdaptiveESMDA:
         # =============================================================================
         # SETUP ESMDA FOR LOCALIZATION AND SOLVE PROBLEM
         # =============================================================================
-        alpha = normalize_alpha(
-            np.array([5, 4, 3, 2, 1])
-        )  # Vector of inflaction values
+        alpha = normalize_alpha(np.array([5, 4, 3, 2, 1]))  # Vector of inflation values
         start_time = time.perf_counter()
         smoother = AdaptiveESMDA(
             covariance=covariance, observations=observations, seed=1
         )
 
-        # Simulate realization that die
+        # Simulate realizations that die
         living_mask = rng.choice(
             [True, False], size=(len(alpha), num_ensemble), p=[0.9, 0.1]
         )
@@ -329,10 +326,10 @@ class TestAdaptiveESMDA:
                 print(f"  Updating parameter group {j}/{len(parameters_groups)}")
 
                 # Mask out rows in this parameter group, and columns of realization
-                # that are still alive. This step simulates fetching from storage.
+                # that are still alive. This step simulates fetching from disk.
                 mask = np.ix_(parameter_mask_j, alive_mask_i)
 
-                # Update the relevant parameters and write to X (storage)
+                # Update the relevant parameters and write to X
                 X_i[mask] = smoother.assimilate(
                     X=X_i[mask],
                     Y=Y_i[:, alive_mask_i],
