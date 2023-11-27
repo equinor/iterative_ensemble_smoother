@@ -117,7 +117,7 @@ class BaseESMDA(ABC):
         # a zero cented normal means that y := L @ z, where z ~ norm(0, 1).
         # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha).
 
-        D: npt.NDArray[np.double] = self.observations[:, None] + np.sqrt(
+        D: npt.NDArray[np.double] = self.observations[:, np.newaxis] + np.sqrt(
             alpha
         ) * sample_mvnormal(C_dd_cholesky=self.C_D_L, rng=self.rng, size=ensemble_size)
         assert D.shape == (len(self.observations), ensemble_size)
