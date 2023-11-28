@@ -1,12 +1,386 @@
+import functools
+import time
 from copy import deepcopy
 
 import numpy as np
 import pytest
 
 from iterative_ensemble_smoother import ESMDA
+from iterative_ensemble_smoother.esmda_inversion import normalize_alpha
 from iterative_ensemble_smoother.experimental import (
+    AdaptiveESMDA,
     ensemble_smoother_update_step_row_scaling,
+    groupby_indices,
 )
+
+
+@pytest.mark.parametrize("seed", range(25))
+def test_groupby_indices(seed):
+
+    rng = np.random.default_rng(seed)
+    rows = rng.integers(10, 100)
+    columns = rng.integers(2, 9)
+
+    # Create data matrix
+    X = rng.integers(0, 10, size=(rows, columns))
+
+    groups = list(groupby_indices(X))
+    indices = [set(idx) for (_, idx) in groups]
+
+    # Verify that every row is included
+    union_idx = functools.reduce(set.union, indices)
+    assert union_idx == set(range(rows))
+
+    # Verify that no duplicate rows occur
+    intersection_idx = functools.reduce(set.intersection, indices)
+    assert intersection_idx == set()
+
+    # Verify each entry in the groups
+    for (unique_row, indices_of_row) in groups:
+
+        # Repeat this unique row the number of times it occurs in X
+        repeated = np.repeat(
+            unique_row[np.newaxis, :], repeats=len(indices_of_row), axis=0
+        )
+        assert np.allclose(X[indices_of_row, :], repeated)
+
+
+@pytest.fixture()
+def linear_problem(request):
+
+    # Seed the problem using indirect parametrization:
+    # https://docs.pytest.org/en/latest/example/parametrize.html#indirect-parametrization
+    rng = np.random.default_rng(request.param)
+
+    # Create a problem with g(x) = A @ x
+    num_parameters = 50
+    num_observations = 10
+    num_ensemble = 200
+
+    A = np.exp(rng.standard_normal(size=(num_observations, num_parameters)))
+
+    def g(X):
+        """Forward model."""
+        return A @ X
+
+    # Create observations
+    x_true = np.linspace(-1, 1, num=num_parameters)
+    observations = g(x_true) + rng.standard_normal(size=num_observations) / 10
+
+    # Initial ensemble and covariance
+    X = rng.normal(size=(num_parameters, num_ensemble))
+    covariance = rng.triangular(0.1, 1, 1, size=num_observations)
+    yield X, g, observations, covariance, rng
+
+
+class TestAdaptiveESMDA:
+    @pytest.mark.parametrize(
+        "linear_problem",
+        range(25),
+        indirect=True,
+        ids=[f"seed-{i+1}" for i in range(25)],
+    )
+    def test_that_adaptive_localization_with_cutoff_1_equals_ensemble_prior(
+        self, linear_problem
+    ):
+
+        # Create a problem with g(x) = A @ x
+        X, g, observations, covariance, _ = linear_problem
+
+        # Create adaptive smoother
+        smoother = AdaptiveESMDA(
+            covariance=covariance, observations=observations, seed=1
+        )
+
+        X_i = np.copy(X)
+        alpha = normalize_alpha(np.ones(5))
+        for alpha_i in alpha:
+
+            # Run forward model
+            Y_i = g(X_i)
+
+            # Create noise D - common to this ESMDA update
+            D_i = smoother.perturb_observations(
+                ensemble_size=Y_i.shape[1], alpha=alpha_i
+            )
+
+            # Update the relevant parameters and write to X
+            X_i = smoother.assimilate(
+                X=X_i,
+                Y=Y_i,
+                D=D_i,
+                alpha=alpha_i,
+                correlation_threshold=1,
+            )
+
+        assert np.allclose(X, X_i)
+
+    @pytest.mark.parametrize(
+        "linear_problem",
+        range(25),
+        indirect=True,
+        ids=[f"seed-{i+1}" for i in range(25)],
+    )
+    def test_that_adaptive_localization_with_cutoff_0_equals_standard_ESMDA_update(
+        self, linear_problem
+    ):
+
+        # Create a problem with g(x) = A @ x
+        X, g, observations, covariance, rng = linear_problem
+
+        # =============================================================================
+        # SETUP ESMDA FOR LOCALIZATION AND SOLVE PROBLEM
+        # =============================================================================
+        alpha = normalize_alpha(np.ones(5))
+
+        smoother = AdaptiveESMDA(
+            covariance=covariance, observations=observations, seed=1
+        )
+
+        X_i = np.copy(X)
+        for i, alpha_i in enumerate(alpha, 1):
+
+            # Run forward model
+            Y_i = g(X_i)
+
+            # Create noise D - common to this ESMDA update
+            D_i = smoother.perturb_observations(
+                ensemble_size=Y_i.shape[1], alpha=alpha_i
+            )
+
+            # Update the relevant parameters and write to X
+            X_i = smoother.assimilate(
+                X=X_i,
+                Y=Y_i,
+                D=D_i,
+                alpha=alpha_i,
+                correlation_threshold=lambda ensemble_size: 0,
+            )
+
+        # =============================================================================
+        # VERIFY RESULT AGAINST NORMAL ESMDA ITERATIONS
+        # =============================================================================
+        smoother = ESMDA(
+            covariance=covariance,
+            observations=observations,
+            alpha=alpha,
+            seed=1,
+        )
+
+        X_i2 = np.copy(X)
+        for i in range(smoother.num_assimilations()):
+            X_i2 = smoother.assimilate(X_i2, g(X_i2))
+
+        assert np.allclose(X_i, X_i2)
+
+    @pytest.mark.parametrize(
+        "linear_problem",
+        range(25),
+        indirect=True,
+        ids=[f"seed-{i+1}" for i in range(25)],
+    )
+    @pytest.mark.parametrize(
+        "cutoffs", [(0, 1e-3), (0.1, 0.2), (0.5, 0.5 + 1e-12), (0.9, 1), (1 - 1e-3, 1)]
+    )
+    def test_that_posterior_generalized_variance_increases_in_cutoff(
+        self, linear_problem, cutoffs
+    ):
+        """This property only holds in the limit as the number of
+        ensemble members goes to infinity. As the number of ensemble
+        members decrease, this test starts to fail more often."""
+
+        # Create a problem with g(x) = A @ x
+        X, g, observations, covariance, rng = linear_problem
+
+        # =============================================================================
+        # SETUP ESMDA FOR LOCALIZATION AND SOLVE PROBLEM
+        # =============================================================================
+        alpha = normalize_alpha(np.ones(1))
+
+        smoother = AdaptiveESMDA(
+            covariance=covariance, observations=observations, seed=1
+        )
+
+        X_i = np.copy(X)
+        for i, alpha_i in enumerate(alpha, 1):
+
+            # Run forward model
+            Y_i = g(X_i)
+
+            # Create noise D - common to this ESMDA update
+            D_i = smoother.perturb_observations(
+                ensemble_size=Y_i.shape[1], alpha=alpha_i
+            )
+
+            cutoff_low, cutoff_high = cutoffs
+            assert cutoff_low <= cutoff_high
+
+            X_i_low_cutoff = smoother.assimilate(
+                X=X_i,
+                Y=Y_i,
+                D=D_i,
+                alpha=alpha_i,
+                correlation_threshold=lambda ensemble_size: cutoff_low,
+            )
+            X_i_high_cutoff = smoother.assimilate(
+                X=X_i,
+                Y=Y_i,
+                D=D_i,
+                alpha=alpha_i,
+                correlation_threshold=lambda ensemble_size: cutoff_high,
+            )
+
+            # Compute covariances
+            prior_cov = np.cov(X, rowvar=True)
+            posterior_cutoff_low_cov = np.cov(X_i_low_cutoff, rowvar=True)
+            posterior_cutoff_high_cov = np.cov(X_i_high_cutoff, rowvar=True)
+            assert prior_cov.shape == (X.shape[0], X.shape[0])
+
+            # Compute determinants of covariance matrices
+            # https://en.wikipedia.org/wiki/Generalized_variance
+            # intuitively: large determintant => high covariancce
+            #  => larger volume of multivariate normal
+            # => less information contained in multivariate normal
+            generalized_variance_prior = np.linalg.det(prior_cov)
+            generalized_variance_low = np.linalg.det(posterior_cutoff_low_cov)
+            generalized_variance_high = np.linalg.det(posterior_cutoff_high_cov)
+
+            # The covariance is positive (semi) definite, so the determinant is >= 0
+            assert generalized_variance_low >= 0, f"1 Failed with cutoff={cutoffs}"
+
+            # Assimilating information always leads to more information,
+            # which means a smaller lower determinant
+            assert generalized_variance_low <= generalized_variance_prior
+            assert generalized_variance_high <= generalized_variance_prior
+
+            # A higher threshold means we assimilate less information
+            assert (
+                generalized_variance_low <= generalized_variance_high
+            ), f"2 Failed with cutoff_low={cutoff_low} and cutoff_high={cutoff_high}"
+
+    @pytest.mark.parametrize(
+        "linear_problem",
+        range(25),
+        indirect=True,
+        ids=[f"seed-{i+1}" for i in range(25)],
+    )
+    def test_that_adaptive_localization_works_with_dying_realizations(
+        self,
+        linear_problem,
+    ):
+        """A full worked example of the adaptive localization API, with
+        parameter groups and dying realizations (if compute nodes go down).
+
+        This is mainly meant as an example, not a test. To make it into a test
+        worth running, we set the threshold for the correlation to 0 and verify
+        that it returns the same result as ESMDA."""
+
+        def zero_correlation_threshold(ensemble_size):
+            """Adaptive localization only matches ESMDA when the threshold is <=0."""
+            return 0
+
+        # Create a problem with g(x) = A @ x
+        X, g, observations, covariance, rng = linear_problem
+        num_parameters, num_ensemble = X.shape
+        num_observations = len(observations)
+
+        # Split parameters into groups of equal size
+        num_groups = 10
+        assert num_observations % num_groups == 0, "Num groups must divide parameters"
+        parameters_groups = np.array_split(np.arange(num_parameters), num_groups)
+        assert len(parameters_groups) == num_groups
+
+        # =============================================================================
+        # SETUP ESMDA FOR LOCALIZATION AND SOLVE PROBLEM
+        # =============================================================================
+        alpha = normalize_alpha(np.array([5, 4, 3, 2, 1]))  # Vector of inflation values
+        start_time = time.perf_counter()
+        smoother = AdaptiveESMDA(
+            covariance=covariance, observations=observations, seed=1
+        )
+
+        # Simulate realizations that die
+        living_mask = rng.choice(
+            [True, False], size=(len(alpha), num_ensemble), p=[0.9, 0.1]
+        )
+
+        X_i = np.copy(X)
+        for i, alpha_i in enumerate(alpha, 1):
+            print(f"ESMDA iteration {i} with alpha_i={alpha_i}")
+
+            # Run forward model
+            Y_i = g(X_i)
+
+            # We simulate loss of realizations due to compute clusters going down.
+            # Figure out which realizations are still alive:
+            alive_mask_i = np.all(living_mask[:i, :], axis=0)
+            num_alive = alive_mask_i.sum()
+            print(f"  Total realizations still alive: {num_alive} / {num_ensemble}")
+
+            # Create noise D - common to this ESMDA update
+            D_i = smoother.perturb_observations(ensemble_size=num_alive, alpha=alpha_i)
+
+            # Loop over parameter groups and update
+            for j, parameter_mask_j in enumerate(parameters_groups, 1):
+                print(f"  Updating parameter group {j}/{len(parameters_groups)}")
+
+                # Mask out rows in this parameter group, and columns of realization
+                # that are still alive. This step simulates fetching from disk.
+                mask = np.ix_(parameter_mask_j, alive_mask_i)
+
+                # Update the relevant parameters and write to X
+                X_i[mask] = smoother.assimilate(
+                    X=X_i[mask],
+                    Y=Y_i[:, alive_mask_i],
+                    D=D_i,
+                    alpha=alpha_i,
+                    # Pass a function that always returns zero,
+                    # no matter what the ensemble size is
+                    correlation_threshold=zero_correlation_threshold,
+                    verbose=True,
+                )
+
+            print()
+
+        print(f"ESMDA with localization - Ran in {time.perf_counter() - start_time} s")
+
+        # =============================================================================
+        # VERIFY RESULT AGAINST NORMAL ESMDA ITERATIONS
+        # =============================================================================
+        start_time = time.perf_counter()
+        smoother = ESMDA(
+            covariance=covariance,
+            observations=observations,
+            alpha=alpha,
+            seed=1,
+        )
+
+        X_i2 = np.copy(X)
+        for i in range(smoother.num_assimilations()):
+            # Run simulations
+            Y_i = g(X_i2)
+
+            # We simulate loss of realizations due to compute clusters going down.
+            # Figure out which realizations are still alive:
+            alive_mask_i = np.all(living_mask[: i + 1, :], axis=0)
+            num_alive = alive_mask_i.sum()
+
+            X_i2[:, alive_mask_i] = smoother.assimilate(
+                X_i2[:, alive_mask_i], Y_i[:, alive_mask_i]
+            )
+
+        # For this test to pass, correlation_threshold() should return <= 0
+        print(
+            "Norm difference between ESMDA with and without localization:",
+            np.linalg.norm(X_i - X_i2),
+        )
+        assert np.allclose(X_i, X_i2, atol=1e-4)
+
+        print(
+            f"ESMDA without localization - Ran in {time.perf_counter() - start_time} s"
+        )
+
+        print("------------------------------------------")
 
 
 class TestRowScaling:
