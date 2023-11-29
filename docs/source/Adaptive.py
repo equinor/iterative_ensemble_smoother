@@ -1,0 +1,234 @@
+# ---
+# jupyter:
+#   jupytext:
+#     formats: ipynb,py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.15.2
+#   kernelspec:
+#     display_name: Python 3 (ipykernel)
+#     language: python
+#     name: python3
+# ---
+
+# %%
+# ruff: noqa: E402
+
+# %% [markdown]
+# # Adaptive Localization
+#
+# In this example we run adaptive localization
+# on a problem that is very local in nature.
+#
+# - Each response is only affected by $3$ parameters.
+# - This is represented by a tridiagonal matrix $A$ in the forward model $g(x) = Ax$.
+# - The problem is Gauss-Linear, and in this case ESMDA will sample
+#   the true posterior when the number of ensemble members (realizations) is large.
+#
+
+# %% [markdown]
+# ## Import packages
+
+# %%
+import numpy as np
+import scipy as sp
+from matplotlib import pyplot as plt
+
+from iterative_ensemble_smoother import ESMDA
+from iterative_ensemble_smoother.experimental import AdaptiveESMDA
+
+# %% [markdown]
+# ## Create problem data
+#
+# Some settings worth experimenting with:
+#
+# - Decreasing `prior_std=1` will pull the posterior solution toward zero.
+# - Increasing `num_ensemble` will increase the quality of the solution.
+# - Increasing `num_observations / num_parameters`
+#   will increase the quality of the solution.
+
+# %%
+rng = np.random.default_rng(42)
+
+# Dimensionality of the problem
+num_parameters = 100
+num_observations = 50
+num_ensemble = 25
+prior_std = 1
+
+# %% [markdown]
+# ## Create problem data - sparse tridiagonal matrix $A$
+
+# %%
+diagonal = np.ones(min(num_parameters, num_observations))
+
+# Create a tridiagonal matrix (easiest with scipy)
+A = sp.sparse.diags(
+    [diagonal, diagonal, diagonal],
+    offsets=[-1, 0, 1],
+    shape=(num_observations, num_parameters),
+    dtype=float,
+).toarray()
+
+# We add some noise that is insignificant compared to the
+# actual local structure in the forward model
+A = A + rng.standard_normal(size=A.shape) * 0.01
+
+plt.title("Linear mapping $A$ in forward model $g(x) = Ax$")
+plt.imshow(A)
+plt.xlabel("Parameters (inputs)")
+plt.ylabel("Responses (outputs)")
+plt.tight_layout()
+plt.show()
+
+
+# %%
+def g(X):
+    """Apply the forward model."""
+    return A @ X
+
+
+# Create observations: obs = g(x) + N(0, 1)
+x_true = np.linspace(-1, 1, num=num_parameters)
+observation_noise = rng.standard_normal(size=num_observations)  # N(0, 1) noise
+observations = g(x_true) + observation_noise
+
+# Initial ensemble X ~ N(0, prior_std) and diagonal covariance with ones
+X = rng.normal(size=(num_parameters, num_ensemble)) * prior_std
+
+# Covariance matches the noise added to observations above
+covariance = np.ones(num_observations)  # N(0, 1) covariance
+
+# %% [markdown]
+# ## Solve the maximum likelihood problem
+#
+# We can solve $Ax = b$, where $b$ is the observations,
+# for the maximum likelihood estimate.
+#
+# Notice that unlike using a Ridge model,
+# solving $Ax = b$ directly does not use any prior information.
+
+# %%
+x_ml, *_ = np.linalg.lstsq(A, observations, rcond=None)
+
+plt.figure(figsize=(8, 3))
+plt.scatter(np.arange(len(x_true)), x_true, label="True parameter values")
+plt.scatter(np.arange(len(x_true)), x_ml, label="ML estimate (no prior)")
+plt.xlabel("Parameter index")
+plt.ylabel("Parameter value")
+plt.grid(True, ls="--", zorder=0, alpha=0.33)
+plt.legend()
+plt.show()
+
+# %% [markdown]
+# ## Solve using ESMDA
+#
+# We crease an `ESMDA` instance and solve the Guass-linear problem.
+
+# %%
+smoother = ESMDA(
+    covariance=covariance,
+    observations=observations,
+    alpha=5,
+    seed=1,
+)
+
+X_i = np.copy(X)
+for i, alpha_i in enumerate(smoother.alpha, 1):
+    print(
+        f"ESMDA iteration {i}/{smoother.num_assimilations()}"
+        + f" with inflation factor alpha_i={alpha_i}"
+    )
+    X_i = smoother.assimilate(X_i, Y=g(X_i))
+
+
+X_posterior = np.copy(X_i)
+
+# %% [markdown]
+# ## Plot and compare solutions
+#
+# Compare the true parameters with both the ML estimate
+# from linear regression and the posterior means obtained using `ESMDA`.
+
+# %%
+plt.figure(figsize=(8, 3))
+plt.scatter(np.arange(len(x_true)), x_true, label="True parameter values")
+plt.scatter(np.arange(len(x_true)), x_ml, label="ML estimate (no prior)")
+plt.scatter(
+    np.arange(len(x_true)), np.mean(X_posterior, axis=1), label="Posterior mean"
+)
+plt.xlabel("Parameter index")
+plt.ylabel("Parameter value")
+plt.grid(True, ls="--", zorder=0, alpha=0.33)
+plt.legend()
+plt.show()
+
+# %% [markdown]
+# ## Solve using AdaptiveESMDA
+#
+# We crease an `AdaptiveESMDA` instance and solve the Guass-linear problem.
+
+# %%
+adaptive_smoother = AdaptiveESMDA(
+    covariance=covariance,
+    observations=observations,
+    seed=1,
+)
+
+X_i = np.copy(X)
+
+for i, alpha_i in enumerate(smoother.alpha, 1):
+    print(
+        f"AdaptiveESMDA iteration {i}/{len(smoother.alpha)}"
+        + f" with inflation factor alpha_i={alpha_i}"
+    )
+
+    # Run forward model
+    Y_i = g(X_i)
+
+    # Perturb observations
+    D_i = adaptive_smoother.perturb_observations(
+        ensemble_size=X_i.shape[1], alpha=alpha_i
+    )
+
+    # Assimilate data
+    X_i = adaptive_smoother.assimilate(X_i, Y=Y_i, D=D_i, alpha=alpha_i, verbose=True)
+
+
+X_adaptive_posterior = np.copy(X_i)
+
+# %%
+plt.figure(figsize=(8, 3))
+plt.scatter(np.arange(len(x_true)), x_true, label="True parameter values")
+plt.scatter(np.arange(len(x_true)), x_ml, label="ML estimate (no prior)")
+plt.scatter(
+    np.arange(len(x_true)), np.mean(X_posterior, axis=1), label="Posterior mean"
+)
+plt.scatter(
+    np.arange(len(x_true)),
+    np.mean(X_adaptive_posterior, axis=1),
+    label="Posterior mean (adaptive)",
+)
+plt.xlabel("Parameter index")
+plt.ylabel("Parameter value")
+plt.grid(True, ls="--", zorder=0, alpha=0.33)
+plt.legend()
+plt.show()
+
+# %% [markdown]
+# ## Correlations between true parameters and solution means
+
+# %%
+for arr, label in zip(
+    [
+        np.mean(X, axis=1),
+        x_ml,
+        np.mean(X_posterior, axis=1),
+        np.mean(X_adaptive_posterior, axis=1),
+    ],
+    ["Prior", "ML estimate", "Posterior mean", "Posterior mean (adaptive)"],
+):
+    corr = sp.stats.pearsonr(x_true, arr).statistic
+    print(label, corr)
