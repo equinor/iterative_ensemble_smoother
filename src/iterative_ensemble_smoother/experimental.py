@@ -67,11 +67,11 @@ class AdaptiveESMDA(BaseESMDA):
         Examples
         --------
         >>> AdaptiveESMDA.correlation_threshold(0)
-        1
+        1.0
         >>> AdaptiveESMDA.correlation_threshold(4)
-        1
+        1.0
         >>> AdaptiveESMDA.correlation_threshold(9)
-        1
+        1.0
         >>> AdaptiveESMDA.correlation_threshold(16)
         0.75
         >>> AdaptiveESMDA.correlation_threshold(36)
