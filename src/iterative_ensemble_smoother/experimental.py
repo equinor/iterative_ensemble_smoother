@@ -149,9 +149,14 @@ class AdaptiveESMDA(BaseESMDA):
         # Compute the correlation matrix from the covariance matrix
         corr_XY = (cov_XY / stds_X[:, np.newaxis]) / stds_Y[np.newaxis, :]
 
-        # Perform checks
-        assert corr_XY.max() <= 1
-        assert corr_XY.min() >= -1
+        # Perform checks. There appears to be occasional numerical issues in
+        # the equation. With 2 ensemble members, we get e.g. a max value of
+        # 1.0000000000016778. We allow some leeway and clip the results.
+        eps = 1e-8
+        assert corr_XY.max() <= 1 + eps
+        assert corr_XY.min() >= -1 - eps
+
+        corr_XY = np.clip(corr_XY, a_min=-1, a_max=1)
         return corr_XY
 
     def assimilate(self, X, Y, D, alpha, correlation_threshold=None, verbose=False):
