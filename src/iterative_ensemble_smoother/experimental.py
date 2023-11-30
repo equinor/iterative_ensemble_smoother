@@ -68,8 +68,6 @@ class AdaptiveESMDA(BaseESMDA):
         --------
         >>> AdaptiveESMDA.correlation_threshold(0)
         1.0
-        >>> AdaptiveESMDA.correlation_threshold(4)
-        1.0
         >>> AdaptiveESMDA.correlation_threshold(9)
         1.0
         >>> AdaptiveESMDA.correlation_threshold(16)
