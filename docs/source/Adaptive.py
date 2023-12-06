@@ -20,13 +20,12 @@
 # # Adaptive Localization
 #
 # In this example we run adaptive localization
-# on a problem that is very local in nature.
+# on a linear sparse problem.
 #
 # - Each response is only affected by $3$ parameters.
 # - This is represented by a tridiagonal matrix $A$ in the forward model $g(x) = Ax$.
-# - The problem is Gauss-Linear, and in this case ESMDA will sample
+# - The problem is Gauss-Linear, so in this case ESMDA will sample
 #   the true posterior when the number of ensemble members (realizations) is large.
-#
 
 # %% [markdown]
 # ## Import packages
@@ -53,10 +52,13 @@ from iterative_ensemble_smoother.experimental import AdaptiveESMDA
 rng = np.random.default_rng(42)
 
 # Dimensionality of the problem
-num_parameters = 50
+num_parameters = 100
 num_observations = 50
-num_ensemble = 9
+num_ensemble = 25
 prior_std = 1
+
+# Number of iterations to use in ESMDA
+alpha = 5
 
 # %% [markdown]
 # ## Create problem data - sparse tridiagonal matrix $A$
@@ -131,7 +133,7 @@ plt.show()
 smoother = ESMDA(
     covariance=covariance,
     observations=observations,
-    alpha=5,
+    alpha=alpha,
     seed=1,
 )
 
@@ -179,6 +181,11 @@ adaptive_smoother = AdaptiveESMDA(
 
 X_i = np.copy(X)
 
+# Loop over alpha defined in ESMDA instance,
+# the vector of inflation values alpha is then
+# of the same size in AdaptiveESMDA and ESMDA,
+# and it's correctly scaled
+assert np.isclose(np.sum(1 / smoother.alpha), 1), "Incorrect scaling"
 for i, alpha_i in enumerate(smoother.alpha, 1):
     print(
         f"AdaptiveESMDA iteration {i}/{len(smoother.alpha)}"
@@ -194,7 +201,7 @@ for i, alpha_i in enumerate(smoother.alpha, 1):
     )
 
     # Assimilate data
-    X_i = adaptive_smoother.assimilate(X_i, Y=Y_i, D=D_i, alpha=alpha_i, verbose=True)
+    X_i = adaptive_smoother.assimilate(X_i, Y=Y_i, D=D_i, alpha=alpha_i, verbose=False)
 
 
 X_adaptive_posterior = np.copy(X_i)
@@ -219,6 +226,9 @@ plt.show()
 
 # %% [markdown]
 # ## Correlations between true parameters and solution means
+#
+# - A more sophisticated way to measure goodness would be to use [Kullback–Leibler divergence](https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence).
+# - Here we simply look at the correlations of the means.
 
 # %%
 for arr, label in zip(
@@ -237,8 +247,8 @@ for arr, label in zip(
 # ## Run on several ensemble sizes and seeds
 
 # %%
-ENSEMBLE_SIZES = list(range(2, 101))
-NUM_SEEDS = 25
+ENSEMBLE_SIZES = list(range(2, 51))
+NUM_SEEDS = 10
 
 # Store average correlation coefficients
 ESMDA_corrs = []
@@ -304,10 +314,10 @@ for ensemble_size in ENSEMBLE_SIZES:
 # %%
 # Compute correlations
 title = "ESMDA vs AdaptiveESMDA on different ensemble sizes\n"
-title += f"each point represents the average of {NUM_SEEDS}"
+title += f"each point represents the average of {NUM_SEEDS} \n"
 title += "runs with different seeds (perturbations of D)\n"
 title += f"Parameters = {num_parameters}, Observations ="
-title += " {num_observations}, len(alpha) = {len(smoother.alpha)}"
+title += f" {num_observations}, len(alpha) = {len(smoother.alpha)}"
 
 
 plt.title(title)
