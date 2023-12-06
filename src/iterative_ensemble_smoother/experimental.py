@@ -40,7 +40,6 @@ def groupby_indices(X):
     >>> list(groupby_indices(X))
     [(array([0, 0, 0]), array([1])), (array([1, 1, 1]), \
 array([3, 4])), (array([1, 2, 3]), array([0, 2, 5]))]
-
     """
     assert X.ndim == 2
 
@@ -266,6 +265,10 @@ class AdaptiveESMDA(BaseESMDA):
                     + f"{np.sum(unique_row)} / {len(unique_row)} responses."
                 )
 
+            # These parameters are not significantly correlated to any responses
+            if np.all(~unique_row):
+                continue
+
             # Get the parameters (X) that have identical significant responses (Y)
             X_subset = X[indices_of_row, :]
             Y_subset = Y[unique_row, :]
@@ -277,7 +280,12 @@ class AdaptiveESMDA(BaseESMDA):
             cov_YY_mask = np.ix_(unique_row, unique_row)
             cov_YY_subset = cov_YY[cov_YY_mask]
 
-            C_D_subset = self.C_D[unique_row]
+            # Slice the covariance matrix
+            if self.C_D.ndim == 1:
+                C_D_subset = self.C_D[unique_row]
+            else:
+                C_D_subset = self.C_D[np.ix_(unique_row, unique_row)]
+
             D_subset = D[unique_row, :]
 
             # Compute transition matrix T
