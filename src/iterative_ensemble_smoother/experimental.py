@@ -17,41 +17,6 @@ from iterative_ensemble_smoother.esmda_inversion import (
 )
 
 
-def groupby_indices_feda(X):
-    """
-
-    Examples
-    --------
-    With a boolean input matrix:
-    >>> X = np.array([[0, 0, 0],
-    ...               [0, 0, 0],
-    ...               [1, 0, 0],
-    ...               [1, 0, 0],
-    ...               [1, 1, 1],
-    ...               [1, 1, 1]], dtype=bool)
-    >>> list(groupby_indices_feda(X))
-    [(array([ True, False, False]), array([2, 3])), \
-(array([ True,  True,  True]), array([4, 5]))]
-
-    """
-
-    # Unique rows
-    param_correlation_sets = np.unique(X, axis=0)
-
-    # Drop the correlation set that does not correlate to any responses.
-    row_with_all_false = np.all(~param_correlation_sets, axis=1)
-    param_correlation_sets = param_correlation_sets[~row_with_all_false]
-
-    for param_correlation_set in param_correlation_sets:
-        # Find the rows matching the parameter group
-        matching_rows = np.all(X == param_correlation_set, axis=1)
-
-        # Get the indices of the matching rows
-        row_indices = np.where(matching_rows)[0]
-
-        yield (param_correlation_set, row_indices)
-
-
 def groupby_indices(X):
     """Yield pairs of (unique_row, indices_of_row).
 
@@ -91,8 +56,13 @@ array([3, 4])), (array([1, 2, 3]), array([0, 2, 5]))]
 
     # Code was modified from this answer:
     # https://stackoverflow.com/questions/30003068/how-to-get-a-list-of-all-indices-of-repeated-elements-in-a-numpy-array
+
+    # ~15% of the total time is spent in np.lexsort on a large problem
     idx_sort = np.lexsort(X.T[::-1, :], axis=0)
     sorted_X = X[idx_sort, :]
+
+    # ~85% of the total time is spent in np.unique on a large problem,
+    # but np.unique is roughly linear in complexity, so little can be done.
     vals, idx_start = np.unique(sorted_X, return_index=True, axis=0)
     res = np.split(idx_sort, idx_start[1:])
     yield from zip(vals, res)
@@ -326,7 +296,12 @@ class AdaptiveESMDA(BaseESMDA):
             cov_YY_mask = np.ix_(unique_row, unique_row)
             cov_YY_subset = cov_YY[cov_YY_mask]
 
-            C_D_subset = self.C_D[unique_row]
+            # Slice the covariance matrix
+            if self.C_D.ndim == 1:
+                C_D_subset = self.C_D[unique_row]
+            else:
+                C_D_subset = self.C_D[np.ix_(unique_row, unique_row)]
+
             D_subset = D[unique_row, :]
 
             # Compute transition matrix T
