@@ -4,11 +4,11 @@ features of iterative_ensemble_smoother
 """
 import numbers
 import warnings
-from typing import List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
-import scipy as sp
+import scipy as sp  # type: ignore
 
 from iterative_ensemble_smoother import ESMDA
 from iterative_ensemble_smoother.esmda import BaseESMDA
@@ -17,7 +17,9 @@ from iterative_ensemble_smoother.esmda_inversion import (
 )
 
 
-def groupby_indices(X):
+def groupby_indices(
+    X: npt.NDArray[Any],
+) -> Generator[Dict[npt.NDArray[np.double], npt.NDArray[np.int_]], None, None]:
     """Yield pairs of (unique_row, indices_of_row).
 
     Examples
@@ -80,17 +82,15 @@ class AdaptiveESMDA(BaseESMDA):
         Examples
         --------
         >>> AdaptiveESMDA.correlation_threshold(0)
-        1
-        >>> AdaptiveESMDA.correlation_threshold(4)
-        1
+        1.0
         >>> AdaptiveESMDA.correlation_threshold(9)
-        1
+        1.0
         >>> AdaptiveESMDA.correlation_threshold(16)
         0.75
         >>> AdaptiveESMDA.correlation_threshold(36)
         0.5
         """
-        return min(1, max(0, 3 / np.sqrt(ensemble_size)))
+        return float(min(1, max(0, 3 / np.sqrt(ensemble_size))))
 
     @staticmethod
     def compute_cross_covariance_multiplier(
@@ -153,9 +153,14 @@ class AdaptiveESMDA(BaseESMDA):
             # C_D is an array, so add it to the diagonal without forming diag(C_D)
             np.fill_diagonal(C_DD, C_DD.diagonal() + alpha * C_D)
 
-        return sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
+        return sp.linalg.solve(C_DD, D - Y, **solver_kwargs)  # type: ignore
 
-    def _correlation_matrix(self, cov_XY, X, Y):
+    def _correlation_matrix(
+        self,
+        cov_XY: npt.NDArray[np.double],
+        X: npt.NDArray[np.double],
+        Y: npt.NDArray[np.double],
+    ) -> npt.NDArray[np.double]:
         """Compute a correlation matrix given a covariance matrix."""
         assert cov_XY.shape == (X.shape[0], Y.shape[0])
 
@@ -163,7 +168,9 @@ class AdaptiveESMDA(BaseESMDA):
         stds_X = np.std(X, axis=1, ddof=1)
 
         # Compute the correlation matrix from the covariance matrix
-        corr_XY = (cov_XY / stds_X[:, np.newaxis]) / stds_Y[np.newaxis, :]
+        corr_XY: npt.NDArray[np.double] = (cov_XY / stds_X[:, np.newaxis]) / stds_Y[
+            np.newaxis, :
+        ]
 
         # Perform checks. There appears to be occasional numerical issues in
         # the equation. With 2 ensemble members, we get e.g. a max value of
@@ -177,7 +184,16 @@ class AdaptiveESMDA(BaseESMDA):
         corr_XY = np.clip(corr_XY, a_min=-1, a_max=1)
         return corr_XY
 
-    def assimilate(self, X, Y, D, alpha, correlation_threshold=None, verbose=False):
+    def assimilate(
+        self,
+        *,
+        X: npt.NDArray[np.double],
+        Y: npt.NDArray[np.double],
+        D: npt.NDArray[np.double],
+        alpha: float,
+        correlation_threshold: Union[Callable[[int], float], float, None] = None,
+        verbose: bool = False,
+    ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble X_posterior.
 
             X_posterior = smoother.assimilate(X, Y, D, alpha)
@@ -236,9 +252,9 @@ class AdaptiveESMDA(BaseESMDA):
 
         # Create `correlation_threshold` if the argument is a float
         if is_float:
-            corr_threshold = correlation_threshold
+            corr_threshold: float = correlation_threshold  # type: ignore
 
-            def correlation_threshold(ensemble_size):
+            def correlation_threshold(ensemble_size: int) -> float:
                 return corr_threshold
 
         # Default correlation threshold function
@@ -261,14 +277,14 @@ class AdaptiveESMDA(BaseESMDA):
 
         # Determine which elements in the cross covariance matrix that will
         # be set to zero
-        threshold = correlation_threshold(ensemble_size=X.shape[1])
+        threshold = correlation_threshold(X.shape[1])
         significant_corr_XY = np.abs(corr_XY) > threshold
 
         # Pre-compute the covariance cov(Y, Y) here, and index on it later
         cov_YY = empirical_cross_covariance(Y, Y)
 
         # TODO: memory could be saved by overwriting the input X
-        X_out = np.copy(X)
+        X_out: npt.NDArray[np.double] = np.copy(X)
         for (unique_row, indices_of_row) in groupby_indices(significant_corr_XY):
 
             if verbose:
