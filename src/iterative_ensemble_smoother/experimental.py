@@ -17,6 +17,41 @@ from iterative_ensemble_smoother.esmda_inversion import (
 )
 
 
+def groupby_indices_feda(X):
+    """
+
+    Examples
+    --------
+    With a boolean input matrix:
+    >>> X = np.array([[0, 0, 0],
+    ...               [0, 0, 0],
+    ...               [1, 0, 0],
+    ...               [1, 0, 0],
+    ...               [1, 1, 1],
+    ...               [1, 1, 1]], dtype=bool)
+    >>> list(groupby_indices_feda(X))
+    [(array([ True, False, False]), array([2, 3])), \
+(array([ True,  True,  True]), array([4, 5]))]
+
+    """
+
+    # Unique rows
+    param_correlation_sets = np.unique(X, axis=0)
+
+    # Drop the correlation set that does not correlate to any responses.
+    row_with_all_false = np.all(~param_correlation_sets, axis=1)
+    param_correlation_sets = param_correlation_sets[~row_with_all_false]
+
+    for param_correlation_set in param_correlation_sets:
+        # Find the rows matching the parameter group
+        matching_rows = np.all(X == param_correlation_set, axis=1)
+
+        # Get the indices of the matching rows
+        row_indices = np.where(matching_rows)[0]
+
+        yield (param_correlation_set, row_indices)
+
+
 def groupby_indices(X):
     """Yield pairs of (unique_row, indices_of_row).
 
@@ -41,6 +76,16 @@ def groupby_indices(X):
     [(array([0, 0, 0]), array([1])), (array([1, 1, 1]), \
 array([3, 4])), (array([1, 2, 3]), array([0, 2, 5]))]
 
+    With a boolean input matrix:
+    >>> X = np.array([[0, 0, 0],
+    ...               [0, 0, 0],
+    ...               [1, 0, 0],
+    ...               [1, 0, 0],
+    ...               [1, 1, 1],
+    ...               [1, 1, 1]], dtype=bool)
+    >>> list(groupby_indices(X))
+    [(array([False, False, False]), array([0, 1])), (array([ True, False, False])\
+, array([2, 3])), (array([ True,  True,  True]), array([4, 5]))]
     """
     assert X.ndim == 2
 
@@ -265,6 +310,10 @@ class AdaptiveESMDA(BaseESMDA):
                     "    The parameters are significant wrt "
                     + f"{np.sum(unique_row)} / {len(unique_row)} responses."
                 )
+
+            # These parameters are not significantly correlated to any responses
+            if np.all(~unique_row):
+                continue
 
             # Get the parameters (X) that have identical significant responses (Y)
             X_subset = X[indices_of_row, :]
