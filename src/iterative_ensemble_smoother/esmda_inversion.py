@@ -403,7 +403,7 @@ def inversion_subspace(
     C_D: npt.NDArray[np.double],
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
-    X: npt.NDArray[np.double],
+    X: Optional[npt.NDArray[np.double]],
     truncation: float = 1.0,
     return_T: bool = False,
 ) -> npt.NDArray[np.double]:
