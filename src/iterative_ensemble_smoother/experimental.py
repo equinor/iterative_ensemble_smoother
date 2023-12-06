@@ -281,10 +281,9 @@ class AdaptiveESMDA(BaseESMDA):
             cov_YY_subset = cov_YY[cov_YY_mask]
 
             # Slice the covariance matrix
-            if self.C_D.ndim == 1:
-                C_D_subset = self.C_D[unique_row]
-            else:
-                C_D_subset = self.C_D[np.ix_(unique_row, unique_row)]
+            C_D_subset = (
+                self.C_D[unique_row] if self.C_D.ndim == 1 else self.C_D[cov_YY_mask]
+            )
 
             D_subset = D[unique_row, :]
 
