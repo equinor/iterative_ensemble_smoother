@@ -127,7 +127,7 @@ plt.show()
 # %% [markdown]
 # ## Solve using ESMDA
 #
-# We crease an `ESMDA` instance and solve the Guass-linear problem.
+# We create an `ESMDA` instance and solve the Guass-linear problem.
 
 # %%
 smoother = ESMDA(
