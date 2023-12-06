@@ -170,7 +170,7 @@ plt.show()
 # %% [markdown]
 # ## Solve using AdaptiveESMDA
 #
-# We crease an `AdaptiveESMDA` instance and solve the Guass-linear problem.
+# We create an `AdaptiveESMDA` instance and solve the Guass-linear problem.
 
 # %%
 adaptive_smoother = AdaptiveESMDA(
