@@ -24,6 +24,7 @@ release = version
 check_output(["jupytext", "Polynomial.py", "-o", "Polynomial.ipynb"])
 check_output(["jupytext", "Oscillator.py", "-o", "Oscillator.ipynb"])
 check_output(["jupytext", "LinearRegression.py", "-o", "LinearRegression.ipynb"])
+check_output(["jupytext", "Adaptive.py", "-o", "Adaptive.ipynb"])
 
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
