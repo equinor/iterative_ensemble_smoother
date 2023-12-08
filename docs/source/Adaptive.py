@@ -88,6 +88,26 @@ plt.tight_layout()
 plt.show()
 
 
+# %% [markdown]
+# - Below we draw prior realizations $X \sim N(0, \sigma)$.
+# - The true parameter values used to generate observations are in the range $[-1, 1]$.
+# - As the number of realizations (ensemble members) goes to infinity,
+#   the correlation between the prior and the true parameter values converges to zero.
+# - The correlation is zero for a finite number of realizations too,
+#   but statistical noise might induce some spurious correlations between
+#   the prior and the true parameter values.
+#
+# **In summary the baseline correlation is zero.**
+# Anything we can do to increase the correlation above zero beats the baseline,
+# which is using the prior (no update).
+#
+# The correlation coefficient does not take into account the uncertainty
+# represeted in the posterior, only the mean posterior value is compared with
+# the true parameter values.
+# To compare distributions we could use the
+# [Kullback–Leibler divergence](https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence),
+# but we do not pursue this here.
+
 # %%
 def get_prior(num_parameters, num_ensemble, prior_std):
     """Sample prior from N(0, prior_std)."""
@@ -122,13 +142,14 @@ covariance = np.ones(num_observations)  # N(0, 1) covariance
 # %%
 x_ml, *_ = np.linalg.lstsq(A, observations, rcond=None)
 
-plt.figure(figsize=(8, 3))
+plt.figure(figsize=(7, 3))
 plt.scatter(np.arange(len(x_true)), x_true, label="True parameter values")
 plt.scatter(np.arange(len(x_true)), x_ml, label="ML estimate (no prior)")
 plt.xlabel("Parameter index")
 plt.ylabel("Parameter value")
 plt.grid(True, ls="--", zorder=0, alpha=0.33)
 plt.legend()
+plt.tight_layout()
 plt.show()
 
 # %% [markdown]
@@ -162,7 +183,7 @@ X_posterior = np.copy(X_i)
 # from linear regression and the posterior means obtained using `ESMDA`.
 
 # %%
-plt.figure(figsize=(8, 3))
+plt.figure(figsize=(7, 3))
 plt.scatter(np.arange(len(x_true)), x_true, label="True parameter values")
 plt.scatter(np.arange(len(x_true)), x_ml, label="ML estimate (no prior)")
 plt.scatter(
@@ -172,6 +193,7 @@ plt.xlabel("Parameter index")
 plt.ylabel("Parameter value")
 plt.grid(True, ls="--", zorder=0, alpha=0.33)
 plt.legend()
+plt.tight_layout()
 plt.show()
 
 # %% [markdown]
@@ -216,7 +238,7 @@ for i, alpha_i in enumerate(smoother.alpha, 1):
 X_adaptive_posterior = np.copy(X_i)
 
 # %%
-plt.figure(figsize=(8, 3))
+plt.figure(figsize=(7, 3))
 plt.scatter(np.arange(len(x_true)), x_true, label="True parameter values")
 plt.scatter(np.arange(len(x_true)), x_ml, label="ML estimate (no prior)")
 plt.scatter(
@@ -231,12 +253,13 @@ plt.xlabel("Parameter index")
 plt.ylabel("Parameter value")
 plt.grid(True, ls="--", zorder=0, alpha=0.33)
 plt.legend()
+plt.tight_layout()
 plt.show()
 
 # %% [markdown]
 # ## Correlations between true parameters and solution means
 #
-# - A more sophisticated way to measure goodness would be to use [Kullback–Leibler divergence](https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence).
+# - A more sophisticated way to measure fit might be to use [Kullback–Leibler divergence](https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence).
 # - Here we simply look at the correlations of the means.
 
 # %%
@@ -255,6 +278,16 @@ for arr, label in zip(
 
 # %% [markdown]
 # ## Run on several ensemble sizes and seeds
+#
+# To get a more complete picture of how the number of realizations (ensemble size)
+# affects the result, we loop over various ensemble sizes and compute posteriors.
+# To capture average behavior and reduce the influence of sampling noise,
+# we also loop over several seeds.
+#
+# Recall that there are two sources of randomness in the result:
+#
+# - The draw of prior realizations $X \sim N(0, \sigma)$.
+# - The noise (given by the `covariance` argument) that ESMDA adds to the observations.
 
 # %%
 def corr_true(array):
