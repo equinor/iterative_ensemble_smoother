@@ -6,7 +6,10 @@ import numpy as np
 import pytest
 
 from iterative_ensemble_smoother import ESMDA
-from iterative_ensemble_smoother.esmda_inversion import normalize_alpha
+from iterative_ensemble_smoother.esmda_inversion import (
+    empirical_cross_covariance,
+    normalize_alpha,
+)
 from iterative_ensemble_smoother.experimental import (
     AdaptiveESMDA,
     ensemble_smoother_update_step_row_scaling,
@@ -384,6 +387,70 @@ class TestAdaptiveESMDA:
         )
 
         print("------------------------------------------")
+
+    @pytest.mark.parametrize(
+        "linear_problem",
+        range(25),
+        indirect=True,
+        ids=[f"seed-{i+1}" for i in range(25)],
+    )
+    def test_that_cov_YY_can_be_computed_outside_of_assimilate(
+        self,
+        linear_problem,
+    ):
+        """Cov(Y, Y) may be computed once in each assimilation round.
+        This saves time if the user wants to iterate over parameters groups,
+        since Cov(Y, Y) is independent of the parameters X, there is no reason
+        to compute it more than once.
+
+        Below we do not loop over parameter groups in X, so there is no speed
+        gain when passing the covariance cov(Y, Y). This test is just to check
+        that the result is the same regardless of whether the user passes
+        the covariance matrix or not.
+        """
+
+        # Create a problem with g(x) = A @ x
+        X, g, observations, covariance, rng = linear_problem
+        num_parameters, ensemble_size = X.shape
+
+        alpha = normalize_alpha(np.array([5, 4, 3, 2, 1]))  # Vector of inflation values
+        smoother = AdaptiveESMDA(
+            covariance=covariance, observations=observations, seed=1
+        )
+
+        X_i = np.copy(X)
+        for i, alpha_i in enumerate(alpha, 1):
+            print(f"ESMDA iteration {i} with alpha_i={alpha_i}")
+
+            # Run forward model
+            Y_i = g(X_i)
+
+            # Create noise D - common to this ESMDA update
+            D_i = smoother.perturb_observations(
+                ensemble_size=ensemble_size, alpha=alpha_i
+            )
+
+            # Update the parameters without using pre-computed cov_YY
+            X_i1 = smoother.assimilate(
+                X=X_i,
+                Y=Y_i,
+                D=D_i,
+                alpha=alpha_i,
+            )
+
+            # Update the parameters using pre-computed cov_YY
+            X_i2 = smoother.assimilate(
+                X=X_i,
+                Y=Y_i,
+                D=D_i,
+                alpha=alpha_i,
+                cov_YY=empirical_cross_covariance(Y_i, Y_i),
+            )
+
+            # Check that the update is the same, whether or not Cov_YY is passed
+            assert np.allclose(X_i1, X_i2)
+
+            X_i = X_i1
 
 
 class TestRowScaling:
