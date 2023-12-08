@@ -176,6 +176,7 @@ class AdaptiveESMDA(BaseESMDA):
         D: npt.NDArray[np.double],
         alpha: float,
         correlation_threshold: Union[Callable[[int], float], float, None] = None,
+        cov_YY: Optional[npt.NDArray[np.double]] = None,
         verbose: bool = False,
     ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble X_posterior.
@@ -211,6 +212,10 @@ class AdaptiveESMDA(BaseESMDA):
             float in the range [0, 1]. Entries in the covariance matrix that
             are lower than the correlation threshold will be set to zero.
             If None, the default 3/sqrt(ensemble_size) is used.
+        cov_YY : np.ndarray
+            A 2D array of shape (num_observations, num_observations) with the
+            empirical covariance of Y. If passed, this is not computed in the
+            method call, potentially saving time and computation.
         verbose : bool
             Whether to print information.
 
@@ -265,7 +270,11 @@ class AdaptiveESMDA(BaseESMDA):
         significant_corr_XY = np.abs(corr_XY) > threshold
 
         # Pre-compute the covariance cov(Y, Y) here, and index on it later
-        cov_YY = empirical_cross_covariance(Y, Y)
+        if cov_YY is None:
+            cov_YY = empirical_cross_covariance(Y, Y)
+        else:
+            assert cov_YY.ndim == 2, "'cov_YY' must be a 2D array"
+            assert cov_YY.shape == (Y.shape[0], Y.shape[0])
 
         # TODO: memory could be saved by overwriting the input X
         X_out: npt.NDArray[np.double] = np.copy(X)
