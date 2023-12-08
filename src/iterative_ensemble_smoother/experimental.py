@@ -212,7 +212,7 @@ class AdaptiveESMDA(BaseESMDA):
             float in the range [0, 1]. Entries in the covariance matrix that
             are lower than the correlation threshold will be set to zero.
             If None, the default 3/sqrt(ensemble_size) is used.
-        cov_YY : np.ndarray
+        cov_YY : np.ndarray or None
             A 2D array of shape (num_observations, num_observations) with the
             empirical covariance of Y. If passed, this is not computed in the
             method call, potentially saving time and computation.
