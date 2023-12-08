@@ -7,7 +7,7 @@ import scipy as sp  # type: ignore
 
 def empirical_covariance_upper(X: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
     """Compute the upper triangular part of the empirical covariance matrix X
-    with shape (num_variables, num_observations).
+    with shape (parameters, ensemble_size).
 
     Examples
     --------
