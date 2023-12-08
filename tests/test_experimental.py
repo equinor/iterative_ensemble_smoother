@@ -182,8 +182,9 @@ class TestAdaptiveESMDA:
     @pytest.mark.parametrize(
         "cutoffs", [(0, 1e-3), (0.1, 0.2), (0.5, 0.5 + 1e-12), (0.9, 1), (1 - 1e-3, 1)]
     )
+    @pytest.mark.parametrize("full_covariance", [True, False])
     def test_that_posterior_generalized_variance_increases_in_cutoff(
-        self, linear_problem, cutoffs
+        self, linear_problem, cutoffs, full_covariance
     ):
         """This property only holds in the limit as the number of
         ensemble members goes to infinity. As the number of ensemble
@@ -191,6 +192,8 @@ class TestAdaptiveESMDA:
 
         # Create a problem with g(x) = A @ x
         X, g, observations, covariance, rng = linear_problem
+        if full_covariance:
+            covariance = np.diag(covariance)
 
         # =============================================================================
         # SETUP ESMDA FOR LOCALIZATION AND SOLVE PROBLEM
