@@ -113,7 +113,7 @@ covariance = np.ones(num_observations)  # N(0, 1) covariance
 # %% [markdown]
 # ## Solve the maximum likelihood problem
 #
-# We can solve $Ax = b$, where $b$ is the observations,
+# We can solve $Ax = b$, where $b$ are the observations,
 # for the maximum likelihood estimate.
 #
 # Notice that unlike using a Ridge model,
@@ -134,7 +134,7 @@ plt.show()
 # %% [markdown]
 # ## Solve using ESMDA
 #
-# We crease an `ESMDA` instance and solve the Guass-linear problem.
+# We create an `ESMDA` instance and solve the Guass-linear problem.
 
 # %%
 smoother = ESMDA(
@@ -177,7 +177,7 @@ plt.show()
 # %% [markdown]
 # ## Solve using AdaptiveESMDA
 #
-# We crease an `AdaptiveESMDA` instance and solve the Guass-linear problem.
+# We create an `AdaptiveESMDA` instance and solve the Guass-linear problem.
 
 # %%
 adaptive_smoother = AdaptiveESMDA(
