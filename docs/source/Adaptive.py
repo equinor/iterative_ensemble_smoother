@@ -20,12 +20,14 @@
 # # Adaptive Localization
 #
 # In this example we run adaptive localization
-# on a linear sparse problem.
+# on a sparse Gauss-linear problem.
 #
 # - Each response is only affected by $3$ parameters.
 # - This is represented by a tridiagonal matrix $A$ in the forward model $g(x) = Ax$.
 # - The problem is Gauss-Linear, so in this case ESMDA will sample
 #   the true posterior when the number of ensemble members (realizations) is large.
+# - The sparse correlation structure will lead to spurious correlations, in the sense
+#   that a parameter and response might appear correlated when in fact they are not.
 
 # %% [markdown]
 # ## Import packages
@@ -87,6 +89,11 @@ plt.show()
 
 
 # %%
+def get_prior(num_parameters, num_ensemble, prior_std):
+    """Sample prior from N(0, prior_std)."""
+    return rng.normal(size=(num_parameters, num_ensemble)) * prior_std
+
+
 def g(X):
     """Apply the forward model."""
     return A @ X
@@ -98,7 +105,7 @@ observation_noise = rng.standard_normal(size=num_observations)  # N(0, 1) noise
 observations = g(x_true) + observation_noise
 
 # Initial ensemble X ~ N(0, prior_std) and diagonal covariance with ones
-X = rng.normal(size=(num_parameters, num_ensemble)) * prior_std
+X = get_prior(num_parameters, num_ensemble, prior_std)
 
 # Covariance matches the noise added to observations above
 covariance = np.ones(num_observations)  # N(0, 1) covariance
@@ -243,35 +250,43 @@ for arr, label in zip(
     corr = sp.stats.pearsonr(x_true, arr).statistic
     print(label, corr)
 
+
 # %% [markdown]
 # ## Run on several ensemble sizes and seeds
 
 # %%
+def corr_true(array):
+    return sp.stats.pearsonr(x_true, array).statistic
+
+
 ENSEMBLE_SIZES = list(range(2, 51))
-NUM_SEEDS = 10
+NUM_SEEDS = 25
 
 # Store average correlation coefficients
 ESMDA_corrs = []
 AdaptiveESMDA_corrs = []
+prior_corrs = []  # Baseline comparison - no update
 
 # Loop over increasingly large ensemble sizes
 for ensemble_size in ENSEMBLE_SIZES:
     # Posteriors means for this size
     ESMDA_means = []
     AdaptiveESMDA_means = []
+    prior_means = []
 
     # Loop over seeds used in ESMDA/AdaptiveESMDA,
     # which determine the perturbations of the observations.
     for seed in range(NUM_SEEDS):
         # Prior
-        X = rng.normal(size=(num_parameters, ensemble_size)) * prior_std
+        X = get_prior(num_parameters, ensemble_size, prior_std)
+        prior_means.append(np.mean(X, axis=1))
 
         # ================ ESMDA ==============
         smoother = ESMDA(
             covariance=covariance,
             observations=observations,
             alpha=5,
-            seed=None,
+            seed=seed,
         )
 
         X_i = np.copy(X)
@@ -284,7 +299,7 @@ for ensemble_size in ENSEMBLE_SIZES:
         adaptive_smoother = AdaptiveESMDA(
             covariance=covariance,
             observations=observations,
-            seed=None,
+            seed=seed,
         )
 
         X_i = np.copy(X)
@@ -301,33 +316,37 @@ for ensemble_size in ENSEMBLE_SIZES:
         AdaptiveESMDA_means.append(np.mean(X_i, axis=1))
 
     # Collect results for all runs of this size
-    ESMDA_corr = np.mean(
-        [sp.stats.pearsonr(x_true, arr).statistic for arr in ESMDA_means]
-    )
-    AdaptiveESMDA_corr = np.mean(
-        [sp.stats.pearsonr(x_true, arr).statistic for arr in AdaptiveESMDA_means]
-    )
+    ESMDA_corr = np.mean([corr_true(arr) for arr in ESMDA_means])
+    AdaptiveESMDA_corr = np.mean([corr_true(arr) for arr in AdaptiveESMDA_means])
+    prior_corr = np.mean([corr_true(arr) for arr in prior_means])
 
+    # Add to respective lists
     ESMDA_corrs.append(ESMDA_corr)
     AdaptiveESMDA_corrs.append(AdaptiveESMDA_corr)
+    prior_corrs.append(prior_corr)
 
 # %%
-# Compute correlations
-title = "ESMDA vs AdaptiveESMDA on different ensemble sizes\n"
-title += f"each point represents the average of {NUM_SEEDS} \n"
-title += "runs with different seeds (perturbations of D)\n"
+# Create figure title with a lot of information
+title = "ESMDA vs AdaptiveESMDA on different ensemble sizes.\n"
+title += (
+    f"Each point represents the average of {NUM_SEEDS} runs with different seeds.\n"
+)
 title += f"Parameters = {num_parameters}, Observations ="
 title += f" {num_observations}, len(alpha) = {len(smoother.alpha)}"
 
 
+# Create the figure
+plt.figure(figsize=(7, 3.5))
 plt.title(title)
 
 plt.plot(ENSEMBLE_SIZES, ESMDA_corrs, label="ESMDA")
 plt.plot(ENSEMBLE_SIZES, AdaptiveESMDA_corrs, label="AdaptiveESMDA")
+plt.plot(ENSEMBLE_SIZES, prior_corrs, label="Prior")
 
 plt.xlabel("Ensemble size")
-plt.ylabel("Correlation coeff of \nposterior mean vs. true parameter vector")
+plt.ylabel("Correlation coeff of ensemble\nmeans against true parameters")
 
 plt.grid(True)
 plt.legend()
+plt.tight_layout()
 plt.show()
