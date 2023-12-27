@@ -9,7 +9,7 @@ Could be moved to `docs/source` eventually.
 
 An optimization approach.
 The observations are perturbed once, and we use the Gauss-Newton algorithm to minimize a cost function.
-The proposed algorithm has state across iterations in a matrix $W$, which makes it more challening to reason about compared to ESMDA.
+The proposed algorithm has state across iterations in a matrix $W$, which makes it more challenging to reason about compared to ESMDA.
 
 - (2019) [**Efficient Implementation of an Iterative Ensemble Smoother for Data Assimilation and Reservoir History Matching**](https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full) by Evensen et al
 
