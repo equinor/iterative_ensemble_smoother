@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.15.2
+#       jupytext_version: 1.16.0
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -50,8 +50,9 @@ from iterative_ensemble_smoother import ESMDA
 # %%
 num_parameters = 25
 num_observations = 100
-num_ensemble = 30
+num_ensemble = 50
 prior_std = 1
+obs_sd=1.0
 
 # %%
 rng = np.random.default_rng(42)
@@ -67,14 +68,14 @@ def g(X):
 
 # Create observations: obs = g(x) + N(0, 1)
 x_true = np.linspace(-1, 1, num=num_parameters)
-observation_noise = rng.standard_normal(size=num_observations)
+observation_noise = obs_sd * rng.standard_normal(size=num_observations)
 observations = g(x_true) + observation_noise
 
 # Initial ensemble X ~ N(0, prior_std) and diagonal covariance with ones
 X = rng.normal(size=(num_parameters, num_ensemble)) * prior_std
 
 # Covariance matches the noise added to observations above
-covariance = np.ones(num_observations)
+covariance = np.ones(num_observations) * obs_sd**2
 
 # %% [markdown]
 # ## Solve the maximum likelihood problem
@@ -141,6 +142,46 @@ plt.show()
 
 # %% [markdown]
 # We now include the posterior samples as well.
+
+# %%
+plt.figure(figsize=(8, 3))
+plt.scatter(np.arange(len(x_true)), x_true, label="True parameter values")
+plt.scatter(np.arange(len(x_true)), x_ml, label="ML estimate (no prior)")
+plt.scatter(
+    np.arange(len(x_true)), np.mean(X_posterior, axis=1), label="Posterior mean"
+)
+
+# Loop over every ensemble member and plot it
+for j in range(num_ensemble):
+    # Jitter along the x-axis a little bit
+    x_jitter = np.arange(len(x_true)) + rng.normal(loc=0, scale=0.1, size=len(x_true))
+
+    # Plot this ensemble member
+    plt.scatter(
+        x_jitter,
+        X_posterior[:, j],
+        label=("Posterior values" if j == 0 else None),
+        color="black",
+        alpha=0.2,
+        s=5,
+        zorder=0,
+    )
+plt.xlabel("Parameter index")
+plt.ylabel("Parameter value")
+plt.grid(True, ls="--", zorder=0, alpha=0.33)
+plt.legend()
+plt.show()
+
+# %%
+import scipy.sparse as sp
+from graphite_maps.linear_regression import linear_l1_regression
+
+# %%
+X_prior = np.copy(X)
+Y = g(X_prior)
+D = Y + rng.standard_normal(size=Y.shape)
+K = linear_l1_regression(U=D.T, Y=X_prior.T)
+X_posterior = X_prior + K @ (observations - Y.T).T
 
 # %%
 plt.figure(figsize=(8, 3))
