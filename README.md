@@ -47,3 +47,9 @@ apt install pandoc # Pandoc is required to build the documentation.
 pip install .[doc]
 sphinx-build -c docs/source/ -b html docs/source/ docs/build/html/
 ```
+
+## Releasing a new version
+
+- Create a tag, e.g. `git tag -a v1.0.0 -m "A short note" cf2c87270d3` locally on the commit.
+- Push the tag, e.g. `git push upstream v1.0.0`.
+- Create a release on the GitHub GUI.
