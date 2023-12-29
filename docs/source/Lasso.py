@@ -65,7 +65,7 @@ prior_std = 1
 alpha = 1
 
 # Effect size (coefficients in sparse mapping A)
-effect_size = 5
+effect_size = 1000
 
 # %% [markdown]
 # ## Create problem data - sparse tridiagonal matrix $A$
@@ -291,7 +291,8 @@ def solve_projected(X, Y, covariance, observations, seed=1):
     cov_YY = empirical_cross_covariance(Y, Y)
 
     # Compute the update
-    K = cov_XY @ sp.linalg.inv(cov_YY + S @ S.T / (N - 1))
+    # TODO: N-1 vs N here.
+    K = cov_XY @ sp.linalg.inv(cov_YY + S @ S.T / (N-1))
     return X + K @ (D - Y)
 
 
@@ -395,7 +396,7 @@ def solve_adaptive_ESMDA(X, Y, covariance, observations, seed=1):
 
 
 # %%
-plt.figure(figsize=(7, 3))
+plt.figure(figsize=(8, 4.5))
 
 for function, label in zip(
     [
@@ -408,6 +409,7 @@ for function, label in zip(
     ],
     [
         "ESMDA",
+        "projected",
         "lstsq",
         "Lasso (direct)",
         "Lasso",
@@ -456,5 +458,29 @@ plt.grid(True, ls="--", zorder=0, alpha=0.33)
 plt.legend()
 plt.tight_layout()
 plt.show()
+
+# %%
+
+# %%
+
+# %%
+
+# %%
+
+# %%
+
+# %%
+
+# %%
+
+# %%
+
+# %%
+
+# %%
+
+# %%
+
+# %%
 
 # %%

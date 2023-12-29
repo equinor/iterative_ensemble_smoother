@@ -1,6 +1,6 @@
 # Lasso
 
-Notes on the Lasso approach for
+Notes on the Lasso approach for regularizing the forward model.
 
 ## Notation and preliminaries
 
@@ -43,9 +43,20 @@ $$K = \frac{X Y^T}{N - 1} \left(
 
 ### Adding sampled noise
 
-Let $S \sim \mathcal{N}(0, \Sigma_\epsilon)$.
-We can write $S S^T / (N - 1) \approx \Sigma_\epsilon$, which is a low rank approximation to the observation covariance matrix.
-Notice that the observation covariance matrix is typically diagonal, has shape $m \times m$, whereas $S S^T$ has rank $N \ll m$.
+Let $R \sim \mathcal{N}(0, \Sigma_\epsilon)$.
+If we assume the mean is known, Bessel's correction is not needed and we can write $R R^T / N \approx \Sigma_\epsilon$.
+We sample from $\mathcal{N}(0, \Sigma_\epsilon)$ then estimate the covariance $\Sigma_\epsilon$ using the empirical covariance.
+
+Define $S = R \sqrt{(N-1) / N}$, then
+
+$$\Sigma_\epsilon \approx
+\frac{1}{N} R R^T
+=
+\frac{1}{N-1} \frac{N-1}{N} R R^T
+= \frac{S S^T}{N-1}
+$$
+Notice that this is a low rank approximation to the observation covariance matrix.
+The observation covariance matrix $\Sigma_\epsilon$ is typically diagonal, has shape $m \times m$, whereas $S S^T$ has rank $N \ll m$.
 
 Replacing $\Sigma_\epsilon$ with $S S^T / (N - 1)$,
 we can approximate $K$ as
@@ -67,14 +78,31 @@ Finally, assume that $X S^T \approx 0$ so that $Y \approx Y_\text{noisy}$, then
 $$K = X Y_\text{noisy}^{+}$$
 
 and we solve a least squares problem $Y_\text{noisy}^T K^T = X^T$ for $K$.
-If we use Ridge or Lasso, the solution decomposes since in general $A[x_1 | x_2] = [Ax_1 | Ax_2] = [y_1 | y_2]$ and we can consider each row of $X$ independently.
+If we use Ridge or Lasso, the solution decomposes and we can consider each row of $X$ independently.
+This is because in the equation $Y_\text{noisy}^T K^T = X^T$ the matrix $K^T$ acts on each row vector in $Y_\text{noisy}^T$ independently to produce each row vector in $X^T$.
 We can find $K$ by solving a Ridge or Lasso problem.
+
+### Comment: Kalman gain and the forward model
+
+Regularizing $K$ using e.g. Ridge or Lasso makes sense if we believe that forward model is localized, in the sense that each output is determined primarily by a few inputs (sparsity).
+
+A rough sketch of why $K \sim \mathbb{E} \nabla h^{-1}$
+
+Since $K \approx X Y^{+}$ holds for centered matrices, if we change notation to uncentered matrices we have
+$$K \approx \frac{X - \mathbb{E} X}{Y - \mathbb{E} Y}$$
+rearranging we see that this is a second order Taylor expansion.
+
+Therefore it makes sense to regularize $K$ if we believe in a sparse forward model.
 
 ### Comment: Ridge and the Kalman gain
 
 Solving $Y^T K^T = X^T$ with Ridge produces the Normal equations that define $K$.
+To be concrete, minimizing $\lVert Y^T K^T - X^T \rVert_2^2 + \alpha \lVert D K \rVert_2^2$ with respect to $K$ yields the equation
+$$\left( Y Y^T + \alpha D D^T\right) K = X Y^T.$$
+This is, up to scaling, exactly the equation for the kalman gain $K$ that we started with from the ESMDA paper.
+See equations (119) and (132) in the matrix cookbook for the matrix calculus needed to differentiate the loss function.
 
-## Comment: Another Lasso approach
+### Comment: Another Lasso approach
 
 The Kalman gain can also be written as
 
@@ -87,7 +115,7 @@ which suggests another possible way to compute $K$:
 
 This is likely unfeasible since $\text{cov}(X, X)$ becomes huge.
 
-## Comment: Covariances with linear forward model
+### Comment: Covariances with linear forward model
 
 Here we show two facts that can be proven using the definition of covariance, see e.g. sections 6.2.2 and 8.2.1 in [The Matrix Cookbook](https://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf).
 
