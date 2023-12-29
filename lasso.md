@@ -37,11 +37,9 @@ We will now transform the Kalman gain matrix into a linear regression.
 We switch notations and set $X := c(X)$ and $Y := c(Y)$, meaning that we assume that each row (variable) has been centered by subtracting the mean.
 
 Writing out the empirical covariances, the Kalman gain becomes
-$$
-K = \frac{X Y^T}{N - 1} \left(
+$$K = \frac{X Y^T}{N - 1} \left(
 \frac{Y Y^T}{N - 1} + \Sigma_\epsilon
-\right)^{-1}.
-$$
+\right)^{-1}.$$
 
 ### Adding sampled noise
 
@@ -51,25 +49,23 @@ Notice that the observation covariance matrix is typically diagonal, has shape $
 
 Replacing $\Sigma_\epsilon$ with $S S^T / (N - 1)$,
 we can approximate $K$ as
-$$
-K \approx X Y^T \left(
+$$K \approx X Y^T \left(
 Y Y^T + S S^T
-\right)^{-1}.
-$$
+\right)^{-1}.$$
 
 If we assume that $YS^T \approx SY^T \approx 0$, then the middle terms in $(Y +S)( Y + S)^T = Y Y^T + Y S^T + SY^T  + SS^T$ vanish.
 This is reasonable in the limit of large $N$ since the rows in $S$ are uncorrelated with the rows in $Y$.
 
 Define $Y_\text{noisy} := Y + S$, then
-$$
-K \approx X Y^T \left(
+
+$$K \approx X Y^T \left(
 Y_\text{noisy} Y_\text{noisy}^T
-\right)^{+}.
-$$
+\right)^{+}.$$
+
 Finally, assume that $X S^T \approx 0$ so that $Y \approx Y_\text{noisy}$, then
-$$
-K = X Y_\text{noisy}^{+}
-$$
+
+$$K = X Y_\text{noisy}^{+}$$
+
 and we solve a least squares problem $Y_\text{noisy}^T K^T = X^T$ for $K$.
 If we use Ridge or Lasso, the solution decomposes since in general $A[x_1 | x_2] = [Ax_1 | Ax_2] = [y_1 | y_2]$ and we can consider each row of $X$ independently.
 We can find $K$ by solving a Ridge or Lasso problem.
@@ -81,7 +77,9 @@ Solving $Y^T K^T = X^T$ with Ridge produces the Normal equations that define $K$
 ## Comment: Another Lasso approach
 
 The Kalman gain can also be written as
+
 $$K = \Sigma_{x} \hat{H}^T (\hat{H}\Sigma_{x}\hat{H}^T + \Sigma_{\epsilon})^{-1}$$
+
 which suggests another possible way to compute $K$:
 
 1. Estimate $\hat{H}$ using Lasso or similar.
