@@ -23,11 +23,11 @@ Our starting point for the update equation will be from the ESMDA paper.
 
 The ESMDA update equation, with inflation factor $\alpha=1$, is
 
-$$X_\text{posterior} = X + \operatorname{cov}(X, Y) (\operatorname{cov}(Y, Y) + \Sigma_\epsilon)^{-1} (D - Y),$$
+$$X_\text{posterior} = X + \text{cov}(X, Y) (\text{cov}(Y, Y) + \Sigma_\epsilon)^{-1} (D - Y),$$
 
-where the empirical cross covariance matrix $\operatorname{cov}(X, Y) = c(X) c(Y)^T / (N - 1)$, and $c(X)$ centers each row in X by subtracting the mean.
+where the empirical cross covariance matrix $\text{cov}(X, Y) = c(X) c(Y)^T / (N - 1)$, and $c(X)$ centers each row in X by subtracting the mean.
 
-The term $K := \operatorname{cov}(X, Y) (\operatorname{cov}(Y, Y) + \Sigma_\epsilon)^{-1}$ is the Kalman gain matrix.
+The term $K := \text{cov}(X, Y) (\text{cov}(Y, Y) + \Sigma_\epsilon)^{-1}$ is the Kalman gain matrix.
 Notice that in this expression we estimate both the covariance matrix and the cross covariance matrix using few realizations $N$.
 
 ## The Kalman gain
@@ -85,9 +85,9 @@ $$K = \Sigma_{x} \hat{H}^T (\hat{H}\Sigma_{x}\hat{H}^T + \Sigma_{\epsilon})^{-1}
 which suggests another possible way to compute $K$:
 
 1. Estimate $\hat{H}$ using Lasso or similar.
-2. Estimate $\Sigma_{x}$ as $\operatorname{cov}(X, X)$.
+2. Estimate $\Sigma_{x}$ as $\text{cov}(X, X)$.
 
-This is likely unfeasible since $\operatorname{cov}(X, X)$ becomes huge.
+This is likely unfeasible since $\text{cov}(X, X)$ becomes huge.
 
 ## Comment: Covariances with linear forward model
 
@@ -95,11 +95,11 @@ Here we show two facts that can be proven using the definition of covariance, se
 
 Assume that $y = h(x) = H x + c$, then
 
-$$\operatorname{cov}(x, y ) = \operatorname{cov}(x, x) H^T.$$
+$$\text{cov}(x, y ) = \text{cov}(x, x) H^T.$$
 
 Similarity, if $y = h(x) = H x + c$, then
 
-$$\operatorname{cov}(y, y ) = H \operatorname{cov}(x, x) H^T.$$
+$$\text{cov}(y, y ) = H \text{cov}(x, x) H^T.$$
 
 ## References
 
