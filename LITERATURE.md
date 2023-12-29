@@ -33,15 +33,18 @@ Some papers that might be useful to have a look at.
 - (2012) [Levenberg–Marquardt forms of the iterative ensemble smoother for efficient history matching and uncertainty quantification](https://link.springer.com/article/10.1007/s10596-013-9351-5) by Chen et al
 - (2014) [Randomize-Then-Optimize: A Method for Sampling from Posterior Distributions in Nonlinear Inverse Problems](https://epubs.siam.org/doi/10.1137/140964023) by Bardsley et al
 - (2018) [Analysis of iterative ensemble smoothers for solving inverse problems](https://link.springer.com/article/10.1007/s10596-018-9731-y) by Evensen
+- (2023) [Review of ensemble gradients for robust optimisation](https://arxiv.org/abs/2304.12136) by Raanes et al
 
 ### Covariance regularization
 
 - (2014) [Nonparametric Stein-type Shrinkage Covariance Matrix Estimators in High-Dimensional Settings](https://arxiv.org/abs/1410.4726) by Touloumis
 - (2022) [GraphSPME: Markov Precision Matrix Estimation and Asymptotic Stein-Type Shrinkage](https://arxiv.org/abs/2205.07584) by Lunde et al
 
-### Ensemble Information Filter
+### Ensemble Information Filter and related
 
 - (unpublished) An Ensemble Information Filter: Retrieving Markov-Information from the SPDE discretization by Lunde et al
+- (2022) [Ensemble transport smoothing. Part I: Unified framework](https://arxiv.org/abs/2210.17000) by Ramgraber et al
+- (2022) [Ensemble transport smoothing. Part II: Nonlinear updates](https://arxiv.org/abs/2210.17435) by Ramgraber et al
 
 ## Books
 
