@@ -173,7 +173,6 @@ plt.legend()
 plt.show()
 
 # %%
-import scipy.sparse as sp
 from graphite_maps.linear_regression import linear_l1_regression
 
 # %%
