@@ -180,7 +180,7 @@ from graphite_maps.linear_regression import linear_l1_regression
 # Learn Kalman gain
 X_prior = np.copy(X)
 Y = g(X_prior)
-D = Y + rng.standard_normal(size=Y.shape)
+D = Y + obs_sd * rng.standard_normal(size=Y.shape)
 K = linear_l1_regression(U=D.T, Y=X_prior.T)
 
 # %%
