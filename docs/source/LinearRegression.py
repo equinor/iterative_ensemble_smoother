@@ -49,8 +49,8 @@ from iterative_ensemble_smoother import ESMDA
 
 # %%
 num_parameters = 25
-num_observations = 100
-num_ensemble = 50
+num_observations = 50
+num_ensemble = 100
 prior_std = 1
 obs_sd=1.0
 
@@ -177,11 +177,15 @@ import scipy.sparse as sp
 from graphite_maps.linear_regression import linear_l1_regression
 
 # %%
+# Learn Kalman gain
 X_prior = np.copy(X)
 Y = g(X_prior)
 D = Y + rng.standard_normal(size=Y.shape)
 K = linear_l1_regression(U=D.T, Y=X_prior.T)
-X_posterior = X_prior + K @ (observations - Y.T).T
+
+# %%
+# Use Kalman gain in update equation
+X_posterior = X_prior + K @ (observations - D.T).T
 
 # %%
 plt.figure(figsize=(8, 3))
@@ -211,3 +215,5 @@ plt.ylabel("Parameter value")
 plt.grid(True, ls="--", zorder=0, alpha=0.33)
 plt.legend()
 plt.show()
+
+# %%
