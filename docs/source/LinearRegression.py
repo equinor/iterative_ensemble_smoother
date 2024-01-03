@@ -52,7 +52,7 @@ num_parameters = 25
 num_observations = 50
 num_ensemble = 100
 prior_std = 1
-obs_sd=1.0
+obs_sd = 1.0
 
 # %%
 rng = np.random.default_rng(42)
