@@ -176,47 +176,65 @@ plt.legend()
 plt.show()
 
 
+# %% [markdown]
+# ## Solve using LASSO without structure
+#
+# The Kalman gain is possible to estimate through multiple linear regression
+# $x$ onto $x$.
+# This view has some implications
+# - Modern linear regression routines (LASSO, RIDGE, and others) can be used
+# to solve for $K$. This is particularly good for e.g. $p>>n$ problems,
+# typical for ensemble methods.
+# - We then loose the ability to specify the independence of randomness from
+# $x$ and $\epsilon$ into $d$.
+# - We also loose the ability to specify structure in the prior through the
+# covariance.
+#
+# Below we showcase how the LASSO algorithm can be used multiple times to
+# solve for K.
+
+
 # %%
-def linear_l1_regression(U, Y):
+def linear_l1_regression(D, X):
     """
-    Performs LASSO regression for each response in Y against predictors in U,
+    Performs LASSO regression for each response in X against predictors in D,
     constructing a sparse matrix of regression coefficients.
 
-    The function scales features in U using standard scaling before applying
-    LASSO, then re-scales the coefficients to the original scale of U. This
-    extracts the effect of each feature in U on each response in Y, ignoring
+    The function scales features in D using standard scaling before applying
+    LASSO, then re-scales the coefficients to the original scale of D. This
+    extracts the effect of each feature in D on each response in X, ignoring
     intercepts and constant terms.
 
     Parameters
     ----------
-    U : np.ndarray
+    D : np.ndarray
         2D array of predictors with shape (n, p).
-    Y : np.ndarray
+    X : np.ndarray
         2D array of responses with shape (n, m).
 
     Returns
     -------
-    H_sparse : scipy.sparse.csc_matrix
-        Sparse matrix (m, p) with re-scaled LASSO regression coefficients for
-        each response in Y.
+    H : np.ndarray
+        2D array of responses with shape (m, p) with re-scaled LASSO
+        regression coefficients for each response in X.
 
     Raises
     ------
     AssertionError
-        If the number of samples in U and Y do not match, or if the shape of
-        H_sparse is not (m, p).
+        If the number of samples in D and X do not match, or if the shape of
+        H is not (m, p).
     """
-    n, p = U.shape  # p: number of features
-    n_y, m = Y.shape  # m: number of y responses
+    n, p = D.shape  # p: number of features
+    n_y, m = X.shape  # m: number of y responses
 
     # Assert that the first dimension of U and Y are the same
-    assert n == n_y, "Number of samples in U and Y must be the same"
+    assert n == n_y, "Number of samples in D and X must be the same"
 
     scaler_u = StandardScaler()
-    U_scaled = scaler_u.fit_transform(U)
+    U_scaled = scaler_u.fit_transform(D)
 
     scaler_y = StandardScaler()
-    Y_scaled = scaler_y.fit_transform(Y)
+    Y_scaled = scaler_y.fit_transform(X)
 
     # Loop over features
     H = np.zeros((m, p))
@@ -237,6 +255,9 @@ def linear_l1_regression(U, Y):
                 / scaler_u.scale_[non_zero_ind]
             )
 
+    # Assert shape of H_sparse
+    assert H.shape == (m, p), "Shape of H_sparse must be (m, p)"
+
     return H
 
 
@@ -245,7 +266,7 @@ def linear_l1_regression(U, Y):
 X_prior = np.copy(X)
 Y = g(X_prior)
 D = Y + obs_sd * rng.standard_normal(size=Y.shape)
-K = linear_l1_regression(U=D.T, Y=X_prior.T)
+K = linear_l1_regression(D=D.T, X=X_prior.T)
 
 # %%
 # Use Kalman gain in update equation
