@@ -180,18 +180,18 @@ plt.show()
 # ## Solve using LASSO without structure
 #
 # The Kalman gain is possible to estimate through multiple linear regression
-# $x$ onto $x$.
-# This view has some implications
+# $d$ onto $x$.
+# This view has some implications.
 # - Modern linear regression routines (LASSO, RIDGE, and others) can be used
 # to solve for $K$. This is particularly good for e.g. $p>>n$ problems,
 # typical for ensemble methods.
-# - We then loose the ability to specify the independence of randomness from
+# - We lose the ability to specify the independence of randomness from
 # $x$ and $\epsilon$ into $d$.
-# - We also loose the ability to specify structure in the prior through the
+# - We also lose the ability to specify structure in the prior through the
 # covariance.
 #
 # Below we showcase how the LASSO algorithm can be used multiple times to
-# solve for K.
+# solve for the Kalman gain $K$.
 
 
 # %%
@@ -227,32 +227,32 @@ def linear_l1_regression(D, X):
     n, p = D.shape  # p: number of features
     n_y, m = X.shape  # m: number of y responses
 
-    # Assert that the first dimension of U and Y are the same
+    # Assert that the first dimension of D and X are the same
     assert n == n_y, "Number of samples in D and X must be the same"
 
-    scaler_u = StandardScaler()
-    U_scaled = scaler_u.fit_transform(D)
+    scaler_d = StandardScaler()
+    D_scaled = scaler_d.fit_transform(D)
 
-    scaler_y = StandardScaler()
-    Y_scaled = scaler_y.fit_transform(X)
+    scaler_x = StandardScaler()
+    X_scaled = scaler_x.fit_transform(X)
 
     # Loop over features
     H = np.zeros((m, p))
     for j in tqdm(range(m), desc="Learning sparse linear map for each response"):
-        y_j = Y_scaled[:, j]
+        x_j = X_scaled[:, j]
 
         # Learn individual regularization and fit
         eps = 1e-3
         max_iter = 10000
         model_cv = LassoCV(cv=10, fit_intercept=False, max_iter=max_iter, eps=eps)
-        model_cv.fit(U_scaled, y_j)
+        model_cv.fit(D_scaled, x_j)
 
         # Extract coefficients
         for non_zero_ind in model_cv.coef_.nonzero()[0]:
             H[j, non_zero_ind] = (
-                scaler_y.scale_[j]
+                scaler_x.scale_[j]
                 * model_cv.coef_[non_zero_ind]
-                / scaler_u.scale_[non_zero_ind]
+                / scaler_d.scale_[non_zero_ind]
             )
 
     # Assert shape of H_sparse
