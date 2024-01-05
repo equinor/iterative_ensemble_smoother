@@ -1,28 +1,13 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Fri Jan  5 09:27:34 2024
-
-@author: TODL
-"""
 
 from iterative_ensemble_smoother.esmda import BaseESMDA
-import numbers
-from abc import ABC
 from typing import Union
 
 import numpy as np
 import numpy.typing as npt
-import scipy as sp  # type: ignore
 
-from iterative_ensemble_smoother.esmda_inversion import (
-    inversion_exact_cholesky,
-    inversion_subspace,
-    normalize_alpha,
-)
 from iterative_ensemble_smoother.utils import sample_mvnormal
 
-
-import numpy as np
 from sklearn.linear_model import LassoCV
 from sklearn.linear_model import MultiTaskLassoCV
 
@@ -60,6 +45,8 @@ def linear_l1_regression(X, Y):
 
     """
     # https://github.com/equinor/graphite-maps/blob/main/graphite_maps/linear_regression.py
+    # An option is to use MultiTaskLasso too, but not exactly the same objective
+    # https://scikit-learn.org/stable/modules/linear_model.html#multi-task-lasso
 
     # The goal is to solve K @ X = Y for K, or equivalently X.T @ K.T = Y.T
     num_parameters, ensemble_size1 = X.shape
@@ -76,17 +63,16 @@ def linear_l1_regression(X, Y):
     # Loop over features
     coefs = []
     cv = min(5, ensemble_size1)
-    alphas = np.logspace(-8, 8, num=17)
-    for j in range(num_observations):
-        y_j = Y[j, :]
+    alphas = np.logspace(-6, 6, num=17)
+    
+    # The matrix K in K @ X = Y is built up row by row
+    for j, y_j in enumerate(Y): # Loop over rows in Y
 
         # Learn individual regularization and fit
         model_cv = LassoCV(alphas=alphas, fit_intercept=False, max_iter=10_000, cv=cv)
         model_cv.fit(X.T, y_j)  # model_cv.alpha_
-
-        # Alphas for the next iteration
-        # alpha = model_cv.alpha_ * 0.5 * alphas[len(alphas)//2] * 0.5
-        # alphas = np.logspace(-2, 2, num=5) * model_cv.alpha_
+        # TODO: Consider searching smarter for alphas, e.g. momentum or
+        # searching within 1-2 orders of magnitude of previous alpha?
 
         # Scale back the coefficients
         coef_scale = stds_Y[j] / stds_X
@@ -94,23 +80,6 @@ def linear_l1_regression(X, Y):
 
     K = np.vstack(coefs)
     assert K.shape == (num_observations, num_parameters)
-    return K
-
-    # =======================================================
-
-    # Alternative computation using MultiTaskLasso
-
-    # Create a lasso model
-    lasso = MultiTaskLassoCV(fit_intercept=False, cv=cv)
-    lasso.fit(X.T, Y.T)
-
-    # Get the matrix K
-    K = lasso.coef_
-    assert K.shape == (num_observations, num_parameters)
-
-    K = K / stds_X[np.newaxis, :]
-    K = K * stds_Y[:, np.newaxis]
-
     return K
 
 
@@ -156,6 +125,7 @@ class LassoES(BaseESMDA):
         *,
         alpha: float = 1.0,
     ) -> npt.NDArray[np.double]:
+        
         # Verify shapes
         _, num_ensemble = X.shape
         num_outputs, num_emsemble2 = Y.shape
@@ -171,22 +141,23 @@ class LassoES(BaseESMDA):
         X_center = X - np.mean(X, axis=1, keepdims=True)
         Y_center = Y - np.mean(Y, axis=1, keepdims=True)
         
-        # We have R @ R.T = C_D
+        # We have R @ R.T / N ~ C_D
         R = np.sqrt(alpha) * sample_mvnormal(
             C_dd_cholesky=self.C_D_L, rng=self.rng, size=num_ensemble
         )
         
-        # L = sqrt((N - 1) / N)
-        L = np.sqrt((num_ensemble - 1)/ num_ensemble) * R
+        # S = R * sqrt((N - 1) / N), so that S @ S.T / (N-1) = covariance
+        S = np.sqrt((num_ensemble - 1) / num_ensemble) * R
 
-        # Compute regularized Kalman gain matrix matrix by solving
-        # (Y + L) K = X
-        # The definition of K is
+        # Compute regularized Kalman gain matrix matrix by solving:
+        # (Y + S) K = X
+        # The definition of K is:
         # (cov(Y, Y) + covariance) K = cov(X, Y), which is approximately
-        # (Y @ Y.T + L @ L.T) K = X @ Y.T, [X and Y are centered] which is approximately
-        # (Y + L) @ (Y + L).T @ K = X @ Y.T, which is approximately
-        # (Y + L) @ K = X
-        K = linear_l1_regression(X=Y_center + L, Y=X_center)
+        # (Y @ Y.T + S @ L.T) K = X @ Y.T, [X and Y are centered] which is approximately
+        # (Y + S) @ (Y + S).T @ K = X @ Y.T, which is approximately
+        # (Y + S) @ K = X
+        # TODO: Write this out properly.
+        K = linear_l1_regression(X=(Y_center + S), Y=X_center)
 
         D = self.perturb_observations(ensemble_size=num_ensemble, alpha=alpha)
         return X + K @ (D - Y)

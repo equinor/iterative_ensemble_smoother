@@ -56,7 +56,7 @@ from iterative_ensemble_smoother.utils import sample_mvnormal
 rng = np.random.default_rng(42)
 
 # Dimensionality of the problem
-num_parameters = 100
+num_parameters = 75
 num_observations = 50
 num_ensemble = 25
 prior_std = 1
@@ -65,13 +65,13 @@ prior_std = 1
 alpha = 1
 
 # Effect size (coefficients in sparse mapping A)
-effect_size = 1000
+effect_size = 1
 
 # %% [markdown]
 # ## Create problem data - sparse tridiagonal matrix $A$
 
 # %%
-diagonal = effect_size * np.ones(min(num_parameters, num_observations))
+diagonal = effect_size * np.ones(max(num_parameters, num_observations))
 
 # Create a tridiagonal matrix (easiest with scipy)
 A = sp.sparse.diags(
@@ -174,71 +174,11 @@ import numpy as np
 from sklearn.linear_model import LassoCV
 from sklearn.preprocessing import StandardScaler
 
-
-def linear_l1_regression(U, Y):
-    """
-    Performs LASSO regression for each response in Y against predictors in U,
-    constructing a sparse matrix of regression coefficients.
-
-    The function scales features in U using standard scaling before applying
-    LASSO, then re-scales the coefficients to the original scale of U. This
-    extracts the effect of each feature in U on each response in Y, ignoring
-    intercepts and constant terms.
-
-    Parameters
-    ----------
-    U : np.ndarray
-        2D array of predictors with shape (n, p).
-    Y : np.ndarray
-        2D array of responses with shape (n, m).
-
-    Returns
-    -------
-    H_sparse : scipy.sparse.csc_matrix
-        Sparse matrix (m, p) with re-scaled LASSO regression coefficients for
-        each response in Y.
-
-    Raises
-    ------
-    AssertionError
-        If the number of samples in U and Y do not match, or if the shape of
-        H_sparse is not (m, p).
-    """
-    # https://github.com/equinor/graphite-maps/blob/main/graphite_maps/linear_regression.py
-
-    n, p = U.shape  # p: number of features
-    n_y, m = Y.shape  # m: number of y responses
-
-    # Assert that the first dimension of U and Y are the same
-    assert n == n_y, "Number of samples in U and Y must be the same"
-
-    scaler_u = StandardScaler()
-    U_scaled = scaler_u.fit_transform(U)
-
-    scaler_y = StandardScaler()
-    Y_scaled = scaler_y.fit_transform(Y)
-
-    # Loop over features
-    coefs = []
-    for j in range(m):
-        y_j = Y_scaled[:, j]
-
-        # Learn individual regularization and fit
-        alphas = np.logspace(-8, 8, num=32)
-        model_cv = LassoCV(alphas=alphas, fit_intercept=False, max_iter=10_000, cv=5)
-        model_cv.fit(U_scaled, y_j)
-
-        coef_scale = scaler_y.scale_[j] / scaler_u.scale_
-        coefs.append(model_cv.coef_ * coef_scale)
-
-    K = np.vstack(coefs)
-    assert K.shape == (m, p)
-
-    return K
+from iterative_ensemble_smoother.localized import linear_l1_regression
 
 
 Y = g(X)
-K = linear_l1_regression(X.T, Y.T)
+K = linear_l1_regression(X, Y)
 plt.imshow(K)
 plt.show()
 
@@ -262,6 +202,7 @@ def solve_esmda(X, Y, covariance, observations, seed=1):
     cov_YY = empirical_cross_covariance(Y, Y)
 
     # Compute the update using the exact ESMDA approach
+    assert covariance.ndim == 1
     K = cov_XY @ sp.linalg.inv(cov_YY + np.diag(covariance))
     return X + K @ (D - Y)
 
@@ -290,9 +231,10 @@ def solve_projected(X, Y, covariance, observations, seed=1):
     cov_XY = empirical_cross_covariance(X, Y)
     cov_YY = empirical_cross_covariance(Y, Y)
 
-    # Compute the update
-    # TODO: N-1 vs N here.
-    K = cov_XY @ sp.linalg.inv(cov_YY + S @ S.T / (N-1))
+    # covariance ~ S @ S.T / N
+
+    # Compute the update. Divide by N since we know the mean is zero
+    K = cov_XY @ sp.linalg.inv(cov_YY + S @ S.T / N)
     return X + K @ (D - Y)
 
 
@@ -310,13 +252,21 @@ def solve_lstsq(X, Y, covariance, observations, seed=1):
     N = X.shape[1]
     D = smoother.perturb_observations(ensemble_size=N, alpha=1.0)
 
-    # Instead of using the covariance matrix, sample from it
-    S = sample_mvnormal(C_dd_cholesky=smoother.C_D_L, rng=smoother.rng, size=N)
+    # Center X and Y
+    X_center = X - np.mean(X, axis=1, keepdims=True)
+    Y_center = Y - np.mean(Y, axis=1, keepdims=True)
 
-    Y_noisy = Y + S
+    # Instead of using the covariance matrix, sample from it
+    # covariance / (N-1) ~
+
+    N = X.shape[1]
+    S = sample_mvnormal(C_dd_cholesky=smoother.C_D_L, rng=smoother.rng, size=N)
+    S = S * np.sqrt((N - 1) / N)  # Divide by N since we know that the mean is zero
+
+    Y_noisy = Y_center + S
 
     # Compute the update by solving K @ Y = X
-    K, *_ = sp.linalg.lstsq(Y_noisy.T, X.T)
+    K, *_ = sp.linalg.lstsq(Y_noisy.T, X_center.T)
     K = K.T
 
     return X + K @ (D - Y)
@@ -338,7 +288,7 @@ def solve_lasso_direct(X, Y, covariance, observations, seed=1):
     D = smoother.perturb_observations(ensemble_size=N, alpha=1.0)
 
     # Approximate forward model with H
-    H = linear_l1_regression(X.T, Y.T)
+    H = linear_l1_regression(X, Y)
     cov_XX = empirical_cross_covariance(X, X)
 
     # Compute the update
@@ -349,25 +299,16 @@ def solve_lasso_direct(X, Y, covariance, observations, seed=1):
 def solve_lasso(X, Y, covariance, observations, seed=1):
     """Solve K @ Y = X using Lasso."""
 
+    from iterative_ensemble_smoother.localized import LassoES
+
     # Create a smoother to get D
-    smoother = ESMDA(
+    smoother = LassoES(
         covariance=covariance,
         observations=observations,
-        alpha=1,
         seed=seed,
     )
-    N = X.shape[1]
-    D = smoother.perturb_observations(ensemble_size=N, alpha=1.0)
 
-    # Instead of using the covariance matrix, sample from it
-    S = sample_mvnormal(C_dd_cholesky=smoother.C_D_L, rng=smoother.rng, size=N)
-
-    Y_noisy = Y + S  # Seems to work better with Y instead of Y_noisy
-
-    # Compute the update
-    K = linear_l1_regression(Y_noisy.T, X.T)
-
-    return X + K @ (D - Y)
+    return smoother.assimilate(X, Y)
 
 
 def solve_adaptive_ESMDA(X, Y, covariance, observations, seed=1):
@@ -458,26 +399,6 @@ plt.grid(True, ls="--", zorder=0, alpha=0.33)
 plt.legend()
 plt.tight_layout()
 plt.show()
-
-# %%
-
-# %%
-
-# %%
-
-# %%
-
-# %%
-
-# %%
-
-# %%
-
-# %%
-
-# %%
-
-# %%
 
 # %%
 
