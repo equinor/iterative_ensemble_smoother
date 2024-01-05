@@ -170,12 +170,23 @@ class LassoES(BaseESMDA):
         # Center X and Y
         X_center = X - np.mean(X, axis=1, keepdims=True)
         Y_center = Y - np.mean(Y, axis=1, keepdims=True)
-        Y_noise = np.sqrt(alpha) * sample_mvnormal(
+        
+        # We have R @ R.T = C_D
+        R = np.sqrt(alpha) * sample_mvnormal(
             C_dd_cholesky=self.C_D_L, rng=self.rng, size=num_ensemble
         )
+        
+        # L = sqrt((N - 1) / N)
+        L = np.sqrt((num_ensemble - 1)/ num_ensemble) * R
 
-        # Compute regularized Kalman gain matrix
-        K = linear_l1_regression(X=Y_center + Y_noise, Y=X_center)
+        # Compute regularized Kalman gain matrix matrix by solving
+        # (Y + L) K = X
+        # The definition of K is
+        # (cov(Y, Y) + covariance) K = cov(X, Y), which is approximately
+        # (Y @ Y.T + L @ L.T) K = X @ Y.T, [X and Y are centered] which is approximately
+        # (Y + L) @ (Y + L).T @ K = X @ Y.T, which is approximately
+        # (Y + L) @ K = X
+        K = linear_l1_regression(X=Y_center + L, Y=X_center)
 
         D = self.perturb_observations(ensemble_size=num_ensemble, alpha=alpha)
         return X + K @ (D - Y)
