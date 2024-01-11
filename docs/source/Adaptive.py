@@ -108,6 +108,7 @@ plt.show()
 # [Kullback–Leibler divergence](https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence),
 # but we do not pursue this here.
 
+
 # %%
 def get_prior(num_parameters, num_ensemble, prior_std):
     """Sample prior from N(0, prior_std)."""
@@ -288,6 +289,7 @@ for arr, label in zip(
 #
 # - The draw of prior realizations $X \sim N(0, \sigma)$.
 # - The noise (given by the `covariance` argument) that ESMDA adds to the observations.
+
 
 # %%
 def corr_true(array):

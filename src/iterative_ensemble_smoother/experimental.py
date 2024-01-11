@@ -139,33 +139,46 @@ class AdaptiveESMDA(BaseESMDA):
 
         return sp.linalg.solve(C_DD, D - Y, **solver_kwargs)  # type: ignore
 
-    def _correlation_matrix(
+    def _cov_to_corr_inplace(
         self,
         cov_XY: npt.NDArray[np.double],
         X: npt.NDArray[np.double],
         Y: npt.NDArray[np.double],
-    ) -> npt.NDArray[np.double]:
-        """Compute a correlation matrix given a covariance matrix."""
+    ) -> None:
+        """Convert a covariance matrix to a correlation matrix in-place."""
         assert cov_XY.shape == (X.shape[0], Y.shape[0])
 
         stds_Y = np.std(Y, axis=1, ddof=1)
         stds_X = np.std(X, axis=1, ddof=1)
 
-        # Compute the correlation matrix from the covariance matrix
-        corr_XY: npt.NDArray[np.double] = (cov_XY / stds_X[:, np.newaxis]) / stds_Y[
-            np.newaxis, :
-        ]
+        # Divide each element of cov_XY by the corresponding standard deviations
+        cov_XY /= stds_X[:, np.newaxis]
+        cov_XY /= stds_Y[np.newaxis, :]
 
-        # Perform checks. There appears to be occasional numerical issues in
-        # the equation. With 2 ensemble members, we get e.g. a max value of
-        # 1.0000000000016778. We allow some leeway and clip the results.
+        # Perform checks and clip values to [-1, 1]
         eps = 1e-8
-        if not ((corr_XY.max() <= 1 + eps) and (corr_XY.min() >= -1 - eps)):
+        if not ((cov_XY.max() <= 1 + eps) and (cov_XY.min() >= -1 - eps)):
             msg = "Cross-correlation matrix has entries not in [-1, 1]."
-            msg += f"The min and max values are: {corr_XY.min()} and {corr_XY.max()}"
+            msg += f"The min and max values are: {cov_XY.min()} and {cov_XY.max()}"
             warnings.warn(msg)
 
-        corr_XY = np.clip(corr_XY, a_min=-1, a_max=1)
+        return np.clip(cov_XY, a_min=-1, a_max=1, out=cov_XY)
+
+    def _corr_to_cov_inplace(
+        self,
+        corr_XY: npt.NDArray[np.double],
+        X: npt.NDArray[np.double],
+        Y: npt.NDArray[np.double],
+    ) -> None:
+        """Convert a correlation matrix to a covariance matrix in-place."""
+        assert corr_XY.shape == (X.shape[0], Y.shape[0])
+
+        stds_Y = np.std(Y, axis=1, ddof=1)
+        stds_X = np.std(X, axis=1, ddof=1)
+
+        # Multiply each element of corr_XY by the corresponding standard deviations
+        corr_XY *= stds_X[:, np.newaxis]
+        corr_XY *= stds_Y[np.newaxis, :]
         return corr_XY
 
     def assimilate(
@@ -174,6 +187,7 @@ class AdaptiveESMDA(BaseESMDA):
         X: npt.NDArray[np.double],
         Y: npt.NDArray[np.double],
         D: npt.NDArray[np.double],
+        overwrite: bool = False,
         alpha: float,
         correlation_threshold: Union[Callable[[int], float], float, None] = None,
         cov_YY: Optional[npt.NDArray[np.double]] = None,
@@ -207,6 +221,10 @@ class AdaptiveESMDA(BaseESMDA):
             The covariance inflation factor. The sequence of alphas should
             obey the equation sum_i (1/alpha_i) = 1. However, this is NOT
             enforced in this method. The user/caller is responsible for this.
+        overwrite: bool
+            If True, X will be overwritten and mutated.
+            If False, the method will not mutate inputs in any way.
+            Settings this to True saves memory.
         correlation_threshold : callable or float or None
             Either a callable with signature f(ensemble_size) -> float, or a
             float in the range [0, 1]. Entries in the covariance matrix that
@@ -239,6 +257,10 @@ class AdaptiveESMDA(BaseESMDA):
                 "`correlation_threshold` must be a callable or a float in [0, 1]"
             )
 
+        # Do not overwrite input arguments
+        if not overwrite:
+            X = np.copy(X)
+
         # Create `correlation_threshold` if the argument is a float
         if is_float:
             corr_threshold: float = correlation_threshold  # type: ignore
@@ -261,13 +283,15 @@ class AdaptiveESMDA(BaseESMDA):
         # X by parameter group (rows), the storage requirement decreases
         cov_XY = empirical_cross_covariance(X, Y)
         assert cov_XY.shape == (X.shape[0], Y.shape[0])
-        corr_XY = self._correlation_matrix(cov_XY, X, Y)
-        assert corr_XY.shape == cov_XY.shape
+
+        corr_XY = self._cov_to_corr_inplace(cov_XY, X, Y)
 
         # Determine which elements in the cross covariance matrix that will
         # be set to zero
         threshold = correlation_threshold(X.shape[1])
         significant_corr_XY = np.abs(corr_XY) > threshold
+
+        cov_XY = self._corr_to_cov_inplace(corr_XY, X, Y)
 
         # Pre-compute the covariance cov(Y, Y) here, and index on it later
         if cov_YY is None:
@@ -276,10 +300,7 @@ class AdaptiveESMDA(BaseESMDA):
             assert cov_YY.ndim == 2, "'cov_YY' must be a 2D array"
             assert cov_YY.shape == (Y.shape[0], Y.shape[0])
 
-        # TODO: memory could be saved by overwriting the input X
-        X_out: npt.NDArray[np.double] = np.copy(X)
-        for (unique_row, indices_of_row) in groupby_indices(significant_corr_XY):
-
+        for unique_row, indices_of_row in groupby_indices(significant_corr_XY):
             if verbose:
                 print(
                     f"    Assimilating {len(indices_of_row)} parameters"
@@ -294,8 +315,6 @@ class AdaptiveESMDA(BaseESMDA):
             if np.all(~unique_row):
                 continue
 
-            # Get the parameters (X) that have identical significant responses (Y)
-            X_subset = X[indices_of_row, :]
             Y_subset = Y[unique_row, :]
 
             # Compute the masked arrays for these variables
@@ -320,9 +339,9 @@ class AdaptiveESMDA(BaseESMDA):
                 Y=Y_subset,
                 cov_YY=cov_YY_subset,  # Passing cov(Y, Y) avoids re-computation
             )
-            X_out[indices_of_row, :] = X_subset + cov_XY_subset @ T
+            X[indices_of_row, :] += cov_XY_subset @ T
 
-        return X_out
+        return X
 
 
 class RowScaling:
