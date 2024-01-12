@@ -142,14 +142,10 @@ class AdaptiveESMDA(BaseESMDA):
     def _cov_to_corr_inplace(
         self,
         cov_XY: npt.NDArray[np.double],
-        X: npt.NDArray[np.double],
-        Y: npt.NDArray[np.double],
+        stds_X: npt.NDArray[np.double],
+        stds_Y: npt.NDArray[np.double],
     ) -> None:
         """Convert a covariance matrix to a correlation matrix in-place."""
-        assert cov_XY.shape == (X.shape[0], Y.shape[0])
-
-        stds_Y = np.std(Y, axis=1, ddof=1)
-        stds_X = np.std(X, axis=1, ddof=1)
 
         # Divide each element of cov_XY by the corresponding standard deviations
         cov_XY /= stds_X[:, np.newaxis]
@@ -167,15 +163,10 @@ class AdaptiveESMDA(BaseESMDA):
     def _corr_to_cov_inplace(
         self,
         corr_XY: npt.NDArray[np.double],
-        X: npt.NDArray[np.double],
-        Y: npt.NDArray[np.double],
+        stds_X: npt.NDArray[np.double],
+        stds_Y: npt.NDArray[np.double],
     ) -> None:
         """Convert a correlation matrix to a covariance matrix in-place."""
-        assert corr_XY.shape == (X.shape[0], Y.shape[0])
-
-        stds_Y = np.std(Y, axis=1, ddof=1)
-        stds_X = np.std(X, axis=1, ddof=1)
-
         # Multiply each element of corr_XY by the corresponding standard deviations
         corr_XY *= stds_X[:, np.newaxis]
         corr_XY *= stds_Y[np.newaxis, :]
@@ -284,14 +275,17 @@ class AdaptiveESMDA(BaseESMDA):
         cov_XY = empirical_cross_covariance(X, Y)
         assert cov_XY.shape == (X.shape[0], Y.shape[0])
 
-        corr_XY = self._cov_to_corr_inplace(cov_XY, X, Y)
+        stds_X = np.std(X, axis=1, ddof=1)
+        stds_Y = np.std(Y, axis=1, ddof=1)
+
+        corr_XY = self._cov_to_corr_inplace(cov_XY, stds_X, stds_Y)
 
         # Determine which elements in the cross covariance matrix that will
         # be set to zero
         threshold = correlation_threshold(X.shape[1])
         significant_corr_XY = np.abs(corr_XY) > threshold
 
-        cov_XY = self._corr_to_cov_inplace(corr_XY, X, Y)
+        cov_XY = self._corr_to_cov_inplace(corr_XY, stds_X, stds_Y)
 
         # Pre-compute the covariance cov(Y, Y) here, and index on it later
         if cov_YY is None:
