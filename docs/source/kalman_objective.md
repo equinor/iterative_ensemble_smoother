@@ -14,13 +14,13 @@ y
 \mu_x \\
 \mu_y
 \end{bmatrix}, \begin{bmatrix}
-\Sigma_{xx} & \Sigma_{xy} \\
-\Sigma_{yx} & \Sigma_{yy}
+\Sigma_{x} & \Sigma_{xy} \\
+\Sigma_{yx} & \Sigma_{y}
 \end{bmatrix}\right)
 $$
 Define the "Kalman gain" as
 $$
-K = \Sigma_{xy}\Sigma_{yy}^{-1}.
+K = \Sigma_{xy}\Sigma_{y}^{-1}.
 $$
 Then, a multivariate sample $(x_i,y_i)$ is _transported_ to a sample from the conditional
 $p(x|y)$, having observed $y$ as such, via the formula 
@@ -29,7 +29,7 @@ x_i + K(y-y_i) \sim p(x|y).
 $$
 Note that $x|y$ retains Gaussianity as
 $$
-x | y \sim \mathcal{N}(\mu_x + K(y - \mu_y), \Sigma_{xx} - K \Sigma_{yx}).
+x | y \sim \mathcal{N}(\mu_x + K(y - \mu_y), \Sigma_{x} - K \Sigma_{yx}).
 $$
 
 For any distribution having a bijection between (the informative parts of) 
@@ -77,9 +77,11 @@ Note two formulas:
 
 1. Information is additive, and we may decompose the KLD as 
 the KLD over the marginal and the expected conditional KLD w.r.t. the variable considered in the marginal.
+The optimization can be done disjoint if marginal and conditional marginal depend upon disjoint parameter-sets.
 $$
 D_{KL}(P(x, y) \parallel Q(x, y)) = D_{KL}(P(y) \parallel Q(y)) + \mathbb{E}_{P(y)}\left[D_{KL}(P(x | y) \parallel Q(x | y))\right].
 $$
+
 2. The relative Kullback-Leibler Divergence (KLD) between two distributions 
 $P$ and $Q$ is given by:
 $$
@@ -99,7 +101,7 @@ Arguably, the most important aspects to encode in $Q$, without any other knowled
 the two first moments of $P$.
 Having access to the sample covariances of
 $\Sigma_{xy}$
-and $\Sigma_{yy}^{-1}$
+and $\Sigma_{y}^{-1}$
 after (maximum likelihood when $n>p$) estimation (minimizing empiricla KLD), the distribution $Q$ minimizing KLD towards $P$ is the Gaussian.
 Then the Gaussian conditional transport function using Kalman gain follows.
 Therefore EnKF and ES are not just something that works in the linear-Gaussian case.
@@ -136,14 +138,14 @@ The KLD approach suggests $-E_P[\log(Q)]$ as the objective of fitting $Q$.
 Taking $Q$ to be multivariate Gaussian, we arrive at the negative log-likelihood for a sample
 $$
 -\log p(x, y) = \frac{1}{2} \log \left| \begin{bmatrix}
-\Sigma_{xx} & \Sigma_{xy} \\
-\Sigma_{yx} & \Sigma_{yy}
+\Sigma_{x} & \Sigma_{xy} \\
+\Sigma_{yx} & \Sigma_{y}
 \end{bmatrix} \right| + \frac{k}{2} \log(2\pi) + \frac{1}{2} \begin{bmatrix}
 x - \mu_x \\
 y - \mu_y
 \end{bmatrix}^T \begin{bmatrix}
-\Sigma_{xx} & \Sigma_{xy} \\
-\Sigma_{yx} & \Sigma_{yy}
+\Sigma_{x} & \Sigma_{xy} \\
+\Sigma_{yx} & \Sigma_{y}
 \end{bmatrix}^{-1} \begin{bmatrix}
 x - \mu_x \\
 y - \mu_y
@@ -153,9 +155,15 @@ and the negative log-likelihood
 $$
 -\frac{1}{n}\sum_i \log(p(x_i,y_i))
 $$
-as an estimator of $-E_P[\log(Q)]$ as long as the sample $(x_i,y_i)$ is not used to optimize $\theta$ parametrizing $Q$.
-This is a natural objective if explicit estimates of $\Sigma_{xx}$, $\Sigma_{xy}$, and $\Sigma_{yy}$ are computed in creating
-an estimate $K=\Sigma_{xy}\Sigma_{yy}^{-1}$.
+as an estimator of $-E_P[\log(Q)]$, suitable for fitting procedures.
+It may also be used for evaluation of different models, as long as the sample $(x_i,y_i)$ is not used to optimize $\theta$ parametrizing $Q$.
+This means we may use the same formula, but with a different test-set of samples.
+This is a natural objective if explicit estimates of $\Sigma_{x}$, $\Sigma_{xy}$, and $\Sigma_{y}$ are computed in creating
+an estimate $K=\Sigma_{xy}\Sigma_{y}^{-1}$.
+Importantly, it allows encoding information or structure of how $\Sigma_{x}$, $\Sigma_{xy}$, and $\Sigma_{y}$ should look like,
+for instance  $\Sigma_y=H\Sigma_xH^T+\Sigma_{\epsilon}$. Then only $\Sigma_x$ and $H$ needs estimation if they should be unknown.
+It could also be that $\Sigma_x$ is diagonal, or is a function of some $\theta$ in a smaller dimensional space.
+We would then require fewer degrees of freedom to fit $\Sigma_x(\theta)$.
 
 Note that if covariance estimates are singular (i.e. EnKF when $p>n$) then this objective cannot be used due to the log-determinant and covariance inverse.
 Furthermore, we often only have access to the final estimate of the Kalman-gain, not the full covariance structure.
@@ -213,12 +221,12 @@ It is more close to "believing" in the Gaussian, not just moment-estimation as a
 It is slightly too strict in terms of how what Kalman-type methods do (usage of $\hat{K}$ in transport).
 Note also that the estimated posterior covariance simplifies when using the same estimates used for $\hat{K}$, but the determinant is given by
 $$
-|\hat{\Sigma}_{xx} - \hat{K} \hat{\Sigma}_{yx}| = 
+|\hat{\Sigma}_{x} - \hat{K} \hat{\Sigma}_{yx}| = 
 |(I-\hat{K}\hat{H})\hat{\Sigma}_{x}| = 
 |(I-\hat{K}\hat{H})||\hat{\Sigma}_{x}|
 $$
 so if the prior covariance estimate is singular $|\hat{\Sigma}_{x}|=0$
-(e.g. if using the sample covariance in place of $\Sigma_{xx}$ and $p>n$)
+(e.g. if using the sample covariance in place of $\Sigma_{x}$ and $p>n$)
 then so is the estimated posterior covariance of $x|y$.
 This highlights problems with using estimates from the training data associate $\hat{K}$.
 E.g. the Ensemble Smoother would not be possible to evaluate.
