@@ -159,7 +159,6 @@ smoother_ies = ies.SIES(
 )
 n_ies_iter = 7
 for i in range(n_ies_iter):
-
     step_length = steplength_exponential(i + 1)
     X_IES_ert = smoother_ies.sies_iteration(Y_IES_ert, step_length=step_length)
 

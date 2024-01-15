@@ -19,7 +19,6 @@ from iterative_ensemble_smoother.experimental import (
 
 @pytest.mark.parametrize("seed", range(25))
 def test_groupby_indices(seed):
-
     rng = np.random.default_rng(seed)
     rows = rng.integers(10, 100)
     columns = rng.integers(2, 9)
@@ -39,8 +38,7 @@ def test_groupby_indices(seed):
     assert intersection_idx == set()
 
     # Verify each entry in the groups
-    for (unique_row, indices_of_row) in groups:
-
+    for unique_row, indices_of_row in groups:
         # Repeat this unique row the number of times it occurs in X
         repeated = np.repeat(
             unique_row[np.newaxis, :], repeats=len(indices_of_row), axis=0
@@ -50,7 +48,6 @@ def test_groupby_indices(seed):
 
 @pytest.fixture()
 def linear_problem(request):
-
     # Seed the problem using indirect parametrization:
     # https://docs.pytest.org/en/latest/example/parametrize.html#indirect-parametrization
     rng = np.random.default_rng(request.param)
@@ -86,7 +83,6 @@ class TestAdaptiveESMDA:
     def test_that_adaptive_localization_with_cutoff_1_equals_ensemble_prior(
         self, linear_problem
     ):
-
         # Create a problem with g(x) = A @ x
         X, g, observations, covariance, _ = linear_problem
 
@@ -98,7 +94,6 @@ class TestAdaptiveESMDA:
         X_i = np.copy(X)
         alpha = normalize_alpha(np.ones(5))
         for alpha_i in alpha:
-
             # Run forward model
             Y_i = g(X_i)
 
@@ -127,7 +122,6 @@ class TestAdaptiveESMDA:
     def test_that_adaptive_localization_with_cutoff_0_equals_standard_ESMDA_update(
         self, linear_problem
     ):
-
         # Create a problem with g(x) = A @ x
         X, g, observations, covariance, rng = linear_problem
 
@@ -141,8 +135,7 @@ class TestAdaptiveESMDA:
         )
 
         X_i = np.copy(X)
-        for i, alpha_i in enumerate(alpha, 1):
-
+        for _, alpha_i in enumerate(alpha, 1):
             # Run forward model
             Y_i = g(X_i)
 
@@ -152,12 +145,13 @@ class TestAdaptiveESMDA:
             )
 
             # Update the relevant parameters and write to X
-            X_i = smoother.assimilate(
+            smoother.assimilate(
                 X=X_i,
                 Y=Y_i,
                 D=D_i,
+                overwrite=True,
                 alpha=alpha_i,
-                correlation_threshold=lambda ensemble_size: 0,
+                correlation_threshold=0,
             )
 
         # =============================================================================
@@ -171,7 +165,7 @@ class TestAdaptiveESMDA:
         )
 
         X_i2 = np.copy(X)
-        for i in range(smoother.num_assimilations()):
+        for _ in range(smoother.num_assimilations()):
             X_i2 = smoother.assimilate(X_i2, g(X_i2))
 
         assert np.allclose(X_i, X_i2)
@@ -194,7 +188,7 @@ class TestAdaptiveESMDA:
         members decrease, this test starts to fail more often."""
 
         # Create a problem with g(x) = A @ x
-        X, g, observations, covariance, rng = linear_problem
+        X, g, observations, covariance, _ = linear_problem
         if full_covariance:
             covariance = np.diag(covariance)
 
@@ -208,8 +202,7 @@ class TestAdaptiveESMDA:
         )
 
         X_i = np.copy(X)
-        for i, alpha_i in enumerate(alpha, 1):
-
+        for _, alpha_i in enumerate(alpha, 1):
             # Run forward model
             Y_i = g(X_i)
 
@@ -226,14 +219,14 @@ class TestAdaptiveESMDA:
                 Y=Y_i,
                 D=D_i,
                 alpha=alpha_i,
-                correlation_threshold=lambda ensemble_size: cutoff_low,
+                correlation_threshold=cutoff_low,
             )
             X_i_high_cutoff = smoother.assimilate(
                 X=X_i,
                 Y=Y_i,
                 D=D_i,
                 alpha=alpha_i,
-                correlation_threshold=lambda ensemble_size: cutoff_high,
+                correlation_threshold=cutoff_high,
             )
 
             # Compute covariances
@@ -410,8 +403,8 @@ class TestAdaptiveESMDA:
         """
 
         # Create a problem with g(x) = A @ x
-        X, g, observations, covariance, rng = linear_problem
-        num_parameters, ensemble_size = X.shape
+        X, g, observations, covariance, _ = linear_problem
+        _, ensemble_size = X.shape
 
         alpha = normalize_alpha(np.array([5, 4, 3, 2, 1]))  # Vector of inflation values
         smoother = AdaptiveESMDA(
@@ -535,7 +528,7 @@ class TestRowScaling:
         row_groups = [tuple(range(17)), tuple(range(17, 100))]
         # When alpha=1 in row scaling, we perform a full update
         X_with_row_scaling = [
-            (X[idx, :], RowScaling(alpha=1)) for i, idx in enumerate(row_groups)
+            (X[idx, :], RowScaling(alpha=1)) for _, idx in enumerate(row_groups)
         ]
 
         # Perform an update using row scaling
@@ -556,7 +549,7 @@ class TestRowScaling:
             inversion=inversion,
             seed=1,
         )
-        for iteration in range(smoother.num_assimilations()):
+        for _ in range(smoother.num_assimilations()):
             X_posterior = smoother.assimilate(X, Y)
 
         # The result should be the same
@@ -566,7 +559,6 @@ class TestRowScaling:
 
 
 if __name__ == "__main__":
-
     pytest.main(
         args=[
             __file__,
