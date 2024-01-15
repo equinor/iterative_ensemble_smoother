@@ -263,6 +263,13 @@ Note however that when $\Sigma_{x^*}(K)$ must be estimated and we employ the Gau
 assuming $n>p$ so the MLE exists, then this indeed also produces the LLS estimator of $K$.
 The rationale is that because $\Sigma_{x^*}(K)$ is unknown and estimated, this offsets the GLS part of the objective when also optimizing the log-determinant of $\Sigma_{x^*}(K)$.
 It is offset in the exact way so that we arrive at LLS, which we _know_ is inefficient (but unbiased).
+
+It is possible to now err and reason that due to arriving at the same stimator, the LS and Gaussian-NLL objectives are equivalent.
+This is, however false.
+It is rather that in this particular case, when we have failed to inform of structure in dependence, 
+then the Gaussian-NLL arrives at the same inefficient LLS estimator.
+We know that the LLS estimator is inefficient when Gauss-Markov conditions are not satisfied.
+And we know that this is because the LS objective then does not appropriately target dependence.
 This is an additional point towards searching for better estimators of $K$ in suitable smaller dimensional spaces, but using the general likelihood approach.
 
 
