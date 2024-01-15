@@ -215,7 +215,7 @@ class AdaptiveESMDA(BaseESMDA):
         overwrite: bool
             If True, X will be overwritten and mutated.
             If False, the method will not mutate inputs in any way.
-            Settings this to True saves memory.
+            Setting this to True saves memory.
         correlation_threshold : callable or float or None
             Either a callable with signature f(ensemble_size) -> float, or a
             float in the range [0, 1]. Entries in the covariance matrix that
