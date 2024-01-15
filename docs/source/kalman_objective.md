@@ -37,6 +37,12 @@ $x$ and $y$, there exist a similar mapping, transporting a sample $(x,y)$ to $x|
 The EnKF and ES variants follows from writing $y=d=Hx+\epsilon$ where 
 $\epsilon\sim \mathcal{N}(0,\Sigma_{\epsilon})$, thus $\Sigma_y=H\Sigma_xH^T+\Sigma_{\epsilon}$.
 Note that $y$ is common to use as $y=Hx$ but this is not the case in the preliminaries here.
+A point of confusion is that it is indeed _not_ the observation $d$ that is "perturbed" with noise,
+but rather, $d$ has variance $H\Sigma_xH^T+\Sigma_{\epsilon}$ and an $\epsilon$ is then added to the response $Hx$ to correctly sample from this distribution of $d$.
+Because both $(d-d_i)$ and $d_i=Hx_i+\epsilon_i$ are additive, and $\epsilon$ is symmetric about 0, it does not matter if we add the noise to $d$ or to $Hx$ in the expression.
+If any of these points were different, it would be evident that we are not perturbing observations.
+Thus, it is incorrect and slightly confusing to say that we perturb the observations.
+It is correct to say that we sample from the distribution of $d$, accounting from both prior uncertainty _and_ observation uncertainty.
 
 Note that the EnKF and ES is intended to work (and indeed do) when $d=h(x)+\epsilon$
 for some non-linear $h$.
@@ -266,7 +272,7 @@ It is however better to evaluate point 2 directly, and then discuss the symptoms
 The previous sections show that asymptotically different objectives provide the same estimator.
 This does however not mean that different objectives are equally "good".
 
-> The expected KLD of $Q(x|y)$ that the updated ensemble is sampled from, is the goal.
+> The expected KLD (over $y\sim P(y)$) of $Q(x|y)$ to $P(x|y)$ that the updated ensemble is sampled from, is the goal.
 
 Then GLS and LS is consistent with this under specific conditions, but may be easier to apply generally.
 But are generally less efficient in evaluating method performance (in particular the LS objective).
