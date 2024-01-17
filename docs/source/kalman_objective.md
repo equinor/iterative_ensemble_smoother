@@ -17,6 +17,7 @@ From the contents, it should however be clear how a simulation study could be co
 ## Gaussian conditional transport
 
 Let $x$ and $y$ be random variables jointly multivariate Gaussian with mean and covariance
+
 $$
 \begin{bmatrix}
 x \\
@@ -30,6 +31,7 @@ y
 \Sigma_{yx} & \Sigma_{y}
 \end{bmatrix}\right)
 $$
+
 Define the "Kalman gain" as
 $$
 K = \Sigma_{xy}\Sigma_{y}^{-1}.
