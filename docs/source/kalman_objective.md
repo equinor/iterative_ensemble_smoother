@@ -200,10 +200,10 @@ A Kalman-type method estimating a model Kalman-gain, say $\hat{K}$, transports s
 according to 
 $x_i^* =x_i + \hat{K} (y-y_i)$ which is Gaussian with mean and covariance
 $$
-\mu_{x^*}(y, K) = \mu_x + \hat{K}(y-\mu_y)
+\mu_{x^*}(y, \hat{K}) = \mu_x + \hat{K}(y-\mu_y)
 $$
 $$
-\Sigma_{x^*}(K) = \Sigma_{x} + \hat{K}\Sigma_y \hat{K}^T - 2 \Sigma_{xy}\hat{K}^T
+\Sigma_{x^*}(\hat{K}) = \Sigma_{x} + \hat{K}\Sigma_y \hat{K}^T - 2 \Sigma_{xy}\hat{K}^T
 $$
 When $\hat{K}=K=\Sigma_{xy}\Sigma_y^{-1}$ the expression simplifies to the afformentioned posterior.
 This conditional marginal is $Q(x|y)$.
@@ -214,7 +214,7 @@ This is "just" an ordinary sample from $P(x,y)$.
 Thus evaluating
 $$
 -\frac{1}{n}\sum_{i=1}^n \log q(x_i|y_i;\hat{K}) = \frac{1}{2n}\sum_{i=1}^n 
-(x_i - \mu_{x^*}(y, K))^T \Sigma_{x^*}(K)^{-1} (x_i - \mu_{x^*}(y,K)) +  \log |\Sigma_{x^*}(K)| +  k\log(2\pi)
+(x_i - \mu_{x^*}(y, \hat{K}))^T \Sigma_{x^*}(\hat{K})^{-1} (x_i - \mu_{x^*}(y,\hat{K})) +  \log |\Sigma_{x^*}(\hat{K})| +  k\log(2\pi)
 $$
 approximates and indeed converges to the expected relative KLD on the conditional.
 Therefore it can be used to evaluate different Kalman-gain estimates, used for different transport.
@@ -222,8 +222,8 @@ Therefore it can be used to evaluate different Kalman-gain estimates, used for d
 Note that $\mu_{x^*}(y)$ and $\Sigma_{x^*}$ uses the true underlying covariance structure, in addition
 to $\hat{K}$.
 This makes sense, because $\hat{K}$ has only been used to transport samples.
-It does however require knowledge of these quantities, which is likely unknown, otherwise they 
-would be used in the creation of $\hat{K}$ to be exactly $K$.
+To evaluate in this way does however require knowledge of these quantities, which is likely or often unknown.
+Otherwise they would be used in the creation of $\hat{K}$ to be exactly $K$.
 This evaluation therefore makes sense in synthetic cases where the prior is exactly known or simulated from,
 or where it can be simulated to create estimates of dependence independent of training data.
 
@@ -283,6 +283,13 @@ then the Gaussian-NLL arrives at the same inefficient LLS estimator.
 We know that the LLS estimator is inefficient when Gauss-Markov conditions are not satisfied.
 And we know that this is because the LS objective then does not appropriately target dependence.
 This is an additional point towards searching for better estimators of $K$ in suitable smaller dimensional spaces, but using the general likelihood approach.
+
+
+### Summary on how to evaluate different methods.
+
+- If covariances used to create $\hat{K}$ exists, and are SPD, then use the NLL with test-data. This is the most efficient way to discriminate methods.
+- If only the $\hat{K}$ is known from an assimilation algorithm, then evaluate methods by the expected relative KLD on the conditional marginal. Using known covariances in a synthetic experiment.
+- If only the $\hat{K}$ is known. And access to test-data from an unknown data-generating-process is sought to evaluate over: Use the LS objective. This is less efficient, but seems to be the only thing one then may do.
 
 
 ## Development of Kalman-type methods
