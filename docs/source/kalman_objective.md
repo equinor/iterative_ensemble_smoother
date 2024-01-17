@@ -341,8 +341,10 @@ This does however not mean that different objectives are equally "good".
 Then GLS and LS is consistent with this under specific conditions, but may be easier to apply generally.
 But are generally less efficient in evaluating method performance (in particular the LS objective).
 
-Evaluation of methods should be done using, preferably a large, test dataset.
-The following do not do this, but attempts at discussing and motivating methods through knowledge of 
+> Evaluation of methods should be done using, preferably a large, test dataset.
+This is the easiest and most robust way to make sure we are evaluating the expectation over $P$.
+
+The following do not perform such evalutions, but attempts at discussing and motivating methods through knowledge of 
 statistical methodology, in context of point 2, conditioned on the sizes of $p$ and $n$.
 This involves drawing on knowledge from information criteria, the bias-variance trade-off, and regularization techniques.
 No definite answers on what is the best method is given here.
