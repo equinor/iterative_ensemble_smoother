@@ -444,8 +444,14 @@ In particular LASSO, better solving the bias-variance tradeoff than LLS, comes t
 If both $`{\Sigma_{x}}`$, $H$, and $`\Sigma_{\epsilon}`$ are sparse, then $K$ should also be sparse.
 LASSO is ideally suited to learn this sparsity from data.
 The downside is that this sparsity is often known a-priori, except perhaps for the structure of $H$, but is not used to inform the regression here.
-As such, it suffers from the same problem as LLS compared to ES, but to a much larger extent.
+As such, it suffers from the same problem as LLS compared to ES, but to a much smaller extent.
 It likely benefits compared to ES when $\Sigma_x$ is sparse.
+
+Thus LASSO without structure makes sense (perhaps, this should be tested on data(!) as for everything) over ES (and always over LLS) when
+- The dimensions of the problem is not enormous (thousands, not fields).
+- There are more than a few parameters (ES is good when this number is _very_ small).
+- The Kalman gain can be well approximated with a sparse matrix (almost a necessity: prior on parameters is sparse or diagonal).
+- One seeks an human-understandable model.
 
 Derivations with scaling should maybe be produced, again.
 
