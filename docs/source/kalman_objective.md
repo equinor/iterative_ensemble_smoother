@@ -381,9 +381,9 @@ This therefore provides guidance in developing estimates of K.
 ### Ensemble smoother
 
 The Ensemble Smoother (ES) is developed through 
-1. Sample covariance matrices $\hat{\Sigma}_{xy}$, $\hat{\Sigma}_{y}$ converges to the population quantities at an infinite ensemble size. 
-2. Find $\hat{\Sigma}_{d}=\hat{\Sigma}_{y}+\Sigma_{\epsilon}$ which is guaranteed SPD.
-3. Solve $\hat{K}=\hat{\Sigma}_{xy}\hat{\Sigma}_{d}^{-1}$
+1. Sample covariance matrices ${\hat{\Sigma}_{xy}}$, ${\hat{\Sigma}_{y}}$ converges to the population quantities at an infinite ensemble size. 
+2. Find ${\hat{\Sigma}_{d}}={\hat{\Sigma}_{y}}+{\Sigma_{\epsilon}}$ which is guaranteed SPD.
+3. Solve $\hat{K}={\hat{\Sigma}_{xy}\hat{\Sigma}_{d}^{-1}}$
 
 - Some structure is employed, namely that $d=y+\epsilon$ and knowledge of the noise-covariance.
 This is good.
@@ -441,11 +441,11 @@ The discrepancy from ES, and a poorer estimate, increaess in the dimension of $d
 
 Using the same objective as for LLS, i.e. LS, which produces inefficient but unbiased estimators, can be used with other linear regression techniques.
 In particular LASSO, better solving the bias-variance tradeoff than LLS, comes to mind, due to the explainability of a sparse estimate $\hat{K}_{lasso}$.
-If both $\Sigma_x$, $H$, and $\Sigma_\epsilon$ are sparse, then $K$ should also be sparse.
+If both ${\Sigma_{x}}$, $H$, and ${{\Sigma}_{\epsilon}}$ are sparse, then $K$ should also be sparse.
 LASSO is ideally suited to learn this sparsity from data.
 The downside is that this sparsity is often known a-priori, except perhaps for the structure of $H$, but is not used to inform the regression here.
 As such, it suffers from the same problem as LLS compared to ES, but to a much larger extent.
-It likely benefits compared to ES when $\Sigma_x$ is sparse.
+It likely benefits compared to ES when ${{\Sigma}_{x}}$ is sparse.
 
 Derivations with scaling should maybe be produced, again.
 
