@@ -1,6 +1,18 @@
 # Kalman-type ensemble approaches
 
-tldr
+How to think about Kalman-type ensemble based data assimilation:
+
+- What does Kalman-type ensemble methods do?
+- What is their ideal objective?
+- How does the objective behave under statistical estimation?
+- How to think about surrogate objectives?
+- What is the modelling setup and what information is known a-priori?
+- List common methods and discuss them in the context of the above.
+
+What is _not_ provided, is an evaluation-comparison between methods.
+Only how we _think_ they will behave, given what we know about statistics and our objective.
+From the contents, it should however be clear how a simulation study could be constructed to compare methods.
+
 
 ## Gaussian conditional transport
 
@@ -311,7 +323,7 @@ and $\Sigma_{\epsilon})$ is assumed diagonal.
 We have an observation vector, say $d^*$.
 We have a sample of $x$'s, say $x_i$, that we pass through $y$ to get a corresponding of $y_i$'s, and then 
 sample some $\epsilon_i$'s appropriately so that we have samples $(x_i,y_i,d_i)$.
-The goal is to use these samples to learn the best possible $\hat{K}$ to transport the samples $(x_i,d_i)$ to a sample as close as possible to $x\sim p(x_i|d_i)$.
+The goal is to use these samples to learn the best possible $\hat{K}$ to transport the samples $(x_i,d_i)$ to a sample, sampled from a distribution as close as posbiele to $x\sim p(x_i|d_i)$.
 
 Structure of the problem can be
 - $d=y+\epsilon$
@@ -382,11 +394,19 @@ then the estimator is not the minimum variance estimator.
 
 It provides insight into that estimators of $\hat{K}$ can be produced through the LS objective on $X-KD$, which can be separated on the dimensions of $x$.
 
+In a comparison to e.g. ES, the difference lies in its uninformed (implied) sample estimate $\hat{\Sigma}_d$. 
+The discrepancy from ES, and a poorer estimate, increaess in the dimension of $d$, and thus the number of obervations.
+
 
 ### LASSO without structure
 
-Using the same objective as for LLS, which produces inefficient but unbiased estimators, can be used with other linear regression techniques.
+Using the same objective as for LLS, i.e. LS, which produces inefficient but unbiased estimators, can be used with other linear regression techniques.
 In particular LASSO, better solving the bias-variance tradeoff than LLS, comes to mind, due to the explainability of a sparse estimate $\hat{K}_{lasso}$.
+If both $\Sigma_x$, $H$, and $\Sigma_\epsilon$ are sparse, then $K$ should also be sparse.
+LASSO is ideally suited to learn this sparsity from data.
+The downside is that this sparsity is often known a-priori, except perhaps for the structure of $H$, but is not used to inform the regression here.
+As such, it suffers from the same problem as LLS compared to ES, but to a much larger extent.
+It likely benefits compared to ES when $\Sigma_x$ is sparse.
 
 Derivations with scaling should maybe be produced, again.
 
@@ -409,3 +429,4 @@ Solutions of $H$ is found through LASSO on $Y-HX$.
 The LLS solution here is likely BLUE due to conditional independence $y|x$ (at least on linear maps), so the objective is efficient in producing estimators.
 There are possible inefficiencies when $h$ is non-linear, and ideally it should be optimized jointly with covariances in the MLE.
 Employing LASSO ensures sparsity of $\hat{H}$ and a better bias-variance trade-off on LS.
+Note that any variance in $y$ that is unexplained in the regressions on $x$ should be added to $\Sigma_\epsilon$ as variance not accounted for by $x$ and $H$.
