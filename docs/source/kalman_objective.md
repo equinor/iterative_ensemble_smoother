@@ -471,7 +471,9 @@ If non-zeroes $\Sigma_x^{-1}$ are not known, they provide a powerful parsimoneou
 $\Sigma_x^{-1}$ is dense.
 
 Solutions of $H$ is found through LASSO on $Y-HX$.
-The LLS solution here is likely BLUE due to conditional independence $y|x$ (at least on linear maps), so the objective is efficient in producing estimators.
+The LLS solution here is likely BLUE due to conditional independence of elements in $y|x$ (at least on linear maps), so the objective is efficient in producing estimators.
 There are possible inefficiencies when $h$ is non-linear, and ideally it should be optimized jointly with covariances in the MLE.
 Employing LASSO ensures sparsity of $\hat{H}$ and a better bias-variance trade-off on LS.
 Note that any variance in $y$ that is unexplained in the regressions on $x$ should be added to $\Sigma_\epsilon$ as variance not accounted for by $x$ and $H$.
+
+As for LASSO without structure, models will be human understandable through analyzing the sparse linear maps, along with how information propagates due to sparsity of $\Sigma_x^{-1}$.
