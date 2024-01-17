@@ -69,7 +69,7 @@ class SIES:
 
                 * `direct`:
                     Solve Eqn (42) directly, which involves inverting a
-                    matrix of shape (num_parameters, num_parameters).
+                    matrix of shape (num_observations, num_observations).
                 * `subspace_exact` :
                     Solve Eqn (42) using Eqn (50), i.e., the Woodbury
                     lemma to invert a matrix of size (ensemble_size, ensemble_size).
