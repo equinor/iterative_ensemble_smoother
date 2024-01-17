@@ -257,14 +257,14 @@ It is more close to "believing" in the Gaussian, not just moment-estimation as a
 It is slightly too strict in terms of how what Kalman-type methods do (usage of $\hat{K}$ in transport).
 Note also that the estimated posterior covariance simplifies when using the same estimates used for $\hat{K}$, but the determinant is given by
 
-$$
+```math
 |\hat{\Sigma}_{x} - \hat{K} \hat{\Sigma}_{yx}|=
 |(I-\hat{K}\hat{H})\hat{\Sigma}_{x}|=
 |(I-\hat{K}\hat{H})||\hat{\Sigma}_{x}|
-$$
+```
 
-so if the prior covariance estimate is singular $|\hat{\Sigma}_{x}|=0$
-(e.g. if using the sample covariance in place of $\Sigma_{x}$ and $p>n$)
+so if the prior covariance estimate is singular $|\hat{\Sigma}_x|=0$
+(e.g. if using the sample covariance in place of $\Sigma_x$ and $p>n$)
 then so is the estimated posterior covariance of $x|y$.
 This highlights problems with using estimates from the training data associate $\hat{K}$.
 E.g. the Ensemble Smoother would not be possible to evaluate.
