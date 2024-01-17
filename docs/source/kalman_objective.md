@@ -33,15 +33,20 @@ y
 $$
 
 Define the "Kalman gain" as
+
 $$
 K = \Sigma_{xy}\Sigma_{y}^{-1}.
 $$
+
 Then, a multivariate sample $(x_i,y_i)$ is _transported_ to a sample from the conditional
 $p(x|y)$, having observed $y$ as such, via the formula 
+
 $$
 x_i + K(y-y_i) \sim p(x|y).
 $$
+
 Note that $x|y$ retains Gaussianity as
+
 $$
 x | y \sim \mathcal{N}(\mu_x + K(y - \mu_y), \Sigma_{x} - K \Sigma_{yx}).
 $$
@@ -83,6 +88,7 @@ We want to minimize information loss by modelling data $(x,y)$,
 drawn from true data generating distribution $P$, with the "model" distribution $Q$.
 The $Q$ minimizing Kullback-Leibler-Divergence (KLD) is the distribution that does this.
 The KLD is given by
+
 $$
 D_{KL}(P \parallel Q) = \int \int p(x, y) \log\left(\frac{p(x, y)}{q(x, y)}\right) dx dy.
 $$
@@ -92,20 +98,25 @@ Note two formulas:
 1. Information is additive, and we may decompose the KLD as 
 the KLD over the marginal and the expected conditional KLD w.r.t. the variable considered in the marginal.
 The optimization can be done disjoint if marginal and conditional marginal depend upon disjoint parameter-sets.
+
 $$
 D_{KL}(P(x, y) \parallel Q(x, y)) = D_{KL}(P(y) \parallel Q(y)) + \mathbb{E}_{P(y)}\left[D_{KL}(P(x | y) \parallel Q(x | y))\right].
 $$
 
 2. The relative Kullback-Leibler Divergence (KLD) between two distributions 
 $P$ and $Q$ is given by:
+
 $$
 D_{KL}(P \parallel Q) = E_P[\log(P)] - E_P[\log(Q)]
 $$
+
 Dropping the first term, which is constant with respect to the model 
 $Q$, and retaining the negative of the latter term gives us the objective of maximizing the likelihood (or minimizing the negative log-likelihood) of $Q$:
+
 $$
 - E_P[\log(Q)].
 $$
+
 This is the core for all of maximum likelihood estimation, information criteria, and regression and supervised learning using a negative log-likelihood as its loss function.
 
 ### Why EnKF and ES works so well
@@ -150,6 +161,7 @@ This turns out to be non-trivial for several common applications like the EnKF/E
 ### Joint-Gaussian
 The KLD approach suggests $-E_P[\log(Q)]$ as the objective of fitting $Q$.
 Taking $Q$ to be multivariate Gaussian, we arrive at the negative log-likelihood for a sample
+
 $$
 -\log p(x, y) = \frac{1}{2} \log \left| \begin{bmatrix}
 \Sigma_{x} & \Sigma_{xy} \\
@@ -165,10 +177,13 @@ x - \mu_x \\
 y - \mu_y
 \end{bmatrix}
 $$
+
 and the negative log-likelihood 
+
 $$
 -\frac{1}{n}\sum_i \log(p(x_i,y_i))
 $$
+
 as an estimator of $-E_P[\log(Q)]$, suitable for fitting procedures.
 It may also be used for evaluation of different models, as long as the sample $(x_i,y_i)$ is not used to optimize $\theta$ parametrizing $Q$.
 This means we may use the same formula, but with a different test-set of samples.
@@ -192,21 +207,26 @@ It evaluates the model posterior using samples from the optimal posterior, and a
 the conditioning variable $y$.
 
 Putting the two points of the joint KLD together, we obtain a regression objective
+
 $$
  - E_{P(y)}\left[E_{P(x|y)}\left[ \log(Q(x|y)) \right]  \right].
 $$
+
 In spoken language, this means the negative log-likelihood for the conditional,
 and the conditioning variable $y$ is sampled from its true distribution and then averaged over.
 
 A Kalman-type method estimating a model Kalman-gain, say $\hat{K}$, transports samples $(x_i,y_i)$
 according to 
 $x_i^* =x_i + \hat{K} (y-y_i)$ which is Gaussian with mean and covariance
+
 $$
 \mu_{x^*}(y, \hat{K}) = \mu_x + \hat{K}(y-\mu_y)
 $$
+
 $$
 \Sigma_{x^*}(\hat{K}) = \Sigma_{x} + \hat{K}\Sigma_y \hat{K}^T - 2 \Sigma_{xy}\hat{K}^T
 $$
+
 When $\hat{K}=K=\Sigma_{xy}\Sigma_y^{-1}$ the expression simplifies to the afformentioned posterior.
 This conditional marginal is $Q(x|y)$.
 
@@ -214,10 +234,12 @@ To take the two expectations w.r.t. $P(y)$ and $P(x|y)$ we evaluate the negative
 averaged over a test data where $y\sim P(y)$ and $x\sim P(x|y)$.
 This is "just" an ordinary sample from $P(x,y)$.
 Thus evaluating
+
 $$
 -\frac{1}{n}\sum_{i=1}^n \log q(x_i|y_i;\hat{K}) = \frac{1}{2n}\sum_{i=1}^n 
 (x_i - \mu_{x^*}(y, \hat{K}))^T \Sigma_{x^*}(\hat{K})^{-1} (x_i - \mu_{x^*}(y,\hat{K})) +  \log |\Sigma_{x^*}(\hat{K})| +  k\log(2\pi)
 $$
+
 approximates and indeed converges to the expected relative KLD on the conditional.
 Therefore it can be used to evaluate different Kalman-gain estimates, used for different transport.
 
@@ -234,11 +256,13 @@ a model where more is assumed, employed and also evaluated in the criterion, wit
 It is more close to "believing" in the Gaussian, not just moment-estimation as an approximation and then used for updating.
 It is slightly too strict in terms of how what Kalman-type methods do (usage of $\hat{K}$ in transport).
 Note also that the estimated posterior covariance simplifies when using the same estimates used for $\hat{K}$, but the determinant is given by
+
 $$
 |\hat{\Sigma}_{x} - \hat{K} \hat{\Sigma}_{yx}| = 
 |(I-\hat{K}\hat{H})\hat{\Sigma}_{x}| = 
 |(I-\hat{K}\hat{H})||\hat{\Sigma}_{x}|
 $$
+
 so if the prior covariance estimate is singular $|\hat{\Sigma}_{x}|=0$
 (e.g. if using the sample covariance in place of $\Sigma_{x}$ and $p>n$)
 then so is the estimated posterior covariance of $x|y$.
@@ -250,9 +274,11 @@ E.g. the Ensemble Smoother would not be possible to evaluate.
 
 If $X-KY$ has correlated residuals with a known covariance, then the objective
 yielding the _best_ (meaning minimum variance) unbiased (BLUE) estimator when minimized is the generalized least squares (GLS) objective
+
 $$
 \min_{\beta} (Y - X\beta)^T \Omega^{-1} (Y - X\beta)
 $$
+
 so $\Omega=\Sigma_{x^*}(K)$
 and when this is known a-priori then $\hat{\beta}$ is the BLUE estimate of $K$.
 This is typically solved with weighted least squares methods.
@@ -266,9 +292,11 @@ One then once again arrives at the relevant parts of the negative log-likelihood
 
 If $K-KY$ satisfies the Gauss-Markov conditions, which it does when we assume that $(x,y)$ is Gaussian and $x|y$ has a diagonal posterior covariance,
 then the least squares objective provides the BLUE estimator when minimized
+
 $$
 \min_{\beta} (Y - X\beta)^T (Y - X\beta)
 $$
+
 Because of uncorrelated errors, the problem is separable and each dimension may be optimized individually in one-dimensional regressions.
 The LS objective corresponds to the GLS and more generally the Gaussian NLL when the assumptions are met.
 
@@ -387,9 +415,11 @@ So update encoded in Kalman gain should be zero if $d_j$ and $x_k$ are far away 
 ### Linear least squares
 
 The LLS Kalman gain estimate (NORCE slides) is 
+
 $$
 \hat{K} = X^TD(D^TD)^{-1}
 $$
+
 It is both a solution from fiding the MLE estimates (if $n>p$) for the full covariance matrix on $(x,d)$ using samples $(x_i,d_i)$,
 or from solving the LS objective on $X-KD$.
 As noted earlier, these produce the same estimator here.
