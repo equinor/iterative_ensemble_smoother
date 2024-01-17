@@ -100,7 +100,7 @@ the KLD over the marginal and the expected conditional KLD w.r.t. the variable c
 The optimization can be done disjoint if marginal and conditional marginal depend upon disjoint parameter-sets.
 
 $$
-D_{KL}(P(x, y) \parallel Q(x, y)) = D_{KL}(P(y) \parallel Q(y)) + \mathbb{E}_{P(y)}\left[D_{KL}(P(x | y) \parallel Q(x | y))\right].
+D_{KL}(P(x, y) \parallel Q(x, y)) = D_{KL}(P(y) \parallel Q(y)) + E_{P(y)}\left[D_{KL}(P(x | y) \parallel Q(x | y))\right]
 $$
 
 2. The relative Kullback-Leibler Divergence (KLD) between two distributions 
@@ -114,7 +114,7 @@ Dropping the first term, which is constant with respect to the model
 $Q$, and retaining the negative of the latter term gives us the objective of maximizing the likelihood (or minimizing the negative log-likelihood) of $Q$:
 
 $$
-- E_P[\log(Q)].
+-E_P[\log(Q)]
 $$
 
 This is the core for all of maximum likelihood estimation, information criteria, and regression and supervised learning using a negative log-likelihood as its loss function.
