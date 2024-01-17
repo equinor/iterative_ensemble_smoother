@@ -209,7 +209,7 @@ the conditioning variable $y$.
 Putting the two points of the joint KLD together, we obtain a regression objective
 
 $$
- - E_{P(y)}\left[E_{P(x|y)}\left[ \log(Q(x|y)) \right]  \right].
+-E_{P(y)}\left[E_{P(x|y)}\left[ \log(Q(x|y)) \right]  \right].
 $$
 
 In spoken language, this means the negative log-likelihood for the conditional,
@@ -217,14 +217,14 @@ and the conditioning variable $y$ is sampled from its true distribution and then
 
 A Kalman-type method estimating a model Kalman-gain, say $\hat{K}$, transports samples $(x_i,y_i)$
 according to 
-$x_i^* =x_i + \hat{K} (y-y_i)$ which is Gaussian with mean and covariance
+$x_i^\ast =x_i + \hat{K} (y-y_i)$ which is Gaussian with mean and covariance
 
 $$
-\mu_{x^*}(y, \hat{K}) = \mu_x + \hat{K}(y-\mu_y)
+\mu_{x^\ast}(y, \hat{K}) = \mu_x + \hat{K}(y-\mu_y)
 $$
 
 $$
-\Sigma_{x^*}(\hat{K}) = \Sigma_{x} + \hat{K}\Sigma_y \hat{K}^T - 2 \Sigma_{xy}\hat{K}^T
+\Sigma_{x^\ast}(\hat{K}) = \Sigma_{x} + \hat{K}\Sigma_y \hat{K}^T - 2 \Sigma_{xy}\hat{K}^T
 $$
 
 When $\hat{K}=K=\Sigma_{xy}\Sigma_y^{-1}$ the expression simplifies to the afformentioned posterior.
@@ -236,14 +236,14 @@ This is "just" an ordinary sample from $P(x,y)$.
 Thus evaluating
 
 $$
--\frac{1}{n}\sum_{i=1}^n \log q(x_i|y_i;\hat{K}) = \frac{1}{2n}\sum_{i=1}^n 
-(x_i - \mu_{x^*}(y, \hat{K}))^T \Sigma_{x^*}(\hat{K})^{-1} (x_i - \mu_{x^*}(y,\hat{K})) +  \log |\Sigma_{x^*}(\hat{K})| +  k\log(2\pi)
+-\frac{1}{n}\sum_{i=1}^n \log q(x_i|y_i;\hat{K}) = \frac{1}{2n}\sum_{i=1}^n
+(x_i - \mu_{x^\ast}(y, \hat{K}))^T \Sigma_{x^\ast}(\hat{K})^{-1} (x_i - \mu_{x^\ast}(y,\hat{K})) +  \log |\Sigma_{x^\ast}(\hat{K})| +  k\log(2\pi)
 $$
 
 approximates and indeed converges to the expected relative KLD on the conditional.
 Therefore it can be used to evaluate different Kalman-gain estimates, used for different transport.
 
-Note that $\mu_{x^*}(y)$ and $\Sigma_{x^*}$ uses the true underlying covariance structure, in addition
+Note that $\mu_{x^\ast}(y)$ and $\Sigma_{x^\ast}$ uses the true underlying covariance structure, in addition
 to $\hat{K}$.
 This makes sense, because $\hat{K}$ has only been used to transport samples.
 To evaluate in this way does however require knowledge of these quantities, which is likely or often unknown.
@@ -258,8 +258,8 @@ It is slightly too strict in terms of how what Kalman-type methods do (usage of 
 Note also that the estimated posterior covariance simplifies when using the same estimates used for $\hat{K}$, but the determinant is given by
 
 $$
-|\hat{\Sigma}_{x} - \hat{K} \hat{\Sigma}_{yx}| = 
-|(I-\hat{K}\hat{H})\hat{\Sigma}_{x}| = 
+|\hat{\Sigma}_{x} - \hat{K} \hat{\Sigma}_{yx}|=
+|(I-\hat{K}\hat{H})\hat{\Sigma}_{x}|=
 |(I-\hat{K}\hat{H})||\hat{\Sigma}_{x}|
 $$
 
@@ -279,12 +279,12 @@ $$
 \min_{\beta} (Y - X\beta)^T \Omega^{-1} (Y - X\beta)
 $$
 
-so $\Omega=\Sigma_{x^*}(K)$
+so $\Omega=\Sigma_{x^\ast}(K)$
 and when this is known a-priori then $\hat{\beta}$ is the BLUE estimate of $K$.
 This is typically solved with weighted least squares methods.
 
-Unfortunately, $\Sigma_{x^*}(K)$ is generally unknown and must in some parts be estimated.
-Then, $\log |\Sigma_{x^*}(K)|$ should be included in the objective for accounting for this estimation and penalizing certainty.
+Unfortunately, $\Sigma_{x^\ast}(K)$ is generally unknown and must in some parts be estimated.
+Then, $\log |\Sigma_{x^\ast}(K)|$ should be included in the objective for accounting for this estimation and penalizing certainty.
 One then once again arrives at the relevant parts of the negative log-likelihood for $p(x|y)$.
 
 
@@ -301,9 +301,9 @@ Because of uncorrelated errors, the problem is separable and each dimension may 
 The LS objective corresponds to the GLS and more generally the Gaussian NLL when the assumptions are met.
 
 In general, the linear least squares estimator (LLS) is unbiased, so it converges to $K$ in our case, but it is not the BLUE estimator unless the errors indeed are uncorrelated.
-Note however that when $\Sigma_{x^*}(K)$ must be estimated and we employ the Gaussian $p(x,y)$ NLL and then solve for the Kalman gain,
+Note however that when $\Sigma_{x^\ast}(K)$ must be estimated and we employ the Gaussian $p(x,y)$ NLL and then solve for the Kalman gain,
 assuming $n>p$ so the MLE exists, then this indeed also produces the LLS estimator of $K$.
-The rationale is that because $\Sigma_{x^*}(K)$ is unknown and estimated, this offsets the GLS part of the objective when also optimizing the log-determinant of $\Sigma_{x^*}(K)$.
+The rationale is that because $\Sigma_{x^\ast}(K)$ is unknown and estimated, this offsets the GLS part of the objective when also optimizing the log-determinant of $\Sigma_{x^\ast}(K)$.
 It is offset in the exact way so that we arrive at LLS, which we _know_ is inefficient (but unbiased).
 
 It is possible to now err and reason that due to arriving at the same stimator, the LS and Gaussian-NLL objectives are equivalent.
@@ -357,7 +357,7 @@ Let $x$ be sampled from some distribution with finite two first moments.
 Define $y=h(x)$, possibly non-linear, and $d=y+\epsilon$ where $\epsilon\sim N(0,\Sigma_{\epsilon})$
 and $\Sigma_{\epsilon})$ is assumed diagonal.
 
-We have an observation vector, say $d^*$.
+We have an observation vector, say $d^\ast$.
 We have a sample of $x$'s, say $x_i$, that we pass through $y$ to get a corresponding of $y_i$'s, and then 
 sample some $\epsilon_i$'s appropriately so that we have samples $(x_i,y_i,d_i)$.
 The goal is to use these samples to learn the best possible $\hat{K}$ to transport the samples $(x_i,d_i)$ to a sample, sampled from a distribution as close as posbiele to $x\sim p(x_i|d_i)$.
