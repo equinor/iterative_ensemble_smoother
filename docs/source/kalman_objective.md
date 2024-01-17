@@ -336,7 +336,7 @@ It is however better to evaluate point 2 directly, and then discuss the symptoms
 The previous sections show that asymptotically different objectives provide the same estimator.
 This does however not mean that different objectives are equally "good".
 
-> The expected KLD (over $y\sim P(y)$) of $Q(x|y)$ to $P(x|y)$ that the updated ensemble is sampled from, is the goal.
+> The expected KLD (over $y\sim P(y)$ ) of $Q(x|y)$ to $P(x|y)$ that the updated ensemble is sampled from, is the goal.
 
 Then GLS and LS is consistent with this under specific conditions, but may be easier to apply generally.
 But are generally less efficient in evaluating method performance (in particular the LS objective).
@@ -381,9 +381,9 @@ This therefore provides guidance in developing estimates of K.
 ### Ensemble smoother
 
 The Ensemble Smoother (ES) is developed through 
-1. Sample covariance matrices ${\hat{\Sigma}_{xy}}$, ${\hat{\Sigma}_{y}}$ converges to the population quantities at an infinite ensemble size. 
-2. Find ${\hat{\Sigma}_{d}}={\hat{\Sigma}_{y}}+{\Sigma_{\epsilon}}$ which is guaranteed SPD.
-3. Solve $\hat{K}={\hat{\Sigma}_{xy}\hat{\Sigma}_{d}^{-1}}$
+1. Sample covariance matrices $`\hat{\Sigma}_{xy}`$, $`\hat{\Sigma}_{y}`$ converges to the population quantities at an infinite ensemble size. 
+2. Find $`\hat{\Sigma}_{d}=\hat{\Sigma}_y + \Sigma_{\epsilon}`$ which is guaranteed SPD.
+3. Solve $`\hat{K}=\hat{\Sigma}_{xy}\hat{\Sigma}_{d}^{-1}`$
 
 - Some structure is employed, namely that $d=y+\epsilon$ and knowledge of the noise-covariance.
 This is good.
@@ -393,7 +393,7 @@ Neither is regularization techniques to improve on the sample-covariance matrice
 The likely consequence is overfitting to training set (the ensemble), and thus spurious correlations and ensemble collapse at large dimensions.
 
 Notice that the ES solution of using sample covariances can be found as the solution of the MLE when $n>p$ and also the LS regression from $x\to y$.
-The sample cross-covariance $\hat{\Sigma}_{xy}$ is the sample-covariance $\hat{\Sigma}_{x}$ multiplied with the LLS estimate $\hat{H}$ for $Y-HX$.
+The sample cross-covariance $`\hat{\Sigma}_{xy}`$ is the sample-covariance $`\hat{\Sigma}_{x}`$ multiplied with the LLS estimate $\hat{H}$ for $Y-HX$.
 
 
 ### Adaptive localization: correlation-based model selection
@@ -440,12 +440,12 @@ The discrepancy from ES, and a poorer estimate, increaess in the dimension of $d
 ### LASSO without structure
 
 Using the same objective as for LLS, i.e. LS, which produces inefficient but unbiased estimators, can be used with other linear regression techniques.
-In particular LASSO, better solving the bias-variance tradeoff than LLS, comes to mind, due to the explainability of a sparse estimate $\hat{K}_{lasso}$.
-If both ${\Sigma_{x}}$, $H$, and ${{\Sigma}_{\epsilon}}$ are sparse, then $K$ should also be sparse.
+In particular LASSO, better solving the bias-variance tradeoff than LLS, comes to mind, due to the explainability of a sparse estimate $`\hat{K}_{lasso}`$.
+If both $`{\Sigma_{x}}`$, $H$, and $`\Sigma_{\epsilon}`$ are sparse, then $K$ should also be sparse.
 LASSO is ideally suited to learn this sparsity from data.
 The downside is that this sparsity is often known a-priori, except perhaps for the structure of $H$, but is not used to inform the regression here.
 As such, it suffers from the same problem as LLS compared to ES, but to a much larger extent.
-It likely benefits compared to ES when ${{\Sigma}_{x}}$ is sparse.
+It likely benefits compared to ES when $\Sigma_x$ is sparse.
 
 Derivations with scaling should maybe be produced, again.
 
