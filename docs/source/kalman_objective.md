@@ -358,9 +358,9 @@ Define $y=h(x)$, possibly non-linear, and $d=y+\epsilon$ where $\epsilon\sim N(0
 and $\Sigma_{\epsilon})$ is assumed diagonal.
 
 We have an observation vector, say $d^\ast$.
-We have a sample of $x$'s, say $x_i$, that we pass through $y$ to get a corresponding of $y_i$'s, and then 
+We have a sample of $x$'s, say $x_i$, that we pass through $y$ to get a corresponding sample of $y_i$'s, and then 
 sample some $\epsilon_i$'s appropriately so that we have samples $(x_i,y_i,d_i)$.
-The goal is to use these samples to learn the best possible $\hat{K}$ to transport the samples $(x_i,d_i)$ to a sample, sampled from a distribution as close as posbiele to $x\sim p(x_i|d_i)$.
+The goal is to use these samples to learn the best possible $\hat{K}$ to transport the samples $(x_i,d_i)$ to a sample, sampled from a distribution as close as possible to $x\sim p(x_i|d^\ast)$.
 
 Structure of the problem can be
 - $d=y+\epsilon$
