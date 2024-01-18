@@ -290,7 +290,7 @@ One then once again arrives at the relevant parts of the negative log-likelihood
 
 ### Least squares objective
 
-If $K-KY$ satisfies the Gauss-Markov conditions, which it does when we assume that $(x,y)$ is Gaussian and $x|y$ has a diagonal posterior covariance,
+If $X-KY$ satisfies the Gauss-Markov conditions, which it does when we assume that $(x,y)$ is Gaussian and $x|y$ has a diagonal posterior covariance,
 then the least squares objective provides the BLUE estimator when minimized
 
 $$
