@@ -127,7 +127,7 @@ the two first moments of $P$.
 Having access to the sample covariances of
 $\Sigma_{xy}$
 and $\Sigma_{y}^{-1}$
-after (maximum likelihood when $n>p$) estimation (minimizing empiricla KLD), the distribution $Q$ minimizing KLD towards $P$ is the Gaussian.
+after (maximum likelihood when $n>p$) estimation (minimizing empirical KLD), the distribution $Q$ minimizing KLD towards $P$ is the Gaussian.
 Then the Gaussian conditional transport function using Kalman gain follows.
 Therefore EnKF and ES are not just something that works in the linear-Gaussian case.
 
