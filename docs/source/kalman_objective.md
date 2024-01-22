@@ -53,7 +53,7 @@ $$
 
 For any distribution having a bijection between (the informative parts of) 
 $x$ and $y$, there exist a similar mapping, transporting a sample $(x,y)$ to $x|y$.
-The EnKF and ES variants follows from writing $y=d=Hx+\epsilon$ where 
+The EnKF and ES variants follow from writing $y=d=Hx+\epsilon$ where 
 $\epsilon\sim \mathcal{N}(0,\Sigma_{\epsilon})$, thus $\Sigma_y=H\Sigma_xH^T+\Sigma_{\epsilon}$.
 Note that $y$ is common to use as $y=Hx$ but this is not the case in the preliminaries here.
 A point of confusion is that it is indeed _not_ the observation $d$ that is "perturbed" with noise,
