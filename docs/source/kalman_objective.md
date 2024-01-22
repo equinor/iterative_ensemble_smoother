@@ -152,7 +152,7 @@ When constraining $Q$ to only encode information on the two first moments, that 
 approach yields a Gaussian distribution $Q$ even when $P$ is non-Gaussian.
 We call methods using the Kalman-gain in Gaussian transport from prior to posterior as "Kalman-type" ensemble based data assimilation methods.
 They implicitly seek to minimize information loss in this transport.
-Different Kalman-type modelling approaches essentially yields different estimates of the Kalman-gain, $K$.
+Different Kalman-type modelling approaches essentially yield different estimates of the Kalman-gain, $K$.
 The following discuss how to evaluate (on some objective, using unseen test-data)
 which Kalman-gains are superior to others.
 This turns out to be non-trivial for several common applications like the EnKF/ES due to implicit singular covariance estimates.
