@@ -119,7 +119,7 @@ $$
 
 This is the core for all of maximum likelihood estimation, information criteria, and regression and supervised learning using a negative log-likelihood as its loss function.
 
-### Why EnKF and ES works so well
+### Why EnKF and ES work so well
 
 Let $(x,y)\sim P$ possibly non-Gaussian and assume we have a finite dataset to infer a model $Q$ from.
 Arguably, the most important aspects to encode in $Q$, without any other knowledge, are 
