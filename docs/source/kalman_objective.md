@@ -63,7 +63,7 @@ If any of these points were different, it would be evident that we are not pertu
 Thus, it is incorrect and slightly confusing to say that we perturb the observations.
 It is correct to say that we sample from the distribution of $d$, accounting from both prior uncertainty _and_ observation uncertainty.
 
-Note that the EnKF and ES is intended to work (and indeed do) when $d=h(x)+\epsilon$
+Note that the EnKF and ES are intended to work (and indeed do) when $d=h(x)+\epsilon$
 for some non-linear $h$.
 The joint system is then _not_ Gaussian, and we have no $H$ and no immediate $K$.
 It turns out that the Gaussian conditional transport makes sense in a general setting,
