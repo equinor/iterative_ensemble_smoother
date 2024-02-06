@@ -305,7 +305,6 @@ class TestAdaptiveESMDA:
                     # Pass a function that always returns zero,
                     # no matter what the ensemble size is
                     correlation_threshold=zero_correlation_threshold,
-                    verbose=True,
                 )
 
             print()

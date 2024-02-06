@@ -231,9 +231,7 @@ for i, alpha_i in enumerate(smoother.alpha, 1):
     )
 
     # Assimilate data
-    X_i = adaptive_smoother.assimilate(
-        X=X_i, Y=Y_i, D=D_i, alpha=alpha_i, verbose=False
-    )
+    X_i = adaptive_smoother.assimilate(X=X_i, Y=Y_i, D=D_i, alpha=alpha_i)
 
 
 X_adaptive_posterior = np.copy(X_i)
