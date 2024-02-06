@@ -4,7 +4,7 @@ features of iterative_ensemble_smoother
 """
 import numbers
 import warnings
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Sequence, Tuple, TypeVar, Union
 
 import numpy as np
 import numpy.typing as npt
@@ -15,6 +15,8 @@ from iterative_ensemble_smoother.esmda import BaseESMDA
 from iterative_ensemble_smoother.esmda_inversion import (
     empirical_cross_covariance,
 )
+
+T = TypeVar("T")
 
 
 class AdaptiveESMDA(BaseESMDA):
@@ -145,7 +147,7 @@ class AdaptiveESMDA(BaseESMDA):
         alpha: float,
         correlation_threshold: Union[Callable[[int], float], float, None] = None,
         cov_YY: Optional[npt.NDArray[np.double]] = None,
-        verbose: bool = False,
+        progress_callback: Optional[Callable[[Sequence[T]], Sequence[T]]] = None,
     ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble X_posterior.
 
@@ -188,9 +190,14 @@ class AdaptiveESMDA(BaseESMDA):
             A 2D array of shape (num_observations, num_observations) with the
             empirical covariance of Y. If passed, this is not computed in the
             method call, potentially saving time and computation.
-        verbose : bool
-            Whether to print information.
-
+        progress_callback : Callable[[Sequence[T]], Sequence[T]] or None
+            A callback function that can be used to wrap the iteration over
+            parameters for progress reporting.
+            It should accept an iterable as input and return an iterable.
+            This allows for integration with progress reporting tools like tqdm,
+            which can provide visual feedback on the progress of the
+            assimilation process.
+            If None, no progress reporting is performed.
         Returns
         -------
         X_posterior : np.ndarray
@@ -229,6 +236,11 @@ class AdaptiveESMDA(BaseESMDA):
             correlation_threshold
         ), "`correlation_threshold` should be callable"
 
+        if progress_callback is None:
+
+            def progress_callback(x):
+                return x  # A simple pass-through function
+
         # Step 1: # Compute cross-correlation between parameters X and responses Y
         # Note: let the number of parameters be n and the number of responses be m.
         # This step requires both O(mn) computation and O(mn) storage, which is
@@ -261,7 +273,7 @@ class AdaptiveESMDA(BaseESMDA):
         significant_rows = np.any(significant_corr_XY, axis=1)
 
         # Loop only over rows with significant correlations
-        for param_num in np.where(significant_rows)[0]:
+        for param_num in progress_callback(np.where(significant_rows)[0]):
             correlated_responses = significant_corr_XY[param_num]
 
             Y_subset = Y[correlated_responses, :]
