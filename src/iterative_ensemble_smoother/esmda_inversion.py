@@ -77,7 +77,15 @@ def empirical_cross_covariance(
         X = X - np.mean(X, axis=1, keepdims=True)
 
     # Compute outer product and divide
-    cov = X @ Y.T / (X.shape[1] - 1)
+    # If X is a large matrix, it might be stored as a float32 array to save memory.
+    # However, if Y is of type float64,
+    # the resulting cross-covariance matrix will be float64,
+    # potentially doubling the memory usage even if X is float32.
+    # To prevent unnecessary memory consumption,
+    # we cast Y to the same data type as X before computing the dot product.
+    # This ensures that the output cross-covariance matrix uses memory efficiently
+    # while retaining the precision dictated by X's data type.
+    cov = X @ Y.astype(X.dtype).T / (X.shape[1] - 1)
     assert cov.shape == (X.shape[0], Y.shape[0])
     return cov
 
