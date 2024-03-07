@@ -2,6 +2,7 @@
 Contains (publicly available, but not officially supported) experimental
 features of iterative_ensemble_smoother
 """
+
 import numbers
 import warnings
 from typing import Callable, List, Optional, Sequence, Tuple, TypeVar, Union

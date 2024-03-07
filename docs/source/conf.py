@@ -1,6 +1,7 @@
 """
 iterative_ensemble_smoother documentation build configuration file.
 """
+
 import datetime
 import os
 import re
