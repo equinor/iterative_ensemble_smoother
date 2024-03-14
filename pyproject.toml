@@ -54,7 +54,9 @@ doc = [
     "scipy",
     "jinja2",
     "m2r2",
-    "myst_nb"
+    "myst_nb",
+    "tqdm",
+    "scikit-learn"
 ]
 dev = [
     "pytest",
