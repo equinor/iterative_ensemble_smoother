@@ -54,7 +54,8 @@ doc = [
     "scipy",
     "jinja2",
     "m2r2",
-    "myst_nb"
+    "myst_nb",
+    "lxml_html_clean"
 ]
 dev = [
     "pytest",
