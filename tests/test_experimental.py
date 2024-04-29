@@ -1,3 +1,4 @@
+import functools
 import time
 from copy import deepcopy
 
@@ -60,6 +61,15 @@ class TestAdaptiveESMDA:
             covariance=covariance, observations=observations, seed=1
         )
 
+        def correlation_callback(corr_matrix):
+            # A correlation threshold of 1 means that no
+            # correlations are deemed significant.
+            # Therefore, the cross-correlation matrix must
+            # not include any parameter-response pairs.
+            print(corr_matrix)
+            assert corr_matrix.shape[0] == 0
+            assert corr_matrix.shape[1] == len(observations)
+
         X_i = np.copy(X)
         alpha = normalize_alpha(np.ones(5))
         for alpha_i in alpha:
@@ -78,6 +88,7 @@ class TestAdaptiveESMDA:
                 D=D_i,
                 alpha=alpha_i,
                 correlation_threshold=1,
+                correlation_callback=correlation_callback,
             )
 
         assert np.allclose(X, X_i)
@@ -92,7 +103,7 @@ class TestAdaptiveESMDA:
         self, linear_problem
     ):
         # Create a problem with g(x) = A @ x
-        X, g, observations, covariance, rng = linear_problem
+        X, g, observations, covariance, _ = linear_problem
 
         # =============================================================================
         # SETUP ESMDA FOR LOCALIZATION AND SOLVE PROBLEM
@@ -102,6 +113,14 @@ class TestAdaptiveESMDA:
         smoother = AdaptiveESMDA(
             covariance=covariance, observations=observations, seed=1
         )
+
+        def correlation_callback(corr_matrix):
+            # A correlation threshold of 0 means that all
+            # correlations are deemed significant.
+            # Therefore, the cross-correlation matrix must
+            # include all parameter-resposne pairs.
+            assert corr_matrix.shape[0] == X.shape[0]
+            assert corr_matrix.shape[1] == len(observations)
 
         X_i = np.copy(X)
         for _, alpha_i in enumerate(alpha, 1):
@@ -121,6 +140,7 @@ class TestAdaptiveESMDA:
                 overwrite=True,
                 alpha=alpha_i,
                 correlation_threshold=0,
+                correlation_callback=functools.partial(correlation_callback),
             )
 
         # =============================================================================

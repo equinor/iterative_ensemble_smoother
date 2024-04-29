@@ -149,6 +149,7 @@ class AdaptiveESMDA(BaseESMDA):
         correlation_threshold: Union[Callable[[int], float], float, None] = None,
         cov_YY: Optional[npt.NDArray[np.double]] = None,
         progress_callback: Optional[Callable[[Sequence[T]], Sequence[T]]] = None,
+        correlation_callback: Optional[Callable[[npt.NDArray[np.double]], None]] = None,
     ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble X_posterior.
 
@@ -199,6 +200,11 @@ class AdaptiveESMDA(BaseESMDA):
             which can provide visual feedback on the progress of the
             assimilation process.
             If None, no progress reporting is performed.
+        correlation_callback : Optional[Callable]
+            A callback function that is called with the correlation matrix (2D array)
+            as its argument after the correlation matrix computation is complete.
+            The callback should handle or process the correlation matrix, such as
+            saving or logging it. The callback should not return any value.
         Returns
         -------
         X_posterior : np.ndarray
@@ -305,6 +311,9 @@ class AdaptiveESMDA(BaseESMDA):
             )
             X[[param_num], :] += cov_XY_subset @ T
 
+        if correlation_callback is not None:
+            corr_XY = self._cov_to_corr_inplace(cov_XY, stds_X, stds_Y)
+            correlation_callback(corr_XY[significant_rows])
         return X
 
 
