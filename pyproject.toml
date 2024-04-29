@@ -40,6 +40,7 @@ text = "GPL-3.0"
 [project.optional-dependencies]
 doc = [
     "sphinx",
+    "docutils<0.21",
     "pydata_sphinx_theme",
     "jupyter_sphinx",
     "sphinxcontrib.bibtex",
