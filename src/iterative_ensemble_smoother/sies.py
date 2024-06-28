@@ -240,7 +240,7 @@ class SIES:
         # Line 9
         N = self.X.shape[1]  # Ensemble members
         ans: npt.NDArray[np.double] = self.X + self.X @ self.W / np.sqrt(N - 1)
-        return ans
+        return ans.astype(responses.dtype)
 
     def propose_W(
         self, responses: npt.NDArray[np.double], step_length: float = 0.5

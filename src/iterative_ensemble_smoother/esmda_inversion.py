@@ -98,7 +98,7 @@ def normalize_alpha(alpha: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
     Examples
     --------
     >>> alpha = np.arange(10) + 1
-    >>> np.sum(1/normalize_alpha(alpha))
+    >>> float(np.sum(1/normalize_alpha(alpha)))
     1.0
     """
     factor = np.sum(1 / alpha)
