@@ -5,32 +5,32 @@ import numpy.typing as npt
 import scipy as sp  # type: ignore
 
 
-def empirical_covariance_upper(X: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
-    """Compute the upper triangular part of the empirical covariance matrix X
+def empirical_covariance_upper(Y: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
+    """Compute the upper triangular part of the empirical covariance matrix Y
     with shape (parameters, ensemble_size).
 
     Examples
     --------
-    >>> X = np.array([[-2.4, -0.3,  0.7,  0.2,  1.1],
+    >>> Y = np.array([[-2.4, -0.3,  0.7,  0.2,  1.1],
     ...               [-1.5,  0.4, -0.4, -0.9,  1. ],
     ...               [-0.1, -0.4, -0. , -0.5,  1.1]])
-    >>> empirical_covariance_upper(X)
+    >>> empirical_covariance_upper(Y)
     array([[1.873, 0.981, 0.371],
            [0.   , 0.997, 0.392],
            [0.   , 0.   , 0.407]])
 
     Naive computation:
 
-    >>> empirical_cross_covariance(X, X)
+    >>> empirical_cross_covariance(Y, Y)
     array([[1.873, 0.981, 0.371],
            [0.981, 0.997, 0.392],
            [0.371, 0.392, 0.407]])
     """
-    _, num_observations = X.shape
-    X = (X - np.mean(X, axis=1, keepdims=True)) / np.sqrt(num_observations - 1)
+    _, num_observations = Y.shape
+    Y = (Y - np.mean(Y, axis=1, keepdims=True)) / np.sqrt(num_observations - 1)
     # https://www.math.utah.edu/software/lapack/lapack-blas/dsyrk.html
-    XXT: npt.NDArray[np.double] = sp.linalg.blas.dsyrk(alpha=1.0, a=X)
-    return XXT
+    YYT: npt.NDArray[np.double] = sp.linalg.blas.dsyrk(alpha=1.0, a=Y)
+    return YYT
 
 
 def empirical_cross_covariance(
