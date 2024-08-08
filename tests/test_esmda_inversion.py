@@ -380,28 +380,27 @@ def test_inversion_exact_cholesky_ill_conditioned():
     def g_scale_observations(X, num_observations):
         """
         Function to create Y from X, resulting in ill-conditioned C_DD.
-        The rows of Y will have very different scales.
+        The second row of Y will be on a 1e9 scale compared to the first.
         """
         _, num_realizations = X.shape
+        assert num_observations == 2, "This function is designed for 2 observations"
 
-        # Create observations with very different scales across rows
         Y = np.zeros((num_observations, num_realizations))
-        for i in range(num_observations):
-            # Use exponentially increasing scales for each row
-            scale = 10 ** (i - num_observations // 2)
-            Y[i, :] = scale * (X[0, :] + 0.01 * np.random.randn(num_realizations))
+
+        # First observation
+        Y[0, :] = X[0, :] + 0.01 * rng.standard_normal(num_realizations)
+
+        # Second observation, 1e9 times larger in scale
+        Y[1, :] = 1e9 * (X[1, :] + 0.01 * rng.standard_normal(num_realizations))
 
         return Y
 
     rng = np.random.default_rng(1234)
-
     # Parameters
     num_params = 100
     num_realizations = 100
-    num_observations = 20
-
+    num_observations = 2
     X = rng.standard_normal(size=(num_params, num_realizations))
-
     Y = g_scale_observations(X, num_observations)
 
     C_D = np.ones(num_observations)
