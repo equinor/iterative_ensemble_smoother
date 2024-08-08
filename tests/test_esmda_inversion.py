@@ -396,7 +396,7 @@ def test_inversion_exact_cholesky_ill_conditioned():
         return Y
 
     rng = np.random.default_rng(1234)
-    # Parameters
+    # Settings
     num_params = 100
     num_realizations = 100
     num_observations = 2
@@ -408,7 +408,6 @@ def test_inversion_exact_cholesky_ill_conditioned():
 
     alpha = 1
 
-    # Run inversion_exact_cholesky
     inversion_exact_cholesky(
         alpha=alpha, C_D=C_D, D=D, Y=Y, X=X, truncation=1.0, return_T=False
     )
