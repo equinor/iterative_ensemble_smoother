@@ -376,6 +376,45 @@ def test_timing(num_outputs=100, num_inputs=50, ensemble_members=25):
         print("-" * 32)
 
 
+def test_inversion_exact_cholesky_ill_conditioned():
+    def g_scale_observations(X, num_observations):
+        """
+        Function to create Y from X, resulting in ill-conditioned C_DD.
+        The rows of Y will have very different scales.
+        """
+        _, num_realizations = X.shape
+
+        # Create observations with very different scales across rows
+        Y = np.zeros((num_observations, num_realizations))
+        for i in range(num_observations):
+            # Use exponentially increasing scales for each row
+            scale = 10 ** (i - num_observations // 2)
+            Y[i, :] = scale * (X[0, :] + 0.01 * np.random.randn(num_realizations))
+
+        return Y
+
+    rng = np.random.default_rng(1234)
+
+    # Parameters
+    num_params = 100
+    num_realizations = 100
+    num_observations = 20
+
+    X = rng.standard_normal(size=(num_params, num_realizations))
+
+    Y = g_scale_observations(X, num_observations)
+
+    C_D = np.ones(num_observations)
+    D = Y + rng.standard_normal(size=(num_observations, num_realizations))
+
+    alpha = 1
+
+    # Run inversion_exact_cholesky
+    inversion_exact_cholesky(
+        alpha=alpha, C_D=C_D, D=D, Y=Y, X=X, truncation=1.0, return_T=False
+    )
+
+
 if __name__ == "__main__":
     import pytest
 
