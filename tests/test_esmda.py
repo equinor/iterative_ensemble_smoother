@@ -28,6 +28,79 @@ from iterative_ensemble_smoother.esmda_inversion import empirical_cross_covarian
 from iterative_ensemble_smoother.sies import SIES
 
 
+class TestESMDARealizationsDying:
+    @pytest.mark.parametrize("seed", list(range(9)))
+    @pytest.mark.parametrize("inversion", ESMDA._inversion_methods.keys())
+    def test_that_subspaces_have_full_rank_as_realizations_die(self, seed, inversion):
+        """Consider the case with twice as many realizations as parameters.
+
+        We start with a matrix
+
+            parameters = [ identity(10) | zeros(10, 10) ] of shape (10, 20).
+
+        Then in each iteration one realizations dies, starting on the left.
+        In the prior, the first 10 realizations span a 10-dimensional space, while
+        the last 10 realizations span a 0-dimensional space.
+
+        Here we test that once the 10 first realizations have died out, the
+        10 realizations that start out as zero have been updated and span
+        a 10 dimensional subspace.
+        """
+
+        rng = np.random.default_rng(seed)
+
+        # Problem size
+        ensemble_size = 20
+        num_params = 10
+        num_responses = 100
+
+        # Create a linear mapping g
+        A = rng.normal(size=(num_responses, num_params))
+
+        def g(X):
+            return A @ X
+
+        # Inputs and outputs
+        parameters = np.zeros(shape=(num_params, ensemble_size))
+        np.fill_diagonal(parameters, 1.0)  # Identity
+
+        x_true = np.arange(num_params)
+        observations = A @ x_true + rng.normal(size=(num_responses))
+        covariance = np.ones(num_responses)
+
+        # Create smoother
+        smoother = ESMDA(
+            covariance=covariance,
+            observations=observations,
+            alpha=10,  # Number of iterations
+            seed=rng,
+            inversion=inversion,
+        )
+
+        # Initially, the first 10 realization span a 10 dimensional space
+        assert np.linalg.matrix_rank(parameters[:, :10]) == 10
+
+        # Initially, the last 10 realization span a 0 dimensional space
+        assert np.linalg.matrix_rank(parameters[:, 10:]) == 0
+
+        X_i = np.copy(parameters)
+        ensemble_mask = np.ones(ensemble_size, dtype=bool)
+
+        for iteration in range(smoother.num_assimilations()):
+            ensemble_mask[:iteration] = False
+
+            # Run model forward and assimilate on living realizations
+            Y_i = g(X_i)
+            X_i[:, ensemble_mask] = smoother.assimilate(
+                X_i[:, ensemble_mask], Y_i[:, ensemble_mask]
+            )
+
+        # In the posterior, the first 10 realization should span a 10 dimensional space
+        assert np.linalg.matrix_rank(X_i[:, :10]) == 10
+        # In the posterior, the last 10 realization should span a 10 dimensional space
+        assert np.linalg.matrix_rank(X_i[:, 10:]) == 10
+
+
 class TestESMDA:
     @pytest.mark.parametrize("num_inputs", [10, 25, 50])
     @pytest.mark.parametrize("num_outputs", [5, 25, 50])
@@ -76,7 +149,7 @@ class TestESMDA:
         assert np.allclose(X_ESMDA, X_SIES)
 
     @pytest.mark.parametrize("seed", list(range(10)))
-    @pytest.mark.parametrize("inversion", ["exact", "subspace"])
+    @pytest.mark.parametrize("inversion", ESMDA._inversion_methods.keys())
     def test_that_diagonal_covariance_gives_same_answer_as_dense(self, seed, inversion):
         rng = np.random.default_rng(seed)
 
@@ -392,7 +465,7 @@ class TestESMDAMemory:
             esmda.assimilate(X_prior, Y_prior, overwrite=True)
 
 
-@pytest.mark.parametrize("inversion", ["exact", "subspace"])
+@pytest.mark.parametrize("inversion", ESMDA._inversion_methods.keys())
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 @pytest.mark.parametrize("diagonal", [True, False])
 def test_that_float_dtypes_are_preserved(inversion, dtype, diagonal):
@@ -497,6 +570,6 @@ if __name__ == "__main__":
         args=[
             __file__,
             "-v",
-            "-k test_that_ESMDA_and_SIES_produce_same_result_with_one_step",
+            "-k TestESMDARealizationsDying",
         ]
     )

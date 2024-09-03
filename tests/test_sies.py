@@ -724,7 +724,7 @@ def test_that_ies_runs_with_failed_realizations(seed):
             responses[:, ensemble_mask], ensemble_mask=ensemble_mask, step_length=0.05
         )
 
-        # The full matrix is returned, but only X_i[:, ensemble_mask]
+        # The full matrix is returned, but only X_i[:, ensemble_mask] are active
         assert X_i.shape == parameters.shape
 
     mean_posterior_all = X_i.mean(axis=1)
@@ -800,29 +800,88 @@ def test_that_subspaces_are_still_used_as_original_realizations_fail(seed):
     assert X_i[0, 0] == 1
     assert np.allclose(X_i[1:, 0], 0)
 
-    # Variables keep getting updated
+    # Variables keep getting updated, index (i, j) != (i, j+k) for k > 0
     assert not np.allclose(X_i[1, 1:], X_i[1, 1])
     assert not np.allclose(X_i[2, 2:], X_i[2, 2])
     assert not np.allclose(X_i[3, 3:], X_i[3, 3])
 
-    # If the first 7 columns were not used, then the top 7 rows would be
+    # If the first 7 columns were not used, and the result lied in the subspace
+    # spanned by the last 3 columns, then the top 7 rows would be
     # identitally zero, but that is not the case
     assert not np.allclose(X_i[:7, ensemble_mask], 0)
 
 
+@pytest.mark.parametrize("seed", list(range(9)))
+def test_that_subspaces_have_full_rank_as_realizations_die(seed):
+    """Consider the case with twice as many realizations as parameters.
+
+    We start with a matrix
+
+        parameters = [ identity(10) | zeros(10, 10) ] of shape (10, 20).
+
+    Then in each iteration one realizations dies, starting on the left.
+    In the prior, the first 10 realizations span a 10-dimensional space, while
+    the last 10 realizations span a 0-dimensional space.
+
+    Here we test that once the 10 first realizations have died out, the
+    10 realizations that start out as zero have been updated and span
+    a 10 dimensional subspace.
+    """
+
+    rng = np.random.default_rng(seed)
+
+    # Problem size
+    ensemble_size = 20
+    num_params = 10
+    num_responses = 100
+
+    # Create a linear mapping g
+    A = rng.normal(size=(num_responses, num_params))
+
+    def g(X):
+        return A @ X
+
+    # Inputs and outputs
+    parameters = np.zeros(shape=(num_params, ensemble_size))
+    np.fill_diagonal(parameters, 1.0)  # Identity
+
+    x_true = np.arange(num_params)
+    observations = A @ x_true + rng.normal(size=(num_responses))
+    covariance = np.ones(num_responses)
+
+    # Create smoother
+    smoother = ies.SIES(
+        parameters=parameters,
+        covariance=covariance,
+        observations=observations,
+        seed=rng,
+    )
+
+    # Initially, the first 10 realization span a 10 dimensional space
+    assert np.linalg.matrix_rank(parameters[:, :10]) == 10
+
+    # Initially, the last 10 realization span a 0 dimensional space
+    assert np.linalg.matrix_rank(parameters[:, 10:]) == 0
+
+    X_i = np.copy(parameters)
+    ensemble_mask = np.ones(ensemble_size, dtype=bool)
+    for iteration in range(20):
+        ensemble_mask[:iteration] = False
+
+        # Only the living simulations get passed
+        responses = g(X_i)
+        X_i = smoother.sies_iteration(
+            responses[:, ensemble_mask], ensemble_mask=ensemble_mask, step_length=0.2
+        )
+
+    # In the posterior, the first 10 realization should span a 10 dimensional space
+    assert np.linalg.matrix_rank(X_i[:, :10]) == 10
+    # In the posterior, the last 10 realization should span a 10 dimensional space
+    assert np.linalg.matrix_rank(X_i[:, 10:]) == 10
+
+
 @pytest.mark.parametrize("ensemble_size", [5, 15, 50])
 def test_that_full_ensemble_mask_is_equal_to_no_ensemble_mask(ensemble_size):
-    """When the forward model is a simulation being run parallel on clusters,
-    some of the jobs (realizations) might fail.
-
-    Consider the case when the prior is the identity matrix I.
-    N = n = 10. In each iteration, another ensemble member "dies."
-    After 7 iteations, only the three right-most columns are still alive.
-    However, that does NOT mean that the posterior lies in the subspace
-    spanned by the three most right-most columns in the prior, since
-    in earlier iterations the algorithm is able to explore other subspaces
-    before realizations die out.
-    """
 
     rng = np.random.default_rng(42)
 
@@ -858,8 +917,7 @@ def test_that_full_ensemble_mask_is_equal_to_no_ensemble_mask(ensemble_size):
         responses[:, ensemble_mask], ensemble_mask=ensemble_mask, step_length=0.2
     )
 
-    # Create smoother new smoother, since the iteration on the previous one
-    # updates the internal state
+    # Create new smoother with no ensemble mask
     smoother2 = ies.SIES(
         parameters=parameters,
         covariance=covariance,
@@ -868,6 +926,7 @@ def test_that_full_ensemble_mask_is_equal_to_no_ensemble_mask(ensemble_size):
     )
     X_i = smoother2.sies_iteration(responses, step_length=0.2)
 
+    # Same result
     assert np.allclose(X_i_mask, X_i)
 
 
