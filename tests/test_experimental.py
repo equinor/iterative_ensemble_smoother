@@ -62,12 +62,10 @@ class TestAdaptiveESMDA:
         )
 
         def correlation_callback(corr_matrix):
-            # A correlation threshold of 1 means that no
-            # correlations are deemed significant.
-            # Therefore, the cross-correlation matrix must
-            # not include any parameter-response pairs.
+            # cross-correlation matrix contains all correlations,
+            # even those deemed insignificant.
             print(corr_matrix)
-            assert corr_matrix.shape[0] == 0
+            assert corr_matrix.shape[0] == 50
             assert corr_matrix.shape[1] == len(observations)
 
         X_i = np.copy(X)

@@ -313,7 +313,7 @@ class AdaptiveESMDA(BaseESMDA):
 
         if correlation_callback is not None:
             corr_XY = self._cov_to_corr_inplace(cov_XY, stds_X, stds_Y)
-            correlation_callback(corr_XY[significant_rows])
+            correlation_callback(corr_XY)
         return X
 
 
