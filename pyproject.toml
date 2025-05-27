@@ -39,7 +39,8 @@ text = "GPL-3.0"
 [project.optional-dependencies]
 doc = [
     "sphinx",
-    "docutils<0.21",
+    "setuptools",
+    "docutils",
     "pydata_sphinx_theme",
     "jupyter_sphinx",
     "sphinxcontrib.bibtex",
@@ -53,7 +54,7 @@ doc = [
     "numpydoc",
     "scipy",
     "jinja2",
-    "m2r2",
+    "m2r2>=0.3.3",
     "myst_nb",
     "lxml_html_clean"
 ]
