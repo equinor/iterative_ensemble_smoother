@@ -1,19 +1,14 @@
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.3.0
+    rev: v5.0.0
     hooks:
     -   id: check-json
     -   id: check-yaml
     -   id: end-of-file-fixer
     -   id: trailing-whitespace
 
--   repo: https://github.com/ambv/black
-    rev: 22.6.0
-    hooks:
-    - id: black
-
 -   repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.5.1
+    rev: v1.15.0
     hooks:
     -   id: mypy
         exclude: |
@@ -24,7 +19,7 @@ repos:
         args: [--strict, --ignore-missing-imports, --no-warn-unused-ignores]
 
 -   repo: https://github.com/codespell-project/codespell
-    rev: v2.1.0
+    rev: v2.4.1
     hooks:
     -   id: codespell
         files: ^.*\.(py|c|h|md|rst|yml)$
@@ -35,7 +30,8 @@ repos:
 
 -   repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.
-    rev: v0.0.289
+    rev: v0.11.11
     hooks:
-    -   id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
+    -   id: ruff-check
+        args: [--fix]
+    -   id: ruff-format

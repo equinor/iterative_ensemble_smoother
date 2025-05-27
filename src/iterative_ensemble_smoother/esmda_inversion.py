@@ -132,9 +132,9 @@ def singular_values_to_keep(
     2
 
     """
-    assert np.all(
-        np.diff(singular_values) <= 0
-    ), "Singular values must be sorted decreasing"
+    assert np.all(np.diff(singular_values) <= 0), (
+        "Singular values must be sorted decreasing"
+    )
     assert 0 < truncation <= 1, "Threshold must be in range (0, 1]"
     singular_values = np.array(singular_values, dtype=float)
 

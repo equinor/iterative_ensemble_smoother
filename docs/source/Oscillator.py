@@ -277,7 +277,7 @@ def iterative_smoother(A):
         plot_result(
             standard_normal_to_prior(A_current),
             response_x_axis,
-            title=f"SIES iteration {iteration+1}",
+            title=f"SIES iteration {iteration + 1}",
         )
 
 
@@ -318,5 +318,5 @@ for iteration in range(smoother.num_assimilations()):
     plot_result(
         standard_normal_to_prior(A_current),
         response_x_axis,
-        title=f"ESMDA iteration {iteration+1}",
+        title=f"ESMDA iteration {iteration + 1}",
     )

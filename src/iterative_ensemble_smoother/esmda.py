@@ -258,9 +258,9 @@ class ESMDA(BaseESMDA):
         # Verify shapes
         _, num_ensemble = X.shape
         num_outputs, num_emsemble2 = Y.shape
-        assert (
-            num_ensemble == num_emsemble2
-        ), "Number of ensemble members in X and Y must match"
+        assert num_ensemble == num_emsemble2, (
+            "Number of ensemble members in X and Y must match"
+        )
         if not np.issubdtype(X.dtype, np.floating):
             raise TypeError("Argument `X` must contain floats")
         if not np.issubdtype(Y.dtype, np.floating):

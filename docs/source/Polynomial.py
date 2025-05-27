@@ -54,7 +54,7 @@ def poly(a, b, c, x):
     return a * x**2 + b * x + c
 
 
-# True patameter values
+# True parameter values
 a_t = 0.5
 b_t = 1.0
 c_t = 3.0
@@ -130,7 +130,9 @@ Y = np.array(
 assert Y.shape == (
     num_obs,
     ensemble_size,
-), "Measured responses must be a matrix with dimensions (number of observations x number of realisations)"
+), (
+    "Measured responses must be a matrix with dimensions (number of observations x number of realisations)"
+)
 
 # %% [markdown]
 # ## Condition on observations to calculate posterior using both `ES` and `SIES`

@@ -102,7 +102,7 @@ plt.show()
 # which is using the prior (no update).
 #
 # The correlation coefficient does not take into account the uncertainty
-# represeted in the posterior, only the mean posterior value is compared with
+# represented in the posterior, only the mean posterior value is compared with
 # the true parameter values.
 # To compare distributions we could use the
 # [Kullback–Leibler divergence](https://en.wikipedia.org/wiki/Kullback%E2%80%93Leibler_divergence),
