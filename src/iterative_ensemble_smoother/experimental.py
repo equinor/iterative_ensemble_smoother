@@ -239,9 +239,9 @@ class AdaptiveESMDA(BaseESMDA):
         # Default correlation threshold function
         if correlation_threshold is None:
             correlation_threshold = self.correlation_threshold
-        assert callable(
-            correlation_threshold
-        ), "`correlation_threshold` should be callable"
+        assert callable(correlation_threshold), (
+            "`correlation_threshold` should be callable"
+        )
 
         if progress_callback is None:
 

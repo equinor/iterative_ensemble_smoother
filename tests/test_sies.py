@@ -752,7 +752,7 @@ def test_that_subspaces_are_still_used_as_original_realizations_fail(seed):
 
     Consider the case when the prior is the identity matrix I.
     N = n = 10. In each iteration, another ensemble member "dies."
-    After 7 iteations, only the three right-most columns are still alive.
+    After 7 iterations, only the three right-most columns are still alive.
     However, that does NOT mean that the posterior lies in the subspace
     spanned by the three most right-most columns in the prior, since
     in earlier iterations the algorithm is able to explore other subspaces
@@ -882,7 +882,6 @@ def test_that_subspaces_have_full_rank_as_realizations_die(seed):
 
 @pytest.mark.parametrize("ensemble_size", [5, 15, 50])
 def test_that_full_ensemble_mask_is_equal_to_no_ensemble_mask(ensemble_size):
-
     rng = np.random.default_rng(42)
 
     # Problem size

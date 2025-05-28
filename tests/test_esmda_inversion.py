@@ -233,8 +233,8 @@ class TestEsmdaInversion:
         # Approximate answers
         truncations = np.linspace(1e-8, 1, num=64)
         approximations = [
-            function(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X, truncation=trunaction)
-            for trunaction in truncations
+            function(alpha=alpha, C_D=C_D, D=D, Y=Y, X=X, truncation=truncation)
+            for truncation in truncations
         ]
 
         norms = np.array(

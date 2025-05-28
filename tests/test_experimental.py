@@ -48,7 +48,7 @@ class TestAdaptiveESMDA:
         "linear_problem",
         range(25),
         indirect=True,
-        ids=[f"seed-{i+1}" for i in range(25)],
+        ids=[f"seed-{i + 1}" for i in range(25)],
     )
     def test_that_adaptive_localization_with_cutoff_1_equals_ensemble_prior(
         self, linear_problem
@@ -95,7 +95,7 @@ class TestAdaptiveESMDA:
         "linear_problem",
         range(25),
         indirect=True,
-        ids=[f"seed-{i+1}" for i in range(25)],
+        ids=[f"seed-{i + 1}" for i in range(25)],
     )
     def test_that_adaptive_localization_with_cutoff_0_equals_standard_ESMDA_update(
         self, linear_problem
@@ -161,7 +161,7 @@ class TestAdaptiveESMDA:
         "linear_problem",
         range(25),
         indirect=True,
-        ids=[f"seed-{i+1}" for i in range(25)],
+        ids=[f"seed-{i + 1}" for i in range(25)],
     )
     @pytest.mark.parametrize(
         "cutoffs", [(0, 1e-3), (0.1, 0.2), (0.5, 0.5 + 1e-12), (0.9, 1), (1 - 1e-3, 1)]
@@ -240,15 +240,15 @@ class TestAdaptiveESMDA:
             assert generalized_variance_high <= generalized_variance_prior
 
             # A higher threshold means we assimilate less information
-            assert (
-                generalized_variance_low <= generalized_variance_high
-            ), f"2 Failed with cutoff_low={cutoff_low} and cutoff_high={cutoff_high}"
+            assert generalized_variance_low <= generalized_variance_high, (
+                f"2 Failed with cutoff_low={cutoff_low} and cutoff_high={cutoff_high}"
+            )
 
     @pytest.mark.parametrize(
         "linear_problem",
         range(25),
         indirect=True,
-        ids=[f"seed-{i+1}" for i in range(25)],
+        ids=[f"seed-{i + 1}" for i in range(25)],
     )
     def test_that_adaptive_localization_works_with_dying_realizations(
         self,
@@ -371,7 +371,7 @@ class TestAdaptiveESMDA:
         "linear_problem",
         range(25),
         indirect=True,
-        ids=[f"seed-{i+1}" for i in range(25)],
+        ids=[f"seed-{i + 1}" for i in range(25)],
     )
     def test_that_cov_YY_can_be_computed_outside_of_assimilate(
         self,
