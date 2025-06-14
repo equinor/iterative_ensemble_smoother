@@ -146,6 +146,7 @@ class AdaptiveESMDA(BaseESMDA):
         D: npt.NDArray[np.double],
         overwrite: bool = False,
         alpha: float,
+        parameter_selection_method: str = "covariance",
         correlation_threshold: Union[Callable[[int], float], float, None] = None,
         cov_YY: Optional[npt.NDArray[np.double]] = None,
         progress_callback: Optional[Callable[[Sequence[T]], Sequence[T]]] = None,
@@ -153,167 +154,196 @@ class AdaptiveESMDA(BaseESMDA):
     ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble X_posterior.
 
-            X_posterior = smoother.assimilate(X, Y, D, alpha)
+        This method updates the ensemble `X` based on observations `D` and
+        model responses `Y`. It supports two localization strategies to
+        determine which parameters to update:
 
-        This method first computes the cross-covariance and cross-correlation
-        matrices between X and Y. Then it sets correlations that are below the
-        threshold to zero. It then loops over parameters in X that are deemed
-        significant with respect to Y (based on the threshold), and updates
-        these groups together.
+        1. "covariance": (Default) Uses a statistical correlation threshold to
+           identify and update only the parameters that are significantly
+           correlated with the model responses.
+        2. "regression": Uses a sparse regression method (`linear_boost_ic_regression`)
+           to learn a linear map between parameters and responses, updating
+           only the parameters with identified non-zero coefficients.
 
         Parameters
         ----------
         X : np.ndarray
-            A 2D array of shape (num_parameters, ensemble_size). Each row
-            corresponds to a parameter in the model, and each column corresponds
-            to an ensemble member (realization).
+            A 2D array of shape (num_parameters, ensemble_size).
         Y : np.ndarray
-            2D array of shape (num_observations, ensemble_size), containing
-            responses when evaluating the model at X. In other words, Y = g(X),
-            where g is the forward model.
+            2D array of shape (num_observations, ensemble_size),
+            where Y = g(X).
         D : np.ndarray
-            2D array of shape (num_observations, ensemble_size), containing
-            perturbed observations. D = observations + mv_normal(0, covariance),
-            and D may be computed by the method `perturb_observations`.
-        alpha : float
-            The covariance inflation factor. The sequence of alphas should
-            obey the equation sum_i (1/alpha_i) = 1. However, this is NOT
-            enforced in this method. The user/caller is responsible for this.
+            2D array of shape (num_observations, ensemble_size) of
+            perturbed observations.
         overwrite: bool
-            If True, X will be overwritten and mutated.
-            If False, the method will not mutate inputs in any way.
-            Setting this to True saves memory.
-        correlation_threshold : callable or float or None
-            Either a callable with signature f(ensemble_size) -> float, or a
-            float in the range [0, 1]. Entries in the covariance matrix that
-            are lower than the correlation threshold will be set to zero.
-            If None, the default 3/sqrt(ensemble_size) is used.
-        cov_YY : np.ndarray or None
-            A 2D array of shape (num_observations, num_observations) with the
-            empirical covariance of Y. If passed, this is not computed in the
-            method call, potentially saving time and computation.
-        progress_callback : Callable[[Sequence[T]], Sequence[T]] or None
-            A callback function that can be used to wrap the iteration over
-            parameters for progress reporting.
-            It should accept an iterable as input and return an iterable.
-            This allows for integration with progress reporting tools like tqdm,
-            which can provide visual feedback on the progress of the
-            assimilation process.
-            If None, no progress reporting is performed.
-        correlation_callback : Optional[Callable]
-            A callback function that is called with the correlation matrix (2D array)
-            as its argument after the correlation matrix computation is complete.
-            The callback should handle or process the correlation matrix, such as
-            saving or logging it. The callback should not return any value.
+            If True, `X` will be mutated in-place to save memory.
+        alpha : float
+            The covariance inflation factor.
+        parameter_selection_method : str, optional
+            The method for localization: "covariance" (default) or "regression".
+        correlation_threshold : callable or float or None, optional
+            Threshold for the "covariance" method. If None, a default is used.
+        cov_YY : np.ndarray or None, optional
+            Pre-computed covariance matrix of `Y` to save computation.
+        progress_callback : Callable or None, optional
+            A callback for progress reporting (e.g., `tqdm.tqdm`).
+        correlation_callback : Callable or None, optional
+            For "covariance" method, a callback function
+            called with the correlation matrix.
+
         Returns
         -------
         X_posterior : np.ndarray
-            2D array of shape (num_parameters, ensemble_size).
+            The updated 2D array of shape (num_parameters, ensemble_size).
         """
-        assert X.shape[1] == Y.shape[1]
+        assert X.shape[1] == Y.shape[1], "X and Y must have the same ensemble size."
 
-        # Check the correlation threshold
-        is_callable = callable(correlation_threshold)
-        is_float = (
-            isinstance(correlation_threshold, numbers.Real)
-            and correlation_threshold >= 0
-            and correlation_threshold <= 1
-        )
-        is_None = correlation_threshold is None
-        if not (is_callable or is_float or is_None):
-            raise TypeError(
-                "`correlation_threshold` must be a callable or a float in [0, 1]"
-            )
-
-        # Do not overwrite input arguments
         if not overwrite:
             X = np.copy(X)
-
-        # Create `correlation_threshold` if the argument is a float
-        if is_float:
-            corr_threshold: float = correlation_threshold  # type: ignore
-
-            def correlation_threshold(ensemble_size: int) -> float:
-                return corr_threshold
-
-        # Default correlation threshold function
-        if correlation_threshold is None:
-            correlation_threshold = self.correlation_threshold
-        assert callable(correlation_threshold), (
-            "`correlation_threshold` should be callable"
-        )
 
         if progress_callback is None:
 
             def progress_callback(x):
                 return x  # A simple pass-through function
 
-        # Step 1: # Compute cross-correlation between parameters X and responses Y
-        # Note: let the number of parameters be n and the number of responses be m.
-        # This step requires both O(mn) computation and O(mn) storage, which is
-        # larger than the O(n + m^2) computation used in ESMDA, which never explicitly
-        # forms the cross-covariance matrix between X and Y. However, if we batch
-        # X by parameter group (rows), the storage requirement decreases
-        cov_XY = empirical_cross_covariance(X, Y)
-        assert cov_XY.shape == (X.shape[0], Y.shape[0])
-
-        stds_X = np.std(X, axis=1, ddof=1)
-        stds_Y = np.std(Y, axis=1, ddof=1)
-
-        corr_XY = self._cov_to_corr_inplace(cov_XY, stds_X, stds_Y)
-
-        # Determine which elements in the cross covariance matrix that will
-        # be set to zero
-        threshold = correlation_threshold(X.shape[1])
-        significant_corr_XY = np.abs(corr_XY) > threshold
-
-        cov_XY = self._corr_to_cov_inplace(corr_XY, stds_X, stds_Y)
-
-        # Pre-compute the covariance cov(Y, Y) here, and index on it later
+        # Pre-compute the covariance cov(Y, Y) here if not provided.
         if cov_YY is None:
             cov_YY = empirical_cross_covariance(Y, Y)
         else:
             assert cov_YY.ndim == 2, "'cov_YY' must be a 2D array"
             assert cov_YY.shape == (Y.shape[0], Y.shape[0])
 
-        # Identify rows with at least one significant correlation.
-        significant_rows = np.any(significant_corr_XY, axis=1)
+        if parameter_selection_method == "covariance":
+            # --- Original method: Covariance with Correlation Thresholding ---
+            is_callable = callable(correlation_threshold)
+            is_float = (
+                isinstance(correlation_threshold, numbers.Real)
+                and 0 <= correlation_threshold <= 1
+            )
+            is_None = correlation_threshold is None
+            if not (is_callable or is_float or is_None):
+                raise TypeError(
+                    "`correlation_threshold` must be a callable or a float in [0, 1]"
+                )
 
-        # Loop only over rows with significant correlations
-        for param_num in progress_callback(np.where(significant_rows)[0]):
-            correlated_responses = significant_corr_XY[param_num]
+            if is_float:
+                corr_thresh_val: float = correlation_threshold
 
-            Y_subset = Y[correlated_responses, :]
+                def threshold_func(ensemble_size: int) -> float:
+                    return corr_thresh_val
 
-            # Compute the masked arrays for these variables
-            cov_XY_mask = np.ix_([param_num], correlated_responses)
-            cov_XY_subset = cov_XY[cov_XY_mask]
+                correlation_threshold = threshold_func
+            elif is_None:
+                correlation_threshold = self.correlation_threshold
 
-            cov_YY_mask = np.ix_(correlated_responses, correlated_responses)
-            cov_YY_subset = cov_YY[cov_YY_mask]
+            assert callable(correlation_threshold)
 
-            # Slice the covariance matrix
-            C_D_subset = (
-                self.C_D[correlated_responses]
-                if self.C_D.ndim == 1
-                else self.C_D[cov_YY_mask]
+            cov_XY = empirical_cross_covariance(X, Y)
+            stds_X = np.std(X, axis=1, ddof=1)
+            stds_Y = np.std(Y, axis=1, ddof=1)
+            corr_XY = self._cov_to_corr_inplace(np.copy(cov_XY), stds_X, stds_Y)
+
+            threshold = correlation_threshold(X.shape[1])
+            significant_corr_XY = np.abs(corr_XY) > threshold
+
+            if correlation_callback is not None:
+                correlation_callback(corr_XY)
+
+            significant_rows = np.where(np.any(significant_corr_XY, axis=1))[0]
+
+            for param_num in progress_callback(significant_rows):
+                correlated_responses = significant_corr_XY[param_num]
+                if not np.any(correlated_responses):
+                    continue
+
+                Y_subset = Y[correlated_responses, :]
+                cov_XY_mask = np.ix_([param_num], correlated_responses)
+                cov_XY_subset = cov_XY[cov_XY_mask]
+                cov_YY_mask = np.ix_(correlated_responses, correlated_responses)
+                cov_YY_subset = cov_YY[cov_YY_mask]
+                C_D_subset = (
+                    self.C_D[correlated_responses]
+                    if self.C_D.ndim == 1
+                    else self.C_D[cov_YY_mask]
+                )
+                D_subset = D[correlated_responses, :]
+
+                T = self.compute_cross_covariance_multiplier(
+                    alpha=alpha,
+                    C_D=C_D_subset,
+                    D=D_subset,
+                    Y=Y_subset,
+                    cov_YY=cov_YY_subset,
+                )
+                X[[param_num], :] += cov_XY_subset @ T
+
+        elif parameter_selection_method == "regression":
+            if correlation_threshold is not None or correlation_callback is not None:
+                warnings.warn(
+                    "'correlation_threshold' and 'correlation_callback' are not used "
+                    "with the 'regression' parameter_selection_method."
+                )
+            try:
+                from graphite_maps.linear_regression import linear_boost_ic_regression
+            except ImportError as e:
+                raise ImportError(
+                    "The 'regression' parameter_selection_method"
+                    " requires 'graphite_maps'. "
+                    "Please install it to use this feature."
+                ) from e
+
+            print("Learning sparse linear map H...")
+            # How do the parameters linearly influence the observations?
+            # For each of the model responses (each column in Y.T),
+            # find the best and smallest set of model parameters
+            # (from the columns in X.T) that can linearly predict it.
+            # This function iterates through each response and performs a special kind
+            # of regression called "boosted linear regression".
+            # Y.T ≈ X.T @ H
+            # The resulting H_sparse matrix is essentially a learned
+            # sensitivity or Jacobian matrix.
+            # H is a local linear representation of the reservoir simulator
+            # like Eclipse of Flow.
+            # Each element H[i, j] represents how much observation i changes
+            # per unit change in parameter j.
+            # It's a linearization of the complex nonlinear flow physics.
+            H_sparse = linear_boost_ic_regression(U=X.T, Y=Y.T)
+            active_params = np.where(H_sparse.getnnz(axis=0) > 0)[0]
+            print(f"Found {len(active_params)} active parameters out of {X.shape[0]}.")
+
+            print("Performing parameter updates...")
+            for param_num in progress_callback(active_params):
+                correlated_responses = H_sparse[:, param_num].nonzero()[0]
+
+                if len(correlated_responses) == 0:
+                    continue
+
+                Y_subset = Y[correlated_responses, :]
+                cov_XY_subset = empirical_cross_covariance(X[[param_num], :], Y_subset)
+                cov_YY_mask = np.ix_(correlated_responses, correlated_responses)
+                cov_YY_subset = cov_YY[cov_YY_mask]
+                C_D_subset = (
+                    self.C_D[correlated_responses]
+                    if self.C_D.ndim == 1
+                    else self.C_D[cov_YY_mask]
+                )
+                D_subset = D[correlated_responses, :]
+
+                T = self.compute_cross_covariance_multiplier(
+                    alpha=alpha,
+                    C_D=C_D_subset,
+                    D=D_subset,
+                    Y=Y_subset,
+                    cov_YY=cov_YY_subset,
+                )
+                X[[param_num], :] += cov_XY_subset @ T
+
+        else:
+            raise ValueError(
+                f"Unknown parameter_selection_method: '{parameter_selection_method}'. "
+                "Available methods are 'covariance' and 'regression'."
             )
 
-            D_subset = D[correlated_responses, :]
-
-            # Compute transition matrix T
-            T = self.compute_cross_covariance_multiplier(
-                alpha=alpha,
-                C_D=C_D_subset,
-                D=D_subset,
-                Y=Y_subset,
-                cov_YY=cov_YY_subset,  # Passing cov(Y, Y) avoids re-computation
-            )
-            X[[param_num], :] += cov_XY_subset @ T
-
-        if correlation_callback is not None:
-            corr_XY = self._cov_to_corr_inplace(cov_XY, stds_X, stds_Y)
-            correlation_callback(corr_XY)
         return X
 
 

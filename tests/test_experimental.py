@@ -43,6 +43,39 @@ def linear_problem(request):
     yield X, g, observations, covariance, rng
 
 
+@pytest.fixture
+def sparse_linear_problem():
+    """
+    Creates a linear problem where half the parameters have no effect
+    on the observations. This is ideal for testing localization methods.
+    """
+    rng = np.random.default_rng(42)
+    num_parameters = 50
+    num_active_parameters = 25
+    num_observations = 10
+    num_ensemble = 200
+
+    # Create a sparse forward model operator 'A'
+    A = np.zeros((num_observations, num_parameters))
+
+    # Only the first 'num_active_parameters' have any influence
+    A[:, :num_active_parameters] = rng.standard_normal(
+        size=(num_observations, num_active_parameters)
+    )
+
+    def g(X):
+        """Forward model where only some parameters matter."""
+        return A @ X
+
+    # Create initial ensemble, observations, and covariance
+    X_prior = rng.normal(size=(num_parameters, num_ensemble))
+    x_true = np.linspace(-1, 1, num=num_parameters)
+    observations = g(x_true)
+    covariance = np.ones(num_observations)
+
+    return X_prior, g, observations, covariance, num_active_parameters
+
+
 class TestAdaptiveESMDA:
     @pytest.mark.parametrize(
         "linear_problem",
@@ -430,6 +463,45 @@ class TestAdaptiveESMDA:
             assert np.allclose(X_i1, X_i2)
 
             X_i = X_i1
+
+    def test_regression_method_only_updates_influential_parameters(
+        self, sparse_linear_problem
+    ):
+        """
+        Tests that the 'regression' method correctly identifies and updates
+        only the parameters that have a true influence on the model output.
+        """
+        X_prior, g, observations, covariance, num_active = sparse_linear_problem
+
+        # Define indices for active vs. inactive parameters
+        active_idx = np.s_[:num_active]
+        inactive_idx = np.s_[num_active:]
+
+        smoother = AdaptiveESMDA(
+            covariance=covariance, observations=observations, seed=123
+        )
+
+        Y = g(X_prior)
+        D = smoother.perturb_observations(ensemble_size=X_prior.shape[1], alpha=4.0)
+
+        # Assimilate using the regression method
+        X_posterior = smoother.assimilate(
+            X=np.copy(X_prior),
+            Y=Y,
+            D=D,
+            alpha=4.0,
+            parameter_selection_method="regression",
+        )
+
+        # 1. Assert that the influential parameters HAVE been updated
+        assert not np.allclose(X_prior[active_idx, :], X_posterior[active_idx, :]), (
+            "Active parameters were not updated."
+        )
+
+        # 2. Assert that the non-influential parameters have NOT been updated
+        assert np.allclose(X_prior[inactive_idx, :], X_posterior[inactive_idx, :]), (
+            "Inactive parameters were incorrectly updated."
+        )
 
 
 class TestRowScaling:
