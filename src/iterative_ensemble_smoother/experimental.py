@@ -448,13 +448,12 @@ class DistanceESMDA(ESMDA):
             S_inv_diag = 1.0 / np.sqrt(np.diag(self.C_D))
 
         # See Eqn (B.10)
-        U, w, _ = sp.linalg.svd(S_inv_diag[:, np.newaxis] * D_delta)
+        U, w, VT = sp.linalg.svd(S_inv_diag[:, np.newaxis] * D_delta)
         idx = singular_values_to_keep(w, truncation=truncation)
         N_r = min(N_n, N_e - 1, idx)  # Number of values in SVD to keep
         U_r, w_r = U[:, :N_r], w[:N_r]
 
         # See Eqn (B.12)
-        U_r_w_inv = U_r / w_r
         # Calculate C_hat_D, the correlation matrix of measurement errors.
         # This is defined as C_hat_D = S^-1 * C_D * S^-1
         if self.C_D.ndim == 1:
@@ -472,6 +471,7 @@ class DistanceESMDA(ESMDA):
             # This is numerically identical to the matrix multiplication (result) @ S⁻¹
             C_hat_D = C_hat_D_temp * S_inv_diag
 
+        U_r_w_inv = U_r / w_r
         # See Eqn (B.13)
         R = (
             self.alpha
