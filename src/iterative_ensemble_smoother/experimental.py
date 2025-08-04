@@ -10,6 +10,7 @@ from typing import Callable, List, Optional, Sequence, Tuple, TypeVar, Union
 import numpy as np
 import numpy.typing as npt
 import scipy as sp  # type: ignore
+from joblib import Parallel, delayed
 
 from iterative_ensemble_smoother import ESMDA
 from iterative_ensemble_smoother.esmda import BaseESMDA
@@ -138,6 +139,46 @@ class AdaptiveESMDA(BaseESMDA):
         corr_XY *= stds_Y[np.newaxis, :]
         return corr_XY
 
+    @staticmethod
+    def _update_single_parameter(
+        param_num: int,
+        correlated_responses_mask: npt.NDArray[np.bool_],
+        cov_XY_row: npt.NDArray[np.double],
+        Y: npt.NDArray[np.double],
+        D: npt.NDArray[np.double],
+        C_D: npt.NDArray[np.double],
+        cov_YY: npt.NDArray[np.double],
+        alpha: float,
+        compute_cross_covariance_multiplier: Callable,
+    ) -> Tuple[int, npt.NDArray[np.double]]:
+        """
+        Worker function to compute the update for a single parameter.
+        """
+
+        cov_XY_subset = cov_XY_row[correlated_responses_mask].reshape(1, -1)
+
+        Y_subset = Y[correlated_responses_mask, :]
+        D_subset = D[correlated_responses_mask, :]
+
+        cov_YY_mask = np.ix_(correlated_responses_mask, correlated_responses_mask)
+        cov_YY_subset = cov_YY[cov_YY_mask]
+
+        C_D_subset = (
+            C_D[correlated_responses_mask] if C_D.ndim == 1 else C_D[cov_YY_mask]
+        )
+
+        T = compute_cross_covariance_multiplier(
+            alpha=alpha,
+            C_D=C_D_subset,
+            D=D_subset,
+            Y=Y_subset,
+            cov_YY=cov_YY_subset,
+        )
+
+        update_vector = cov_XY_subset @ T
+
+        return param_num, update_vector
+
     def assimilate(
         self,
         *,
@@ -150,6 +191,7 @@ class AdaptiveESMDA(BaseESMDA):
         cov_YY: Optional[npt.NDArray[np.double]] = None,
         progress_callback: Optional[Callable[[Sequence[T]], Sequence[T]]] = None,
         correlation_callback: Optional[Callable[[npt.NDArray[np.double]], None]] = None,
+        n_jobs: int = 1,
     ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble X_posterior.
 
@@ -205,6 +247,10 @@ class AdaptiveESMDA(BaseESMDA):
             as its argument after the correlation matrix computation is complete.
             The callback should handle or process the correlation matrix, such as
             saving or logging it. The callback should not return any value.
+        n_jobs : int
+            The number of parallel jobs to run. If 1, no parallel processing
+            is used. If -1, all available CPU cores are used. Default is 1.
+
         Returns
         -------
         X_posterior : np.ndarray
@@ -231,7 +277,7 @@ class AdaptiveESMDA(BaseESMDA):
 
         # Create `correlation_threshold` if the argument is a float
         if is_float:
-            corr_threshold: float = correlation_threshold  # type: ignore
+            corr_threshold: float = correlation_threshold
 
             def correlation_threshold(ensemble_size: int) -> float:
                 return corr_threshold
@@ -280,40 +326,32 @@ class AdaptiveESMDA(BaseESMDA):
         significant_rows = np.any(significant_corr_XY, axis=1)
 
         # Loop only over rows with significant correlations
-        for param_num in progress_callback(np.where(significant_rows)[0]):
-            correlated_responses = significant_corr_XY[param_num]
+        params_to_update = np.where(significant_rows)[0]
 
-            Y_subset = Y[correlated_responses, :]
-
-            # Compute the masked arrays for these variables
-            cov_XY_mask = np.ix_([param_num], correlated_responses)
-            cov_XY_subset = cov_XY[cov_XY_mask]
-
-            cov_YY_mask = np.ix_(correlated_responses, correlated_responses)
-            cov_YY_subset = cov_YY[cov_YY_mask]
-
-            # Slice the covariance matrix
-            C_D_subset = (
-                self.C_D[correlated_responses]
-                if self.C_D.ndim == 1
-                else self.C_D[cov_YY_mask]
+        results = Parallel(n_jobs=n_jobs)(
+            delayed(self._update_single_parameter)(
+                param_num,
+                significant_corr_XY[param_num],
+                cov_XY[param_num],
+                # These are sent in full, which is efficient as they are the same
+                # for all workers. Joblib handles this well.
+                Y,
+                D,
+                self.C_D,
+                cov_YY,
+                alpha,
+                self.compute_cross_covariance_multiplier,
             )
+            for param_num in progress_callback(params_to_update)
+        )
 
-            D_subset = D[correlated_responses, :]
-
-            # Compute transition matrix T
-            T = self.compute_cross_covariance_multiplier(
-                alpha=alpha,
-                C_D=C_D_subset,
-                D=D_subset,
-                Y=Y_subset,
-                cov_YY=cov_YY_subset,  # Passing cov(Y, Y) avoids re-computation
-            )
-            X[[param_num], :] += cov_XY_subset @ T
+        for param_num, update_vector in results:
+            X[[param_num], :] += update_vector
 
         if correlation_callback is not None:
             corr_XY = self._cov_to_corr_inplace(cov_XY, stds_X, stds_Y)
             correlation_callback(corr_XY)
+
         return X
 
 

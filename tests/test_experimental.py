@@ -431,6 +431,92 @@ class TestAdaptiveESMDA:
 
             X_i = X_i1
 
+    @pytest.fixture()
+    def large_linear_problem(self):
+        """
+        Creates a problem large enough to realistically benchmark parallelization.
+        """
+        rng = np.random.default_rng(42)  # Use a fixed seed for reproducibility
+
+        num_parameters = 5000
+        num_observations = 200
+        num_ensemble = 200
+
+        A = np.exp(rng.standard_normal(size=(num_observations, num_parameters)))
+
+        def g(X):
+            """Forward model."""
+            return A @ X
+
+        x_true = np.linspace(-1, 1, num=num_parameters)
+        observations = g(x_true) + rng.standard_normal(size=num_observations) / 10
+
+        X = rng.normal(size=(num_parameters, num_ensemble))
+        covariance = rng.triangular(0.1, 1, 1, size=num_observations)
+        yield X, g, observations, covariance
+
+    def test_parallelization_runtime_comparison(self, large_linear_problem):
+        """
+        Compares the runtime of the assimilate method with and without parallelization.
+        """
+        X, g, observations, covariance = large_linear_problem
+
+        # Use a single assimilation step for a clear comparison
+        alpha = 1.0
+
+        # --- Setup the smoother and common data ---
+        smoother = AdaptiveESMDA(
+            covariance=covariance, observations=observations, seed=1
+        )
+        Y = g(X)
+        D = smoother.perturb_observations(ensemble_size=Y.shape[1], alpha=alpha)
+
+        # Make separate copies for each run to ensure a fair start
+        X_serial = np.copy(X)
+        X_parallel = np.copy(X)
+
+        # --- 1. Serial Execution ---
+        print("\n--- Running Serial Benchmark (n_jobs=1) ---")
+        start_serial = time.perf_counter()
+        X_serial = smoother.assimilate(
+            X=X_serial,
+            Y=Y,
+            D=D,
+            alpha=alpha,
+            correlation_threshold=0,  # Force the code to update every single parameter.
+            n_jobs=1,
+        )
+        end_serial = time.perf_counter()
+        time_serial = end_serial - start_serial
+        print(f"Serial execution time: {time_serial:.4f} seconds")
+
+        # --- 2. Parallel Execution ---
+        print("\n--- Running Parallel Benchmark (n_jobs=-1) ---")
+        start_parallel = time.perf_counter()
+        X_parallel = smoother.assimilate(
+            X=X_parallel,
+            Y=Y,
+            D=D,
+            alpha=alpha,
+            correlation_threshold=0,  # Force the code to update every single parameter.
+            n_jobs=-1,
+        )
+        end_parallel = time.perf_counter()
+        time_parallel = end_parallel - start_parallel
+        print(f"Parallel execution time: {time_parallel:.4f} seconds")
+
+        # --- 3. Verification and Summary ---
+        print("\n--- Benchmark Summary ---")
+        # Critical check: ensure both methods produce the same result
+        assert np.allclose(X_serial, X_parallel)
+        print("✅ Numerical results are identical.")
+
+        if time_parallel > 0:
+            speedup = time_serial / time_parallel
+            print(f"🚀 Speedup factor: {speedup:.2f}x")
+
+        assert time_serial > time_parallel
+
 
 class TestRowScaling:
     def test_that_row_scaling_updates_parameters(self):
