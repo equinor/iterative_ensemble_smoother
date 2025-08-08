@@ -1,0 +1,51 @@
+localisation:
+  # Result file format (for summary observations) can be a csv file with columns:
+  # field_name  ert-id  xpos, ypos  xrange yrange rotation  tapering_function_name
+  result_summary_obs_file: summary_obs.csv
+  result_localisation_obs_file: summary_obs_with_localization_attributes.csv
+  expand_wildcards: True
+  rms_settings:
+    use_well_head_position: True
+    grid_model: "Geogrid_Valysar"
+    blocked_well_set: "BW"
+    trajectory: "Drilled trajectory"
+  input_files:
+    well_renaming_table: ../input/well_modelling/well_info/rms_eclipse.renaming_table
+    ert_summary_obs_file: ../../ert/input/observations/drogon_wbhp_rft_wct_gor_tracer_4d_plt.obs
+    rms_field_correlation_file: ../input/config/aps/correlation_ranges.txt # Not yet used
+    ert_config_field_param_file: ../../ert/input/config/ahm_field_aps.ert
+
+  zone_codes:
+    Valysar: 1
+    Therys: 2
+    Volon: 3
+    
+  default_field_settings:
+    ranges: [1000.0,  1000.0, 45.0] # (main_range, perpendicular_range, rotation)
+    min_range_hwell: 150
+    mult_hwell_length: 1.5
+
+  # Select scaling function (how scaling factor decreases from 1 to 0 as function of distance from position of observation)
+  #tapering: "gauss"
+  
+  # Individual settings per field that is explicitly specified,
+  # but common settings for all obs_types, all wells found in summary observations.
+  # For fields not specified, use default settings.
+  # These settings will override the default_field_settings.
+  field_settings:
+    - zone_name: [all]
+      obs_type: [WWCT, WGOR]
+      well_names: [all]
+      ranges: [1500.0,  1500.0, 45.0]
+    - zone_name: [all]
+      obs_type: [WBHP]
+      well_names: [all]
+      ranges: [800.0,  800.0, 45.0]
+
+
+    
+
+  
+
+
+
