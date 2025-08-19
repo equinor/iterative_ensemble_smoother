@@ -19,8 +19,9 @@ from typing import Any
 
 import xtgeo
 import yaml
+import polars as pl
 
-CONFIG_PATH = "/private/olia/IES_NEW/"
+CONFIG_PATH = "/private/olia/IES_DL/"
 FILENAME = "example_config_to_get_pos_and_loc_params_from_rms.yml"
 CONFIG_FILE = CONFIG_PATH + FILENAME
 PRJ = project  # RMS project
@@ -575,7 +576,7 @@ def check_specified_strings(
 
 
 def write_result_summary_obs(
-    filename: str, all_obs_dict: dict, allow_overwrite: bool = False
+    filename: str, all_obs_dict: dict, allow_overwrite: bool = False, use_polars=True,
 ) -> None:
     """
     Write csv file with following columns:
@@ -603,53 +604,85 @@ def write_result_summary_obs(
     max_error_header = "MAX_ERROR"
     zone_name_header = "ZONE"
 
-    max_summary_vector_length = 12
-    for key, obs_dict in all_obs_dict.items():
-        (zone_name, ert_id) = key
-        summary_vector = obs_dict["summary_vector"]
-        if max_summary_vector_length < len(summary_vector):
-            max_summary_vector_length = len(summary_vector)
-
-    max_summary_vector_length += 2
-
-    max_dates_length = 12
-    max_value_length = 12
-    max_zone_name_length = 12
-    with open(filename, "w") as file:
-        # Heading
-        content = ""
-        content += f"{summary_vector_header:<{max_summary_vector_length}}"
-        content += f"{date_header:<{max_dates_length}}"
-        content += f"{value_header:>{max_value_length}}"
-        content += f"{error_header:>{max_value_length}}"
-        content += f"{min_error_header:>{max_value_length}}"
-        content += f"{max_error_header:>{max_value_length}}"
-        content += f"{zone_name_header:>{max_zone_name_length}}"
-        content += "\n"
-        file.write(content)
-
+    if not use_polars:
+        max_summary_vector_length = 12
         for key, obs_dict in all_obs_dict.items():
             (zone_name, ert_id) = key
             summary_vector = obs_dict["summary_vector"]
-            value = float(obs_dict["value"])
-            error = float(obs_dict["error"])
-            date = obs_dict["date"]
-            min_error = 0.5 * error
-            max_error = 1.5 * error
+            if max_summary_vector_length < len(summary_vector):
+                max_summary_vector_length = len(summary_vector)
+
+        max_summary_vector_length += 2
+
+        max_dates_length = 12
+        max_value_length = 12
+        max_zone_name_length = 12
+        with open(filename, "w") as file:
+            # Heading
             content = ""
-            content += f"{summary_vector:<{max_summary_vector_length}}"
-            content += f"{date:<{max_dates_length}}"
-            content += f"{value:{max_value_length}.2f}"
-            content += f"{error:{max_value_length}.2f}"
-            content += f"{min_error:{max_value_length}.2f}"
-            content += f"{max_error:{max_value_length}.2f}"
-            content += f"{zone_name:>{max_zone_name_length}}"
+            content += f"{summary_vector_header:<{max_summary_vector_length}}"
+            content += f"{date_header:<{max_dates_length}}"
+            content += f"{value_header:>{max_value_length}}"
+            content += f"{error_header:>{max_value_length}}"
+            content += f"{min_error_header:>{max_value_length}}"
+            content += f"{max_error_header:>{max_value_length}}"
+            content += f"{zone_name_header:>{max_zone_name_length}}"
             content += "\n"
             file.write(content)
 
+            for key, obs_dict in all_obs_dict.items():
+                (zone_name, ert_id) = key
+                summary_vector = obs_dict["summary_vector"]
+                value = float(obs_dict["value"])
+                error = float(obs_dict["error"])
+                date = obs_dict["date"]
+                min_error = 0.5 * error
+                max_error = 1.5 * error
+                content = ""
+                content += f"{summary_vector:<{max_summary_vector_length}}"
+                content += f"{date:<{max_dates_length}}"
+                content += f"{value:{max_value_length}.2f}"
+                content += f"{error:{max_value_length}.2f}"
+                content += f"{min_error:{max_value_length}.2f}"
+                content += f"{max_error:{max_value_length}.2f}"
+                content += f"{zone_name:>{max_zone_name_length}}"
+                content += "\n"
+                file.write(content)
+    else:
+        summary_vector = []
+        value_list = []
+        error_list = []
+        date_list = []
+        zone_list = []
+        ert_id_list = []
+        min_error_list = []
+        max_error_list = []
+        for key, obs_dict in all_obs_dict.items():
+            (zone_name, ert_id) = key
+            summary_vector.append(obs_dict["summary_vector"])
+            value_list.append(float(obs_dict["value"]))
+            error = float(obs_dict["error"])
+            error_list.append(error)
+            min_error_list.append(error * 0.5) # TODO What should this be?
+            max_error_list.append(error * 1.5) # TODO What should this be?
+            date_list.append(obs_dict["date"])
+            zone_list.append(zone_name)
+            ert_id_list.append(ert_id)
+        data_dict = {
+            "ert_id": ert_id_list,
+            "summary_vector": summary_vector,
+            "date": date_list,
+            "value": value_list,
+            "error": error_list,
+            "min_error": min_error_list,
+            "max_error": max_error_list,
+            "zone_name": zone_list,
+        }
+        df = pl.DataFrame(data_dict)
+        df.write_csv(filename,separator=' ')
 
 def write_localisation_obs_attributes(
-    filename: str, all_obs_dict: dict, allow_overwrite: bool = False
+    filename: str, all_obs_dict: dict, allow_overwrite: bool = False, use_polars=True,
 ) -> None:
     """
     Write csv file with following columns:
@@ -677,57 +710,168 @@ def write_localisation_obs_attributes(
     main_range_header = "MAIN_RANGE"
     perp_range_header = "PERP_RANGE"
     rotation_angle_header = "AZIMUTH"
-
-    max_summary_vector_length = 12
-    max_zone_name_length = 12
-    max_range_length = 12
-    max_angle_length = 12
-    for key, obs_dict in all_obs_dict.items():
-        (zone_name, ert_id) = key
-        if max_zone_name_length < len(zone_name):
-            max_zone_name_length = len(zone_name)
-
-    max_summary_vector_length += 2
-    max_zone_name_length += 2
-    max_value_length = 12
-    with open(filename, "w") as file:
-        # Heading
-        content = ""
-        content += f"{summary_vector_header:<{max_summary_vector_length}}"
-        content += f"{xpos_header:>{max_value_length}}"
-        content += f"{ypos_header:>{max_value_length}}"
-        content += f"{main_range_header:>{max_range_length}}"
-        content += f"{perp_range_header:>{max_range_length}}"
-        content += f"{rotation_angle_header:>{max_angle_length}}"
-        content += f"{zone_name_header:>{max_zone_name_length}}"
-        content += "\n"
-        file.write(content)
-
-        localisation_param_written = {}
+    if not use_polars:
+        max_summary_vector_length = 12
+        max_zone_name_length = 12
+        max_range_length = 12
+        max_angle_length = 12
         for key, obs_dict in all_obs_dict.items():
             (zone_name, ert_id) = key
-            summary_vector = obs_dict["summary_vector"]
-            key_written = (zone_name, summary_vector)
-            if key_written in localisation_param_written:
-                continue
+            if max_zone_name_length < len(zone_name):
+                max_zone_name_length = len(zone_name)
 
-            xpos = float(obs_dict["xpos"])
-            ypos = float(obs_dict["ypos"])
-            main_range = float(obs_dict["main_range"])
-            perp_range = float(obs_dict["perp_range"])
-            rotation_angle = float(obs_dict["anisotropy_angle"])
+        max_summary_vector_length += 2
+        max_zone_name_length += 2
+        max_value_length = 12
+        with open(filename, "w") as file:
+            # Heading
             content = ""
-            content += f"{summary_vector:<{max_summary_vector_length}}"
-            content += f"{xpos:{max_value_length}.1f}"
-            content += f"{ypos:{max_value_length}.1f}"
-            content += f"{main_range:{max_range_length}.1f}"
-            content += f"{perp_range:{max_range_length}.1f}"
-            content += f"{rotation_angle:{max_angle_length}.1f}"
-            content += f"{zone_name:>{max_zone_name_length}}"
+            content += f"{summary_vector_header:<{max_summary_vector_length}}"
+            content += f"{xpos_header:>{max_value_length}}"
+            content += f"{ypos_header:>{max_value_length}}"
+            content += f"{main_range_header:>{max_range_length}}"
+            content += f"{perp_range_header:>{max_range_length}}"
+            content += f"{rotation_angle_header:>{max_angle_length}}"
+            content += f"{zone_name_header:>{max_zone_name_length}}"
             content += "\n"
             file.write(content)
 
-            localisation_param_written[key_written] = True
+            localisation_param_written = {}
+            for key, obs_dict in all_obs_dict.items():
+                (zone_name, ert_id) = key
+                summary_vector = obs_dict["summary_vector"]
+                key_written = (zone_name, summary_vector)
+                if key_written in localisation_param_written:
+                    continue
+
+                xpos = float(obs_dict["xpos"])
+                ypos = float(obs_dict["ypos"])
+                main_range = float(obs_dict["main_range"])
+                perp_range = float(obs_dict["perp_range"])
+                rotation_angle = float(obs_dict["anisotropy_angle"])
+                content = ""
+                content += f"{summary_vector:<{max_summary_vector_length}}"
+                content += f"{xpos:{max_value_length}.1f}"
+                content += f"{ypos:{max_value_length}.1f}"
+                content += f"{main_range:{max_range_length}.1f}"
+                content += f"{perp_range:{max_range_length}.1f}"
+                content += f"{rotation_angle:{max_angle_length}.1f}"
+                content += f"{zone_name:>{max_zone_name_length}}"
+                content += "\n"
+                file.write(content)
+
+                localisation_param_written[key_written] = True
+    else:
+        summary_vector = []
+        xpos_list = []
+        ypos_list = []
+        main_range_list = []
+        perp_range_list = []
+        azimuth_list = []
+        zone_list = []
+        ert_id_list = []
+
+        for key, obs_dict in all_obs_dict.items():
+            (zone_name, ert_id) = key
+
+            summary_vector.append(obs_dict["summary_vector"])
+            xpos_list.append(float(obs_dict["xpos"]))
+            ypos_list.append(float(obs_dict["ypos"]))
+            main_range_list.append(float(obs_dict["main_range"]))
+            perp_range_list.append(float(obs_dict["perp_range"]))
+            azimuth_list.append(float(obs_dict["anisotropy_angle"]))
+            zone_list.append(zone_name)
+            ert_id_list.append(ert_id)
+        data_dict = {
+            "ert_id": ert_id_list,
+            "summary_vector": summary_vector,
+            "xpos": xpos_list,
+            "ypos": ypos_list,
+            "main_range": main_range_list,
+            "perp_range": perp_range_list,
+            "azimuth": azimuth_list,
+            "zone_name": zone_list,
+        }
+        df = pl.DataFrame(data_dict)
+        df.write_csv(filename,separator=' ')
+
+def write_obs_with_localization(
+    filename: str, all_obs_dict: dict, allow_overwrite: bool = False,
+) -> None:
+    """
+    Write csv file with following columns:
+    - ert_id
+    - summary_vector
+    - date
+    - obs_value
+    - obs_error
+    - min_error
+    - max_error
+    - xpos
+    - ypos
+    - range1
+    - range2
+    - angle
+    - zone_name
+    """
+
+    filepath = Path(filename)
+    if filepath.exists() and not allow_overwrite:
+        raise IOError(
+            f"The file {filename} already exists. "
+            "Choose another filename to write ERT summary observations."
+        )
+    print(f"Write file:  {filename}")
+    ert_id_list = []
+    summary_vector = []
+    date_list = []
+    value_list = []
+    error_list = []
+    min_error_list = []
+    max_error_list = []
+    xpos_list = []
+    ypos_list = []
+    main_range_list = []
+    perp_range_list = []
+    azimuth_list = []
+    zone_list = []
+
+    for key, obs_dict in all_obs_dict.items():
+        (zone_name, ert_id) = key
+        ert_id_list.append(ert_id)
+        summary_vector.append(obs_dict["summary_vector"])
+        date_list.append(obs_dict["date"])
+        value_list.append(float(obs_dict["value"]))
+        error = float(obs_dict["error"])
+        error_list.append(error)
+        min_error_list.append(error * 0.5) # TODO What should this be?
+        max_error_list.append(error * 1.5) # TODO What should this be?
+        xpos_list.append(float(obs_dict["xpos"]))
+        ypos_list.append(float(obs_dict["ypos"]))
+        main_range_list.append(float(obs_dict["main_range"]))
+        perp_range_list.append(float(obs_dict["perp_range"]))
+        azimuth_list.append(float(obs_dict["anisotropy_angle"]))
+        zone_list.append(zone_name)
+
+        data_dict = {
+            "ert_id": ert_id_list,
+            "summary_vector": summary_vector,
+            "date": date_list,
+            "value": value_list,
+            "error": error_list,
+            "min_error": min_error_list,
+            "max_error": max_error_list,
+            "xpos": xpos_list,
+            "ypos": ypos_list,
+            "main_range": main_range_list,
+            "perp_range": perp_range_list,
+            "azimuth": azimuth_list,
+            "zone_name": zone_list,
+        }
+
+    df = pl.DataFrame(data_dict)
+    df.write_csv(filename,separator=' ')
+
 
 
 def create_obs_local(project, config_file):
@@ -898,10 +1042,11 @@ def create_obs_local(project, config_file):
             output_dict[key] = obs_localisation_dict
 
     # Write result
-    write_result_summary_obs(result_summary_obs_file, output_dict, allow_overwrite=True)
-    write_localisation_obs_attributes(
-        result_localisation_obs_file, output_dict, allow_overwrite=True
-    )
+    write_result_summary_obs(result_summary_obs_file, output_dict, allow_overwrite=True, use_polars=True)
+#    write_localisation_obs_attributes(
+#        result_localisation_obs_file, output_dict, allow_overwrite=True, use_polars=True,
+#    )
+    write_obs_with_localization(result_localisation_obs_file, output_dict, allow_overwrite=True)
 
 
 if __name__ == "__main__":

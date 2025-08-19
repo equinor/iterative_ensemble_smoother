@@ -2,7 +2,7 @@ localisation:
   # Result file format (for summary observations) can be a csv file with columns:
   # field_name  ert-id  xpos, ypos  xrange yrange rotation  tapering_function_name
   result_summary_obs_file: summary_obs.csv
-  result_localisation_obs_file: localisation_obs_attributes.csv
+  result_localisation_obs_file: summary_obs_with_localization_attributes.csv
   expand_wildcards: True
   rms_settings:
     use_well_head_position: True
