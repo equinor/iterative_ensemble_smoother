@@ -10,6 +10,11 @@ specified by the user as input in a config file to the script.
 Output files: A csv file for observations and a csv file with localisation attribute
 per well and obs type
 
+Assumptions about input data:
+Field parameter names are read from ERT config file (the FIELD keywords)
+The zone names per field parameter is defined by using APS naming convention of field parameters where
+zone name is part of the field parameter name.
+
 """
 
 import copy
@@ -17,9 +22,9 @@ import math
 from pathlib import Path
 from typing import Any
 
+import polars as pl
 import xtgeo
 import yaml
-import polars as pl
 
 CONFIG_PATH = "/private/olia/IES_DL/"
 FILENAME = "example_config_to_get_pos_and_loc_params_from_rms.yml"
@@ -305,7 +310,7 @@ def get_ranges(input_dict: dict, kw: str, parent_kw: str) -> tuple:
     if len(ranges) != 3:
         raise ValueError(
             "Expect 3 range parameters for influence ellipse: "
-            "MainRange, PerpendicularRange, RotationAngle."
+            "MainRange, PerpendicularRange, AnisotropyAngle."
             "Range parameters must be postive, but angle can also be 0."
             "Angle is expected to be in degrees measured "
             "from x-axis in anticlock direction."
@@ -576,7 +581,10 @@ def check_specified_strings(
 
 
 def write_result_summary_obs(
-    filename: str, all_obs_dict: dict, allow_overwrite: bool = False, use_polars=True,
+    filename: str,
+    all_obs_dict: dict,
+    allow_overwrite: bool = False,
+    use_polars=True,
 ) -> None:
     """
     Write csv file with following columns:
@@ -663,8 +671,8 @@ def write_result_summary_obs(
             value_list.append(float(obs_dict["value"]))
             error = float(obs_dict["error"])
             error_list.append(error)
-            min_error_list.append(error * 0.5) # TODO What should this be?
-            max_error_list.append(error * 1.5) # TODO What should this be?
+            min_error_list.append(error * 0.5)  # TODO What should this be?
+            max_error_list.append(error * 1.5)  # TODO What should this be?
             date_list.append(obs_dict["date"])
             zone_list.append(zone_name)
             ert_id_list.append(ert_id)
@@ -679,10 +687,14 @@ def write_result_summary_obs(
             "zone_name": zone_list,
         }
         df = pl.DataFrame(data_dict)
-        df.write_csv(filename,separator=' ')
+        df.write_csv(filename, separator=" ")
+
 
 def write_localisation_obs_attributes(
-    filename: str, all_obs_dict: dict, allow_overwrite: bool = False, use_polars=True,
+    filename: str,
+    all_obs_dict: dict,
+    allow_overwrite: bool = False,
+    use_polars=True,
 ) -> None:
     """
     Write csv file with following columns:
@@ -709,7 +721,7 @@ def write_localisation_obs_attributes(
     ypos_header = "YPOS"
     main_range_header = "MAIN_RANGE"
     perp_range_header = "PERP_RANGE"
-    rotation_angle_header = "AZIMUTH"
+    anisotropy_angle_header = "ANISOTROPY_ANGLE"
     if not use_polars:
         max_summary_vector_length = 12
         max_zone_name_length = 12
@@ -731,7 +743,7 @@ def write_localisation_obs_attributes(
             content += f"{ypos_header:>{max_value_length}}"
             content += f"{main_range_header:>{max_range_length}}"
             content += f"{perp_range_header:>{max_range_length}}"
-            content += f"{rotation_angle_header:>{max_angle_length}}"
+            content += f"{anisotropy_angle_header:>{max_angle_length}}"
             content += f"{zone_name_header:>{max_zone_name_length}}"
             content += "\n"
             file.write(content)
@@ -748,14 +760,14 @@ def write_localisation_obs_attributes(
                 ypos = float(obs_dict["ypos"])
                 main_range = float(obs_dict["main_range"])
                 perp_range = float(obs_dict["perp_range"])
-                rotation_angle = float(obs_dict["anisotropy_angle"])
+                anisotropy_angle = float(obs_dict["anisotropy_angle"])
                 content = ""
                 content += f"{summary_vector:<{max_summary_vector_length}}"
                 content += f"{xpos:{max_value_length}.1f}"
                 content += f"{ypos:{max_value_length}.1f}"
                 content += f"{main_range:{max_range_length}.1f}"
                 content += f"{perp_range:{max_range_length}.1f}"
-                content += f"{rotation_angle:{max_angle_length}.1f}"
+                content += f"{anisotropy_angle:{max_angle_length}.1f}"
                 content += f"{zone_name:>{max_zone_name_length}}"
                 content += "\n"
                 file.write(content)
@@ -767,7 +779,7 @@ def write_localisation_obs_attributes(
         ypos_list = []
         main_range_list = []
         perp_range_list = []
-        azimuth_list = []
+        anisotropy_angle_list = []
         zone_list = []
         ert_id_list = []
 
@@ -779,7 +791,7 @@ def write_localisation_obs_attributes(
             ypos_list.append(float(obs_dict["ypos"]))
             main_range_list.append(float(obs_dict["main_range"]))
             perp_range_list.append(float(obs_dict["perp_range"]))
-            azimuth_list.append(float(obs_dict["anisotropy_angle"]))
+            anisotropy_angle_list.append(float(obs_dict["anisotropy_angle"]))
             zone_list.append(zone_name)
             ert_id_list.append(ert_id)
         data_dict = {
@@ -789,18 +801,21 @@ def write_localisation_obs_attributes(
             "ypos": ypos_list,
             "main_range": main_range_list,
             "perp_range": perp_range_list,
-            "azimuth": azimuth_list,
+            "anisotropy_angle": anisotropy_angle_list,
             "zone_name": zone_list,
         }
         df = pl.DataFrame(data_dict)
-        df.write_csv(filename,separator=' ')
+        df.write_csv(filename, separator=" ")
+
 
 def write_obs_with_localization(
-    filename: str, all_obs_dict: dict, allow_overwrite: bool = False,
+    filename: str,
+    all_obs_dict: dict,
+    allow_overwrite: bool = False,
 ) -> None:
     """
     Write csv file with following columns:
-    - ert_id
+    - observation_key
     - summary_vector
     - date
     - obs_value
@@ -833,7 +848,7 @@ def write_obs_with_localization(
     ypos_list = []
     main_range_list = []
     perp_range_list = []
-    azimuth_list = []
+    anisotropy_angle_list = []
     zone_list = []
 
     for key, obs_dict in all_obs_dict.items():
@@ -844,17 +859,17 @@ def write_obs_with_localization(
         value_list.append(float(obs_dict["value"]))
         error = float(obs_dict["error"])
         error_list.append(error)
-        min_error_list.append(error * 0.5) # TODO What should this be?
-        max_error_list.append(error * 1.5) # TODO What should this be?
+        min_error_list.append(error * 0.5)  # TODO What should this be?
+        max_error_list.append(error * 1.5)  # TODO What should this be?
         xpos_list.append(float(obs_dict["xpos"]))
         ypos_list.append(float(obs_dict["ypos"]))
         main_range_list.append(float(obs_dict["main_range"]))
         perp_range_list.append(float(obs_dict["perp_range"]))
-        azimuth_list.append(float(obs_dict["anisotropy_angle"]))
+        anisotropy_angle_list.append(float(obs_dict["anisotropy_angle"]))
         zone_list.append(zone_name)
 
         data_dict = {
-            "ert_id": ert_id_list,
+            "observation_key": ert_id_list,
             "summary_vector": summary_vector,
             "date": date_list,
             "value": value_list,
@@ -865,13 +880,12 @@ def write_obs_with_localization(
             "ypos": ypos_list,
             "main_range": main_range_list,
             "perp_range": perp_range_list,
-            "azimuth": azimuth_list,
+            "anisotropy_angle": anisotropy_angle_list,
             "zone_name": zone_list,
         }
 
     df = pl.DataFrame(data_dict)
-    df.write_csv(filename,separator=' ')
-
+    df.write_csv(filename, separator=" ")
 
 
 def create_obs_local(project, config_file):
@@ -911,6 +925,7 @@ def create_obs_local(project, config_file):
         field_settings_spec_list,
         expand_specification,
     ) = get_specification(spec)
+    
     print(f"Read file: {obs_summary_file}")
     obs_dict_list = read_ert_summary_obs_file(obs_summary_file)
 
@@ -951,6 +966,8 @@ def create_obs_local(project, config_file):
             obs_localisation_dict["summary_vector"] = obs_dict["summary_vector"]
             if obs_localisation_dict["hlength"] > min_range_hwell:
                 well_path_angle = obs_localisation_dict["well_path_angle"]
+                # Localisation ellipse main axis in same
+                # direction as horizontal well path
                 obs_localisation_dict["anisotropy_angle"] = well_path_angle
                 obs_localisation_dict["main_range"] = max(
                     obs_localisation_dict["hlength"],
@@ -1042,11 +1059,12 @@ def create_obs_local(project, config_file):
             output_dict[key] = obs_localisation_dict
 
     # Write result
-    write_result_summary_obs(result_summary_obs_file, output_dict, allow_overwrite=True, use_polars=True)
-#    write_localisation_obs_attributes(
-#        result_localisation_obs_file, output_dict, allow_overwrite=True, use_polars=True,
-#    )
-    write_obs_with_localization(result_localisation_obs_file, output_dict, allow_overwrite=True)
+    write_result_summary_obs(
+        result_summary_obs_file, output_dict, allow_overwrite=True, use_polars=True
+    )
+    write_obs_with_localization(
+        result_localisation_obs_file, output_dict, allow_overwrite=True
+    )
 
 
 if __name__ == "__main__":
