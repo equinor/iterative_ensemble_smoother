@@ -21,7 +21,7 @@ localisation:
     Volon: 3
     
   default_field_settings:
-    ranges: [2000.0,  1000.0, 45.0] # (main_range, perpendicular_range, rotation)
+    ranges: [1000.0,  1000.0, 45.0] # (main_range, perpendicular_range, rotation)
     min_range_hwell: 150
     mult_hwell_length: 1.5
 
@@ -33,15 +33,14 @@ localisation:
   # For fields not specified, use default settings.
   # These settings will override the default_field_settings.
   field_settings:
-    - zone_name: [Valysar, Therys]
-      obs_type: [all]
+    - zone_name: [all]
+      obs_type: [WWCT, WGOR]
       well_names: [all]
-      ranges: [1500.0,  1250.0, 45.0]
-    - zone_name: [Volon]
-      obs_type: [all]
+      ranges: [1500.0,  1500.0, 45.0]
+    - zone_name: [all]
+      obs_type: [WBHP]
       well_names: [all]
-      ranges: [1000.0,  1000.0, 35.0]
-
+      ranges: [800.0,  800.0, 45.0]
 
 
     
