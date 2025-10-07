@@ -14,6 +14,7 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 import xtgeo
+from ert.field_utils import ErtboxParameters
 from ert.storage import open_storage
 from surfio import IrapHeader, IrapSurface
 
@@ -330,8 +331,8 @@ STORAGE_PATH = (
     + "resmod/ff/25.0.0/ert/output/drogon_ahm/storage"
 )
 
-EXPERIMENT_NAME = "ensemble_smoother"
-ENSEMBLE_NAME = "default_0"
+EXPERIMENT_NAME = "ensemble_experiment_ertbox"
+ENSEMBLE_NAME = "ensemble"
 
 # For distance-based update
 ENSEMBLE_NAME_UPDATE = "ensemble-post-" + ENSEMBLE_LABEL
@@ -590,8 +591,10 @@ USE_SEIS_OBS = True
 # SEIS_PERP_RANGE = 2500.0
 # SEIS_MAIN_RANGE = 1000.0  # Case s1000
 # SEIS_PERP_RANGE = 1000.0
-SEIS_MAIN_RANGE = 300.0  # Case srt300
-SEIS_PERP_RANGE = 300.0
+SEIS_MAIN_RANGE = 1000.0  # Case srt300
+SEIS_PERP_RANGE = 1000.0
+# SEIS_MAIN_RANGE = 300.0  # Case srt300
+# SEIS_PERP_RANGE = 300.0
 SEIS_ANISOTROPY_ROTATION = 0.0
 
 RFT_FILENAME = "rft_ert.csv"
@@ -942,15 +945,15 @@ def read_tracer_obs(
 
 
 def transform_to_local_coordinates_3D(
-    ertbox_dict: dict,
+    ertbox_params: ErtboxParameters,
     xpos: npt.NDArray[np.double],
     ypos: npt.NDArray[np.double],
     ellipse_anisotropy_angle: npt.NDArray[np.double],
 ) -> tuple[npt.NDArray[np.double], npt.NDArray[np.double], npt.NDArray[np.double]]:
     # Translate
-    x1 = xpos - ertbox_dict["xorigo"]
-    y1 = ypos - ertbox_dict["yorigo"]
-    rotation_of_ertbox = ertbox_dict["rotation"]
+    x1 = xpos - ertbox_params.origin[0]
+    y1 = ypos - ertbox_params.origin[1]
+    rotation_of_ertbox = ertbox_params.rotation_angle
     rotation_angle = rotation_of_ertbox * np.pi / 180.0
     cos_theta = np.cos(rotation_angle)
     sin_theta = np.sin(rotation_angle)
@@ -993,7 +996,7 @@ def update_with_esmda(
     field_params_2D_list: list[str],
     scalar_param_list: list[str],
     non_updatable_list: list[str],
-    ertbox_per_field_param: dict,
+    ertbox_per_field_param_dict: dict[ErtboxParameters],
 ) -> None:
     # Define a dict with group of zones having exactly the same observations
     group_of_zones_with_same_obs_dict = define_group_of_zones_with_same_observations(
@@ -1002,7 +1005,7 @@ def update_with_esmda(
 
     print("")
     print(" Start update of all 3D field parameters for all zones.")
-    previous_ertbox_dict = None
+    previous_ertbox_params = None
     for zone_group_number, zone_list in group_of_zones_with_same_obs_dict.items():
         print("")
         print(f" Zone group {zone_group_number} with:")
@@ -1048,18 +1051,20 @@ def update_with_esmda(
             print("   Field params for this zone:")
             for fname in field_param_list_current_zone:
                 print(f"    {fname}")
-            ertbox_dict = ertbox_per_field_param[field_param_list_current_zone[0]]
+            ertbox_params = ertbox_per_field_param_dict[
+                field_param_list_current_zone[0]
+            ]
 
             # Check if ertbox definition is the same. Have used same test as
             # for distance-based for simplicity but it is is too restrictive here
             # since only nx, ny,nz is relevant to compare here...
-            if previous_ertbox_dict is None or (
-                not ertbox_has_same_xy_layout(ertbox_dict, previous_ertbox_dict)
+            if previous_ertbox_params is None or (
+                not ertbox_has_same_xy_layout(ertbox_params, previous_ertbox_params)
             ):
-                previous_ertbox_dict = copy.copy(ertbox_dict)
-                nx = ertbox_dict["nx"]
-                ny = ertbox_dict["ny"]
-                nz = ertbox_dict["nz"]
+                previous_ertbox_params = copy.copy(ertbox_params)
+                nx = ertbox_params.nx
+                ny = ertbox_params.ny
+                nz = ertbox_params.nz
                 print(f"   Dimension of 3D field parameter: ({nx},{ny},{nz})")
 
             for field_param_name in field_param_list_current_zone:
@@ -1533,7 +1538,7 @@ def scaling_function(
 
 
 def calculate_rho_for_obs_for_one_layer_of_3D_field_old(
-    ertbox_dict: dict,
+    ertbox_params: ErtboxParameters,
     obs_xpos: npt.NDArray[np.double],
     obs_ypos: npt.NDArray[np.double],
     obs_main_range: npt.NDArray[np.double],
@@ -1566,12 +1571,12 @@ def calculate_rho_for_obs_for_one_layer_of_3D_field_old(
     """
     # Center points of each grid cell in field parameter grid
     # in local coordinate system (ertbox grid)
-    nx = ertbox_dict["nx"]
-    ny = ertbox_dict["ny"]
-    handedness = ertbox_dict["handedness"]
+    nx = ertbox_params.nx
+    ny = ertbox_params.ny
+    handedness = HANDEDNESS
     x_local = np.arange(nx, dtype=np.float64)
-    xinc = ertbox_dict["xinc"]
-    yinc = ertbox_dict["yinc"]
+    xinc = ertbox_params.xinc
+    yinc = ertbox_params.yinc
     x_local = (x_local + 0.5) * xinc
     if handedness == "right":
         # Order y from max to min y
@@ -1613,7 +1618,7 @@ def calculate_rho_for_obs_for_one_layer_of_3D_field_old(
 
 
 def calculate_rho_for_summary_obs_for_one_layer_of_3D_field(
-    ertbox_dict: dict,
+    ertbox_params: ErtboxParameters,
     obs_xpos: npt.NDArray[np.double],
     obs_ypos: npt.NDArray[np.double],
     obs_main_range: npt.NDArray[np.double],
@@ -1647,11 +1652,11 @@ def calculate_rho_for_summary_obs_for_one_layer_of_3D_field(
 
     """
     # Center points of each grid cell in field parameter grid
-    nx = ertbox_dict["nx"]
-    ny = ertbox_dict["ny"]
-    handedness = ertbox_dict["handedness"]
-    xinc = ertbox_dict["xinc"]
-    yinc = ertbox_dict["yinc"]
+    nx = ertbox_params.nx
+    ny = ertbox_params.ny
+    handedness = HANDEDNESS
+    xinc = ertbox_params.xinc
+    yinc = ertbox_params.yinc
     x_local = (np.arange(nx, dtype=np.float64) + 0.5) * xinc
     if handedness == "right":
         # y coordinate descreases from max to min
@@ -1844,6 +1849,16 @@ def get_scalar_parameter_names(groups, param_config_all) -> list[str]:
             else:
                 non_updatable.append(group_name)
     return param_names, non_updatable
+
+
+def get_ertbox_per_field_param_group(groups: list[str], param_config_all):
+    ertbox_definition_per_field_dict = {}
+    for group_name in groups:
+        param_config = param_config_all[group_name]
+        if param_config.type == "field":
+            ertbox_definition_per_field_dict[group_name] = param_config.ertbox_params
+
+    return ertbox_definition_per_field_dict
 
 
 def update_3D_field_with_distance_esmda(
@@ -2158,7 +2173,7 @@ def update_with_distance_esmda_new(
     field_params_2D_list: list[str],
     scalar_param_list: list[str],
     non_updatable_list: list[str],
-    ertbox_per_field_param: dict,
+    ertbox_per_field_param_dict: dict[ErtboxParameters],
     nlayer_per_batch: int,
     scaling_function_name: str,
     truncation: float,
@@ -2177,7 +2192,7 @@ def update_with_distance_esmda_new(
 
     print("")
     print(" Start update of all 3D field parameters for all zones.")
-    previous_ertbox_dict = None
+    previous_ertbox_params = None
     for zone_group_number, zone_list in group_of_zones_with_same_obs_dict.items():
         print("")
         print(f" Zone group {zone_group_number} with:")
@@ -2234,23 +2249,25 @@ def update_with_distance_esmda_new(
             print("   Field params for this zone:")
             for fname in field_param_list_current_zone:
                 print(f"    {fname}")
-            ertbox_dict = ertbox_per_field_param[field_param_list_current_zone[0]]
+            ertbox_params = ertbox_per_field_param_dict[
+                field_param_list_current_zone[0]
+            ]
 
             # If multiple zones following each other use the same xy layout
             # of the ertbox, which means that all ertbox parameters are
             # equal except for nz, there is no need to transform observations
             # again or re-calculate RHO for one layer
-            if previous_ertbox_dict is None or (
-                not ertbox_has_same_xy_layout(ertbox_dict, previous_ertbox_dict)
+            if previous_ertbox_params is None or (
+                not ertbox_has_same_xy_layout(ertbox_params, previous_ertbox_params)
             ):
-                previous_ertbox_dict = copy.copy(ertbox_dict)
+                previous_ertbox_params = copy.copy(ertbox_params)
                 # Some of the parameters defining the 2D grid layout of
                 # the ERTBOX differs from previous zone.
                 # Need to do the coordinate transformation of
                 # the observations again.
-                nx = ertbox_dict["nx"]
-                ny = ertbox_dict["ny"]
-                nz = ertbox_dict["nz"]
+                nx = ertbox_params.nx
+                ny = ertbox_params.ny
+                nz = ertbox_params.nz
                 if DEBUG_PRINT:
                     print(f"   Dimension of 3D parameter: ({nx},{ny},{nz})")
 
@@ -2263,12 +2280,12 @@ def update_with_distance_esmda_new(
                     obs_ypos_transformed,
                     obs_anisotropy_angle_transformed,
                 ) = transform_to_local_coordinates_3D(
-                    ertbox_dict, obs_xpos, obs_ypos, obs_local_anisotropy_angle
+                    ertbox_params, obs_xpos, obs_ypos, obs_local_anisotropy_angle
                 )
                 # check that transformed points are within the ertbox assuming
                 # no obs is outside ertbox area
-                xmax = nx * ertbox_dict["xinc"]
-                ymax = ny * ertbox_dict["yinc"]
+                xmax = nx * ertbox_params.xlength
+                ymax = ny * ertbox_params.ylength
                 x_coord_check = np.all(
                     (obs_xpos_transformed >= 0) & (obs_xpos_transformed <= xmax)
                 )
@@ -2298,7 +2315,7 @@ def update_with_distance_esmda_new(
                     # the field parameter
 
                     rho_2D = calculate_rho_for_summary_obs_for_one_layer_of_3D_field(
-                        ertbox_dict,
+                        ertbox_params,
                         obs_xpos_transformed,
                         obs_ypos_transformed,
                         obs_local_main_ranges,
@@ -2310,7 +2327,7 @@ def update_with_distance_esmda_new(
                     if DEBUG_PRINT:
                         rho_2D_old = (
                             calculate_rho_for_obs_for_one_layer_of_3D_field_old(
-                                ertbox_dict,
+                                ertbox_params,
                                 obs_xpos_transformed,
                                 obs_ypos_transformed,
                                 obs_local_main_ranges,
@@ -2558,6 +2575,9 @@ def update_with_distance_esmda_new(
                     )
 
     # Update scalarparameter groups using ordinary global ESMDA
+    # TODO: Note this implementation is slow since it initialize ESMDA for every
+    # scalar parameter. Better to update all scalar parameters in one update
+    # operation with ESMDA instead.
     if SAVE_UPDATE_TO_STORAGE:
         for group_name in scalar_param_list:
             print(f"  Scalar parameter group: {group_name}")
@@ -2764,7 +2784,9 @@ def define_observations_for_2D_fields(df_per_zone: dict) -> pl.DataFrame:
     return result_df
 
 
-def ertbox_has_same_xy_layout(ertbox1_dict: dict, ertbox2_dict: dict) -> bool:
+def ertbox_has_same_xy_layout(
+    ertbox_param1: ErtboxParameters, ertbox_param2: ErtboxParameters
+) -> bool:
     """
     Check if two different ertbox dict has same xy layout.
     Return True of same, False if not same.
@@ -2772,14 +2794,12 @@ def ertbox_has_same_xy_layout(ertbox1_dict: dict, ertbox2_dict: dict) -> bool:
     Handedness must be the same to get the same order of the field values.
     """
     if (
-        (ertbox1_dict["xorigo"] == ertbox2_dict["xorigo"])
-        and (ertbox1_dict["yorigo"] == ertbox2_dict["yorigo"])
-        and (ertbox1_dict["xinc"] == ertbox2_dict["xinc"])
-        and (ertbox1_dict["yinc"] == ertbox2_dict["yinc"])
-        and (ertbox1_dict["rotation"] == ertbox2_dict["rotation"])
-        and (ertbox1_dict["nx"] == ertbox2_dict["nx"])
-        and (ertbox1_dict["ny"] == ertbox2_dict["ny"])
-        and (ertbox1_dict["handedness"] == ertbox2_dict["handedness"])
+        (ertbox_param1.origin == ertbox_param2.origin)
+        and (ertbox_param1.rotation_angle == ertbox_param2.rotation_angle)
+        and (ertbox_param1.xinc == ertbox_param2.xinc)
+        and (ertbox_param1.yinc == ertbox_param2.yinc)
+        and (ertbox_param1.nx == ertbox_param2.nx)
+        and (ertbox_param1.ny == ertbox_param2.ny)
     ):
         return True
     return False
@@ -2819,14 +2839,24 @@ def define_group_of_zones_with_same_observations(
 
 def test_transform_coordinates():
     n = 4
-    ertbox_dict = ERTBOX_PER_3D_FIELD_PARAM_GROUP["aps_Valysar_GRF1"]
+    ertbox_params = ErtboxParameters()
+    ertbox_params.nx = NX
+    ertbox_params.ny = NY
+    ertbox_params.nz = NZ
+    ertbox_params.xlength = NX * XINC
+    ertbox_params.yength = NY * YINC
+    ertbox_params.xinc = XINC
+    ertbox_params.yinc = YINC
+    ertbox_params.rotation_angle = ROTATION
+    ertbox_params.origin = (XORIGO, YORIGO)
+
     xpos = np.zeros(n, dtype=np.float64)
     ypos = np.zeros(n, dtype=np.float64)
     angle = np.zeros(n, dtype=np.float64)
 
     # Lower left corner
-    xpos[0] = ertbox_dict["xorigo"]
-    ypos[0] = ertbox_dict["yorigo"]
+    xpos[0] = ertbox_params.origin[0]
+    ypos[0] = ertbox_params.origin[1]
     angle[0] = ROTATION
 
     # Upper left corner
@@ -2846,7 +2876,7 @@ def test_transform_coordinates():
 
     # ERTBOX coordinates
     xpos_transf, ypos_transf, angle_transf = transform_to_local_coordinates_3D(
-        ertbox_dict, xpos, ypos, angle
+        ertbox_params, xpos, ypos, angle
     )
     print("Transformed coordinates into ERTBOX coordinates for test points:")
     for i in range(n):
@@ -2895,20 +2925,20 @@ def test_transform_coordinates():
 
 
 def test_calc_rho_one_layer():
-    ertbox_dict = {
-        "xorigo": XORIGO,
-        "yorigo": YORIGO,
-        "xinc": XINC,
-        "yinc": YINC,
-        "rotation": ROTATION,
-        "nx": NX,
-        "ny": NY,
-        "nz": NZ,
-        "handedness": HANDEDNESS,
-    }
-    xsize = ertbox_dict["xinc"] * ertbox_dict["nx"]
-    ysize = ertbox_dict["yinc"] * ertbox_dict["ny"]
-    ertbox_dict
+    ertbox_params = ErtboxParameters()
+    ertbox_params.nx = NX
+    ertbox_params.ny = NY
+    ertbox_params.nz = NZ
+    ertbox_params.xlength = NX * XINC
+    ertbox_params.yength = NY * YINC
+    ertbox_params.xinc = XINC
+    ertbox_params.yinc = YINC
+    ertbox_params.rotation_angle = ROTATION
+    ertbox_params.origin = (XORIGO, YORIGO)
+
+    xsize = ertbox_params.xlength
+    ysize = ertbox_params.ylength
+
     nobs = 4
     obs_xpos = np.zeros(nobs, dtype=np.float64)
     obs_ypos = np.zeros(nobs, dtype=np.float64)
@@ -2941,7 +2971,7 @@ def test_calc_rho_one_layer():
     obs_perp_range[3] = xsize / 10
 
     rho_one_layer = calculate_rho_for_summary_obs_for_one_layer_of_3D_field(
-        ertbox_dict,
+        ertbox_params,
         obs_xpos,
         obs_ypos,
         obs_main_range,
@@ -2951,9 +2981,9 @@ def test_calc_rho_one_layer():
     )
     print(f"{rho_one_layer.shape=}")
     #    print(f"{rho_one_layer=}")
-    nx = ertbox_dict["nx"]
-    ny = ertbox_dict["ny"]
-    nz = ertbox_dict["nz"]
+    nx = ertbox_params.nx
+    ny = ertbox_params.ny
+    nz = ertbox_params.nz
     values3d = np.zeros((nx, ny, nz), dtype=np.float32)
     for n in range(nobs):
         name = "rho_" + str(n)
@@ -3089,11 +3119,14 @@ def main():
         observations_and_responses = ensemble.get_observations_and_responses(
             selected_obs, iens_active_index
         )
-        print("Step 2: Get list of 3D field parameters if any.")
+        print("Step 2: Get list of 3D field parameters and ertbox per field if any.")
         # dict with zone name as key and value that is a list of
         # 3D field parameter names
         field_param_3d_list_per_zone_dict = get_3D_field_parameter_names_per_zone(
             groups, param_config_all, ZONE_PER_3D_FIELD_PARAM_GROUP
+        )
+        ertbox_per_field_param_dict = get_ertbox_per_field_param_group(
+            groups, param_config_all
         )
         if DEBUG_PRINT:
             print(" Dict of 3D field parameters:")
@@ -3276,7 +3309,7 @@ def main():
             field_param_2d_list,
             scalar_param_list,
             non_updatable_list,
-            ERTBOX_PER_3D_FIELD_PARAM_GROUP,
+            ertbox_per_field_param_dict,
             NLAYER_PER_BATCH,
             SCALING_FUNCTION_NAME,
             TRUNCATION,
@@ -3298,7 +3331,7 @@ def main():
             field_param_2d_list,
             scalar_param_list,
             non_updatable_list,
-            ERTBOX_PER_3D_FIELD_PARAM_GROUP,
+            ertbox_per_field_param_dict,
         )
 
 
