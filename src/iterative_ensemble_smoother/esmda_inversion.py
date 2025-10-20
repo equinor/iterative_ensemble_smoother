@@ -456,7 +456,7 @@ def inversion_subspace(
     # Eqn (68)
     # TODO: Approximately 50% of the time in the function is spent here
     # consider using randomized svd for further speed gains
-    U, w, _ = sp.linalg.svd(D_delta, overwrite_a=True, full_matrices=False)
+    U, w, _ = sp.linalg.svd(D_delta, full_matrices=False)
 
     # Clip the singular value decomposition
     idx = singular_values_to_keep(w, truncation=truncation)
