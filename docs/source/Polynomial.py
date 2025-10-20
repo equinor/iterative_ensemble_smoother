@@ -165,15 +165,11 @@ for i in range(n_ies_iter):
     X_IES_ert = smoother_ies.sies_iteration(Y_IES_ert, step_length=step_length)
 
     _coeff_a, _coeff_b, _coeff_c = X_IES_ert
+    x = [np.arange(max(x_observations) + 1)] * ensemble_size
 
-    _fwd_runs = p_map(
-        poly,
-        _coeff_a,
-        _coeff_b,
-        _coeff_c,
-        [np.arange(max(x_observations) + 1)] * ensemble_size,
-        desc=f"SIES ert iteration {i}",
-    )
+    _fwd_runs = [
+        poly(_coeff_a[i], _coeff_b[i], _coeff_c[i], x[i]) for i in range(len(_coeff_a))
+    ]
 
     Y_IES_ert = np.array(
         [fwd_run[d.index.get_level_values("x").to_list()] for fwd_run in _fwd_runs]
