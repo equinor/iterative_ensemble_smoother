@@ -563,6 +563,69 @@ def test_row_by_row_assimilation(inversion):
     assert np.allclose(X_posterior_highlevel_API, X_posterior_lowlevel_API)
 
 
+@pytest.mark.parametrize("inversion", ESMDA._inversion_methods.keys())
+def test_row_by_row_assimilation_order(inversion):
+    """A regression test for issue #232.
+
+    The problem was that in a SVD call we had
+
+        sp.linalg.svd(a, overwrite_a=True, ...)
+
+    but the array a was used later on in the function. This bug was not spotted
+    because when the input array is contiguous (C-order), then no actual overwrite
+    is done by the SVD. However, in F-order it does overwrite the input array,
+    which does lead to the wrong values being used later on in the function.
+
+    The fix is to carefully review all usage of 'overwrite_a' and only keep
+    overwriting if the input array is not used later on, and is not part
+    of the input arguments to a function.
+    """
+    rng = np.random.default_rng(42)
+
+    num_outputs = 4
+    num_inputs = 5
+    num_ensemble = 3
+
+    A = rng.normal(size=(num_outputs, num_inputs))
+
+    def g(X):
+        return A @ X
+
+    X_prior = rng.normal(size=(num_inputs, num_ensemble))
+    covariance = np.exp(rng.normal(size=num_outputs))
+    observations = A @ np.linspace(0, 1, num=num_inputs) + rng.normal(
+        size=num_outputs, scale=0.01
+    )
+
+    # We need two instances because each call to 'compute_transition_matrix'
+    # increments the random number generator.
+    smoother1 = ESMDA(
+        covariance=covariance,
+        observations=observations,
+        alpha=2,
+        inversion=inversion,
+        seed=1,
+    )
+
+    smoother2 = ESMDA(
+        covariance=covariance,
+        observations=observations,
+        alpha=2,
+        inversion=inversion,
+        seed=1,
+    )
+
+    X = np.copy(X_prior)
+    alpha_i = 2.5
+
+    # Test that no matter which order the input is in, the output is equal
+    K1 = smoother1.compute_transition_matrix(
+        Y=np.ascontiguousarray(g(X)), alpha=alpha_i
+    )
+    K2 = smoother2.compute_transition_matrix(Y=np.asfortranarray(g(X)), alpha=alpha_i)
+    assert np.allclose(K1, K2)
+
+
 if __name__ == "__main__":
     import pytest
 
