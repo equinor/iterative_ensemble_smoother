@@ -312,6 +312,7 @@ SAVE_UPDATE_TO_STORAGE = True
 # Turn on/off the two types of update
 SKIP_GLOBAL_UPDATE = False
 SKIP_DL_UPDATE = False
+ENSEMBLE_TAG = "_rft"
 
 # Create unique label for each ensemble created by running this script
 ENSEMBLE_LABEL = run_number()
@@ -331,14 +332,15 @@ STORAGE_PATH = (
     + "resmod/ff/25.0.0/ert/output/drogon_ahm/storage"
 )
 
-EXPERIMENT_NAME = "ensemble_experiment_ertbox"
+EXPERIMENT_NAME = "ensemble_experiment"
+# EXPERIMENT_NAME = "ensemble_experiment_ertbox"
 ENSEMBLE_NAME = "ensemble"
 
 # For distance-based update
-ENSEMBLE_NAME_UPDATE = "ensemble-post-" + ENSEMBLE_LABEL
+ENSEMBLE_NAME_UPDATE = "ensemble-post-" + ENSEMBLE_LABEL + ENSEMBLE_TAG
 
 # For ordinary ESMDA updare
-ENSEMBLE_NAME_UPDATE_GLOBAL = "ensemble-post-global-" + ENSEMBLE_LABEL
+ENSEMBLE_NAME_UPDATE_GLOBAL = "ensemble-post-global-" + ENSEMBLE_LABEL + ENSEMBLE_TAG
 
 SEED = 123456  # Test with same as in ERT config file for Drogon
 ALPHA = 1
@@ -464,107 +466,107 @@ ZONE_PER_3D_FIELD_PARAM_GROUP = {
 # all ERTBOX parameters are equal as in the case below.
 # In the new extended implementation with individual ERTBOX per 3D field parameter,
 # I assume each zone of Drogon will have its own value of NZ but the rest is the same.
-ERTBOX_PER_3D_FIELD_PARAM_GROUP = {
-    "aps_Valysar_GRF1": {
-        "xorigo": XORIGO,
-        "yorigo": YORIGO,
-        "xinc": XINC,
-        "yinc": YINC,
-        "rotation": ROTATION,
-        "nx": NX,
-        "ny": NY,
-        "nz": NZ,
-        "handedness": HANDEDNESS,
-    },
-    "aps_Valysar_GRF2": {
-        "xorigo": XORIGO,
-        "yorigo": YORIGO,
-        "xinc": XINC,
-        "yinc": YINC,
-        "rotation": ROTATION,
-        "nx": NX,
-        "ny": NY,
-        "nz": NZ,
-        "handedness": HANDEDNESS,
-    },
-    "aps_Valysar_GRF3": {
-        "xorigo": XORIGO,
-        "yorigo": YORIGO,
-        "xinc": XINC,
-        "yinc": YINC,
-        "rotation": ROTATION,
-        "nx": NX,
-        "ny": NY,
-        "nz": NZ,
-        "handedness": HANDEDNESS,
-    },
-    "aps_Therys_GRF1": {
-        "xorigo": XORIGO,
-        "yorigo": YORIGO,
-        "xinc": XINC,
-        "yinc": YINC,
-        "rotation": ROTATION,
-        "nx": NX,
-        "ny": NY,
-        "nz": NZ,
-        "handedness": HANDEDNESS,
-    },
-    "aps_Therys_GRF2": {
-        "xorigo": XORIGO,
-        "yorigo": YORIGO,
-        "xinc": XINC,
-        "yinc": YINC,
-        "rotation": ROTATION,
-        "nx": NX,
-        "ny": NY,
-        "nz": NZ,
-        "handedness": HANDEDNESS,
-    },
-    "aps_Therys_GRF3": {
-        "xorigo": XORIGO,
-        "yorigo": YORIGO,
-        "xinc": XINC,
-        "yinc": YINC,
-        "rotation": ROTATION,
-        "nx": NX,
-        "ny": NY,
-        "nz": NZ,
-        "handedness": HANDEDNESS,
-    },
-    "aps_Volon_GRF1": {
-        "xorigo": XORIGO,
-        "yorigo": YORIGO,
-        "xinc": XINC,
-        "yinc": YINC,
-        "rotation": ROTATION,
-        "nx": NX,
-        "ny": NY,
-        "nz": NZ,
-        "handedness": HANDEDNESS,
-    },
-    "aps_Volon_GRF2": {
-        "xorigo": XORIGO,
-        "yorigo": YORIGO,
-        "xinc": XINC,
-        "yinc": YINC,
-        "rotation": ROTATION,
-        "nx": NX,
-        "ny": NY,
-        "nz": NZ,
-        "handedness": HANDEDNESS,
-    },
-    "aps_Volon_GRF3": {
-        "xorigo": XORIGO,
-        "yorigo": YORIGO,
-        "xinc": XINC,
-        "yinc": YINC,
-        "rotation": ROTATION,
-        "nx": NX,
-        "ny": NY,
-        "nz": NZ,
-        "handedness": HANDEDNESS,
-    },
-}
+# ERTBOX_PER_3D_FIELD_PARAM_GROUP = {
+#     "aps_Valysar_GRF1": {
+#         "xorigo": XORIGO,
+#         "yorigo": YORIGO,
+#         "xinc": XINC,
+#         "yinc": YINC,
+#         "rotation": ROTATION,
+#         "nx": NX,
+#         "ny": NY,
+#         "nz": NZ,
+#         "handedness": HANDEDNESS,
+#     },
+#     "aps_Valysar_GRF2": {
+#         "xorigo": XORIGO,
+#         "yorigo": YORIGO,
+#         "xinc": XINC,
+#         "yinc": YINC,
+#         "rotation": ROTATION,
+#         "nx": NX,
+#         "ny": NY,
+#         "nz": NZ,
+#         "handedness": HANDEDNESS,
+#     },
+#     "aps_Valysar_GRF3": {
+#         "xorigo": XORIGO,
+#         "yorigo": YORIGO,
+#         "xinc": XINC,
+#         "yinc": YINC,
+#         "rotation": ROTATION,
+#         "nx": NX,
+#         "ny": NY,
+#         "nz": NZ,
+#         "handedness": HANDEDNESS,
+#     },
+#     "aps_Therys_GRF1": {
+#         "xorigo": XORIGO,
+#         "yorigo": YORIGO,
+#         "xinc": XINC,
+#         "yinc": YINC,
+#         "rotation": ROTATION,
+#         "nx": NX,
+#         "ny": NY,
+#         "nz": NZ,
+#         "handedness": HANDEDNESS,
+#     },
+#     "aps_Therys_GRF2": {
+#         "xorigo": XORIGO,
+#         "yorigo": YORIGO,
+#         "xinc": XINC,
+#         "yinc": YINC,
+#         "rotation": ROTATION,
+#         "nx": NX,
+#         "ny": NY,
+#         "nz": NZ,
+#         "handedness": HANDEDNESS,
+#     },
+#     "aps_Therys_GRF3": {
+#         "xorigo": XORIGO,
+#         "yorigo": YORIGO,
+#         "xinc": XINC,
+#         "yinc": YINC,
+#         "rotation": ROTATION,
+#         "nx": NX,
+#         "ny": NY,
+#         "nz": NZ,
+#         "handedness": HANDEDNESS,
+#     },
+#     "aps_Volon_GRF1": {
+#         "xorigo": XORIGO,
+#         "yorigo": YORIGO,
+#         "xinc": XINC,
+#         "yinc": YINC,
+#         "rotation": ROTATION,
+#         "nx": NX,
+#         "ny": NY,
+#         "nz": NZ,
+#         "handedness": HANDEDNESS,
+#     },
+#     "aps_Volon_GRF2": {
+#         "xorigo": XORIGO,
+#         "yorigo": YORIGO,
+#         "xinc": XINC,
+#         "yinc": YINC,
+#         "rotation": ROTATION,
+#         "nx": NX,
+#         "ny": NY,
+#         "nz": NZ,
+#         "handedness": HANDEDNESS,
+#     },
+#     "aps_Volon_GRF3": {
+#         "xorigo": XORIGO,
+#         "yorigo": YORIGO,
+#         "xinc": XINC,
+#         "yinc": YINC,
+#         "rotation": ROTATION,
+#         "nx": NX,
+#         "ny": NY,
+#         "nz": NZ,
+#         "handedness": HANDEDNESS,
+#     },
+# }
 
 SCALING_FUNCTION_NAME = (
     "gaspari-cohn"  # Alternatives: "gaussian", "exponential", "gaspari-cohn"
@@ -573,15 +575,92 @@ ERT_CONFIG_PATH = (
     "/project/fmu/users/olia/drogon_20250623_11-50/resmod/ff/25.0.0/ert/model"
 )
 ERT_SEIS_OBS_PATH = ERT_CONFIG_PATH + "/" + "../input/observations/seismic"
-SEISMIC_OBS = {
-    "topvolantis": "meta--topvolantis_amplitude_mean_20200701_20180101_1.txt",
-    "basevolantis": "meta--basevolantis_amplitude_mean_20200701_20180101_1.txt",
+
+SEISMIC_OBS_AND_RESPONSE_DICT_PER_ZONE = {
+    # Valysar related seismic observations and localization ranges
+    "Valysar": [
+        {
+            "name": "topvolantis",
+            "obs_file": "meta--topvolantis_amplitude_mean_20200701_20180101_1.txt",
+            "response_file": "share/results/points/topvolantis_amplitude_mean_20200701_20180101_1.txt",  # noqa
+            "main_range": 1000.0,
+            "perp_range": 1000.0,
+            "anisotropy_angle": 0.0,
+        },
+        {
+            "name": "basevolantis",
+            "obs_file": "meta--basevolantis_amplitude_mean_20200701_20180101_1.txt",
+            "response_file": "share/results/points/basevolantis_amplitude_mean_20200701_20180101_1.txt",  # noqa
+            "main_range": 1000.0,
+            "perp_range": 1000.0,
+            "anisotropy_angle": 0.0,
+        },
+    ],
+    # Therys related seismic observations and localization ranges
+    "Therys": [
+        {
+            "name": "topvolantis",
+            "obs_file": "meta--topvolantis_amplitude_mean_20200701_20180101_1.txt",
+            "response_file": "share/results/points/topvolantis_amplitude_mean_20200701_20180101_1.txt",  # noqa
+            "main_range": 1000.0,
+            "perp_range": 1000.0,
+            "anisotropy_angle": 0.0,
+        },
+        {
+            "name": "basevolantis",
+            "obs_file": "meta--basevolantis_amplitude_mean_20200701_20180101_1.txt",
+            "response_file": "share/results/points/basevolantis_amplitude_mean_20200701_20180101_1.txt",  # noqa
+            "main_range": 1000.0,
+            "perp_range": 1000.0,
+            "anisotropy_angle": 0.0,
+        },
+    ],
+    # Volon related seismic observations and localization ranges
+    "Volon": [
+        {
+            "name": "topvolantis",
+            "obs_file": "meta--topvolantis_amplitude_mean_20200701_20180101_1.txt",
+            "response_file": "share/results/points/topvolantis_amplitude_mean_20200701_20180101_1.txt",  # noqa
+            "main_range": 1000.0,
+            "perp_range": 1000.0,
+            "anisotropy_angle": 0.0,
+        },
+        {
+            "name": "basevolantis",
+            "obs_file": "meta--basevolantis_amplitude_mean_20200701_20180101_1.txt",
+            "response_file": "share/results/points/basevolantis_amplitude_mean_20200701_20180101_1.txt",  # noqa
+            "main_range": 1000.0,
+            "perp_range": 1000.0,
+            "anisotropy_angle": 0.0,
+        },
+    ],
 }
+SEISMIC_OBS_AND_RESPONSE_DICT_FOR_2D_FIELDS = [
+    {
+        "name": "topvolantis",
+        "obs_file": "meta--topvolantis_amplitude_mean_20200701_20180101_1.txt",
+        "response_file": "share/results/points/topvolantis_amplitude_mean_20200701_20180101_1.txt",  # noqa
+        "main_range": 1000.0,
+        "perp_range": 1000.0,
+        "anisotropy_angle": 0.0,
+    },
+    {
+        "name": "basevolantis",
+        "obs_file": "meta--basevolantis_amplitude_mean_20200701_20180101_1.txt",
+        "response_file": "share/results/points/basevolantis_amplitude_mean_20200701_20180101_1.txt",  # noqa
+        "main_range": 1000.0,
+        "perp_range": 1000.0,
+        "anisotropy_angle": 0.0,
+    },
+]
+
 SCRATCH_PATH = "/scratch/fmu/olia/drogon_ahm_base"
-SEISMIC_RESPONSE = {
-    "topvolantis": "topvolantis_amplitude_mean_20200701_20180101_1.txt",
-    "basevolantis": "basevolantis_amplitude_mean_20200701_20180101_1.txt",
-}
+
+
+# SEISMIC_RESPONSE = {
+#    "topvolantis": "topvolantis_amplitude_mean_20200701_20180101_1.txt",
+#    "basevolantis": "basevolantis_amplitude_mean_20200701_20180101_1.txt",
+# }
 USE_SEIS_OBS = True
 # SEIS_MAIN_RANGE = 100.0 # Case s100
 # SEIS_PERP_RANGE = 100.0
@@ -591,12 +670,36 @@ USE_SEIS_OBS = True
 # SEIS_PERP_RANGE = 2500.0
 # SEIS_MAIN_RANGE = 1000.0  # Case s1000
 # SEIS_PERP_RANGE = 1000.0
-SEIS_MAIN_RANGE = 1000.0  # Case srt300
-SEIS_PERP_RANGE = 1000.0
+# SEIS_MAIN_RANGE = 1000.0  # Case srt300
+# SEIS_PERP_RANGE = 1000.0
 # SEIS_MAIN_RANGE = 300.0  # Case srt300
 # SEIS_PERP_RANGE = 300.0
-SEIS_ANISOTROPY_ROTATION = 0.0
+# SEIS_ANISOTROPY_ROTATION = 0.0
 
+RFT_OBS_AND_RESPONSE_DICT = {
+    # Both observations and response is fetched from runpath realizations
+    "Valysar": {
+        "obs_file": "share/results/tables/rft_ert.csv",
+        "response_file": "share/results/tables/rft_ert.csv",
+        "main_range": 2000.0,
+        "perp_range": 2000.0,
+        "anisotropy_angle": 0.0,
+    },
+    "Therys": {
+        "obs_file": "share/results/tables/rft_ert.csv",
+        "response_file": "share/results/tables/rft_ert.csv",
+        "main_range": 1500.0,
+        "perp_range": 1500.0,
+        "anisotropy_angle": 0.0,
+    },
+    "Volon": {
+        "obs_file": "share/results/tables/rft_ert.csv",
+        "response_file": "share/results/tables/rft_ert.csv",
+        "main_range": 1000.0,
+        "perp_range": 1000.0,
+        "anisotropy_angle": 0.0,
+    },
+}
 RFT_FILENAME = "rft_ert.csv"
 RFT_MAIN_RANGE = 1000.0
 RFT_PERP_RANGE = 1000.0
@@ -648,24 +751,156 @@ def read_observations_with_localization_attributes(
     return df
 
 
-def read_seis_obs_and_response_with_localization_attributes(
+def read_seis_obs_and_response_for_3D_fields_per_zone(
     iens_active_index: npt.NDArray[np.int32],
-    main_seis_range: float = 10.0,
-    perp_seis_range: float = 10.0,
-    anisotropy_angle_seis: float = 0.0,
+    seismic_obs_and_response_per_zone: dict[str, dict],
 ) -> dict[pl.DataFrame]:
     """
     Read seismic obs from files with position of obs and read response from RUNPATH
     """
+    # Check if all zones use the same observations or not
+    zone_dependent_seis_obs = False
+    keys = list(seismic_obs_and_response_per_zone.keys())
+    first_key = keys[0]
+    prev_seis_data_list = seismic_obs_and_response_per_zone[first_key]
+    for zone_name, seis_data_list in seismic_obs_and_response_per_zone.items():
+        if seis_data_list != prev_seis_data_list:
+            zone_dependent_seis_obs = True
+            break
+    if DEBUG_PRINT:
+        if zone_dependent_seis_obs:
+            print("Seismic observations are zone dependent")
+        else:
+            print("Seismic observations are not zone dependent")
+
     # Read seismic obs
     seis_obs_dict = {}
-    for key, filename in SEISMIC_OBS.items():
-        print(f"Read seismic obs for {key}")
-        full_filename = ERT_SEIS_OBS_PATH + "/" + filename
-        df = pl.read_csv(full_filename, separator=",")
+    for zone_name, data_list in seismic_obs_and_response_per_zone.items():
+        print(f"Read seismic observations for zone {zone_name}")
+        for i, data_dict in enumerate(data_list):
+            print(f" Seismic observation {data_dict['name']}")
+            filename = data_dict["obs_file"]
+            main_seis_range = data_dict["main_range"]
+            perp_seis_range = data_dict["perp_range"]
+            anisotropy_angle_seis = data_dict["anisotropy_angle"]
+            full_filename = ERT_SEIS_OBS_PATH + "/" + filename
+            df_zone = pl.read_csv(full_filename, separator=",")
+
+            # Remove columns not used
+            df_zone = df_zone.drop(["REGION"])
+            # Rename columns
+            rename_dict = {
+                "X_UTME": "xpos",
+                "Y_UTMN": "ypos",
+                "OBS": "observations",
+                "OBS_ERROR": "std",
+            }
+            df_zone = df_zone.rename(rename_dict)
+
+            # Add columns with localization ranges
+            # Note: The values in response_key and observation_key is here
+            # arbitrarily set to 'SEISMIC'. It is not used for anything but makes
+            # it easier to look at the output of the dataframe.
+            df_zone = df_zone.with_columns(
+                [
+                    pl.lit("SEISMIC").alias("response_key"),
+                    pl.lit("Undefined").alias("index"),
+                    pl.lit("SEISMIC").alias("observation_key"),
+                    pl.lit(0.0).alias("min_error"),
+                    pl.lit(0.0).alias("max_error"),
+                    pl.lit(main_seis_range).alias("main_range"),
+                    pl.lit(perp_seis_range).alias("perp_range"),
+                    pl.lit(anisotropy_angle_seis).alias("anisotropy_angle"),
+                    pl.lit(zone_name).alias("zone_name"),
+                    pl.lit(0.0).alias("influence_area"),
+                ]
+            )
+            # Automatically cast all Float64 columns to Float32
+            df_zone = df_zone.with_columns(
+                [
+                    pl.col(col).cast(pl.Float32)
+                    for col, dtype in df_zone.schema.items()
+                    if dtype == pl.Float64
+                ]
+            )
+            if i == 0:
+                seis_obs_dict[zone_name] = df_zone
+            else:
+                # Add dataframe of observations
+                df = seis_obs_dict[zone_name]
+                seis_obs_dict[zone_name] = pl.concat([df, df_zone], how="vertical")
+
+    # Read seismic response per obs
+    seis_response_dict = {}
+    for zone_name, data_list in seismic_obs_and_response_per_zone.items():
+        print(f"Read seismic response for zone {zone_name}")
+        for i, data_dict in enumerate(data_list):
+            print(f" Seismic response for observations {data_dict['name']}")
+            response_file_name = data_dict["response_file"]
+
+            first = True
+            for real_number in iens_active_index:
+                path_real = (
+                    SCRATCH_PATH + "/realization-" + str(real_number) + "/iter-0/"
+                )
+                full_filename = path_real + response_file_name
+                file = Path(full_filename)
+                assert file.exists()  # storage and scratch disk must be consistent
+
+                col_name = str(real_number)
+                df_seis_real = pl.read_csv(
+                    full_filename, has_header=False, new_columns=[col_name]
+                )
+                df_seis_real = df_seis_real.with_columns(
+                    [
+                        pl.col(col).cast(pl.Float32)
+                        for col, dtype in df_seis_real.schema.items()
+                        if dtype == pl.Float64
+                    ]
+                )
+                if first:
+                    df_seis_response = df_seis_real
+                    first = False
+                else:
+                    df_seis_response = df_seis_response.hstack(df_seis_real)
+
+            if i == 0:
+                seis_response_dict[zone_name] = df_seis_response
+            else:
+                # Add dataframe of responses for current seismic observation set
+                df = seis_response_dict[zone_name]
+                seis_response_dict[zone_name] = pl.concat(
+                    [df, df_seis_response], how="vertical"
+                )
+
+    # Merge observation dataframe with response dataframe
+    df_obs_and_response_per_zone = {}
+    for zone_name, df_obs in seis_obs_dict.items():
+        df_response = seis_response_dict[zone_name]
+        df_obs_and_response_per_zone[zone_name] = df_obs.hstack(df_response)
+    return df_obs_and_response_per_zone
+
+
+def read_seis_obs_and_response_for_2D_fields(
+    iens_active_index: npt.NDArray[np.int32],
+    seismic_obs_and_response_for_2D_fields: list[dict],
+) -> dict[pl.DataFrame]:
+    """
+    Read seismic obs from files with position of obs and read response from RUNPATH
+    """
+    print("Read seismic observations for 2D fields")
+    for i, data_dict in enumerate(seismic_obs_and_response_for_2D_fields):
+        seis_obs_name = data_dict["name"]
+        print(f" Read seismic observation data set {seis_obs_name}")
+        obs_filename = data_dict["obs_file"]
+        main_seis_range = data_dict["main_range"]
+        perp_seis_range = data_dict["perp_range"]
+        anisotropy_angle_seis = data_dict["anisotropy_angle"]
+        full_filename = ERT_SEIS_OBS_PATH + "/" + obs_filename
+        df_current = pl.read_csv(full_filename, separator=",")
 
         # Remove columns not used
-        df = df.drop(["REGION"])
+        df_current = df_current.drop(["REGION"])
         # Rename columns
         rename_dict = {
             "X_UTME": "xpos",
@@ -673,13 +908,13 @@ def read_seis_obs_and_response_with_localization_attributes(
             "OBS": "observations",
             "OBS_ERROR": "std",
         }
-        df = df.rename(rename_dict)
+        df_current = df_current.rename(rename_dict)
 
         # Add columns with localization ranges
         # Note: The values in response_key and observation_key is here
         # arbitrarily set to 'SEISMIC'. It is not used for anything but makes
         # it easier to look at the output of the dataframe.
-        df = df.with_columns(
+        df_current = df_current.with_columns(
             [
                 pl.lit("SEISMIC").alias("response_key"),
                 pl.lit("Undefined").alias("index"),
@@ -689,32 +924,34 @@ def read_seis_obs_and_response_with_localization_attributes(
                 pl.lit(main_seis_range).alias("main_range"),
                 pl.lit(perp_seis_range).alias("perp_range"),
                 pl.lit(anisotropy_angle_seis).alias("anisotropy_angle"),
+                pl.lit("Undefined").alias("zone_name"),
                 pl.lit(0.0).alias("influence_area"),
             ]
         )
         # Automatically cast all Float64 columns to Float32
-        df = df.with_columns(
+        df_current = df_current.with_columns(
             [
                 pl.col(col).cast(pl.Float32)
-                for col, dtype in df.schema.items()
+                for col, dtype in df_current.schema.items()
                 if dtype == pl.Float64
             ]
         )
-        seis_obs_dict[key] = df
+        if i == 0:
+            df_seis_obs = df_current
+        else:
+            # Add dataframe of observations
+            df_seis_obs = pl.concat([df_seis_obs, df_current], how="vertical")
 
     # Read seismic response per obs
-    seis_response_dict = {}
-    for key, filename in SEISMIC_RESPONSE.items():
-        print(f"Read seismic response for {key}")
+    for i, data_dict in enumerate(seismic_obs_and_response_for_2D_fields):
+        seis_obs_name = data_dict["name"]
+        print(f" Read seismic response for {seis_obs_name}")
+        response_file_name = data_dict["response_file"]
+
         first = True
         for real_number in iens_active_index:
-            path_real = (
-                SCRATCH_PATH
-                + "/realization-"
-                + str(real_number)
-                + "/iter-0/share/results/points/"
-            )
-            full_filename = path_real + filename
+            path_real = SCRATCH_PATH + "/realization-" + str(real_number) + "/iter-0/"
+            full_filename = path_real + response_file_name
             file = Path(full_filename)
             assert file.exists()  # storage and scratch disk must be consistent
 
@@ -730,47 +967,57 @@ def read_seis_obs_and_response_with_localization_attributes(
                 ]
             )
             if first:
-                df_seis_response = df_seis_real
+                df_current = df_seis_real
                 first = False
             else:
-                df_seis_response = df_seis_response.hstack(df_seis_real)
-        seis_response_dict[key] = df_seis_response
+                df_current = df_current.hstack(df_seis_real)
+
+        if i == 0:
+            df_seis_response = df_current
+        else:
+            # Add dataframe of responses for current seismic observation set
+            df_seis_response = pl.concat([df_seis_response, df_current], how="vertical")
 
     # Merge observation dataframe with response dataframe
-    df_obs_and_response = {}
-    for key, df_obs in seis_obs_dict.items():
-        df_response = seis_response_dict[key]
-        df_obs_and_response[key] = df_obs.hstack(df_response)
+    df_obs_and_response = df_seis_obs.hstack(df_seis_response)
     return df_obs_and_response
 
 
 def read_rft_obs_and_response(
     iens_active_index: npt.NDArray[np.int32],
-    main_rft_range: float = 10.0,
-    perp_rft_range: float = 10.0,
-    anisotropy_angle_rft: float = 0.0,
+    rft_input_spec: dict[str, dict],
 ) -> dict[pl.DataFrame]:
-    first = True
+    # Observations are saved in runpath in same file as response
+    # Here get the observations for each zone from the first
+    # available realization
     for real_number in iens_active_index:
+        path_real = SCRATCH_PATH + "/realization-" + str(real_number) + "/iter-0/"
+        if Path(path_real).exists():
+            first_existing_real_number = real_number
+            print(f"First realization number: {first_existing_real_number}")
+            break
+
+    df_rft_obs_and_response_dict = {}
+    for zone_name, rft_data_dict in rft_input_spec.items():
         path_real = (
             SCRATCH_PATH
             + "/realization-"
-            + str(real_number)
-            + "/iter-0/share/results/tables/"
+            + str(first_existing_real_number)
+            + "/iter-0/"
         )
-        full_filename = path_real + RFT_FILENAME
+
+        obs_file_name = rft_data_dict["obs_file"]
+        main_range = rft_data_dict["main_range"]
+        perp_range = rft_data_dict["perp_range"]
+        anisotropy_angle = rft_data_dict["anisotropy_angle"]
+        full_filename = path_real + obs_file_name
         file = Path(full_filename)
         assert file.exists()
 
-        df_rft_one_real = pl.read_csv(full_filename, separator=",")
+        df_rft_input = pl.read_csv(full_filename, separator=",")
 
-        # Set `pressure` to None where `is_active` is False
-        df_rft_one_real = df_rft_one_real.with_columns(
-            pl.when(pl.col("is_active") == False)  # noqa
-            .then(None)  # Set to None
-            .otherwise(pl.col("pressure"))  # Keep existing value
-            .alias("pressure")  # Update the 'pressure' column
-        )
+        # Get only lines with current zone
+        df_rft_current_zone = df_rft_input.filter(pl.col("zone") == zone_name)
 
         # Remove columns not used
         remove_columns = [
@@ -789,78 +1036,107 @@ def read_rft_obs_and_response(
             "well",
             "is_active",
         ]
-        df_rft_one_real = df_rft_one_real.drop(remove_columns)
-        if first:
-            print("Initialize dataframe for rft")
-            # Rename columns
+        df_rft_current_zone = df_rft_current_zone.drop(remove_columns)
+
+        print(f"Initialize dataframe for rft for zone {zone_name}")
+        # Rename columns
+        rename_dict = {
+            "utm_x": "xpos",
+            "utm_y": "ypos",
+            "observed": "observations",
+            "error": "std",
+            "zone": "zone_name",
+        }
+        df_rft_current_zone = df_rft_current_zone.rename(rename_dict)
+
+        # Add columns with localization ranges and other columns that need to be present
+        df_rft_current_zone = df_rft_current_zone.with_columns(
+            [
+                pl.lit("RFT").alias("response_key"),
+                pl.lit("Undefined").alias("index"),
+                pl.lit("RFT").alias("observation_key"),
+                pl.lit(0.0).alias("min_error"),
+                pl.lit(0.0).alias("max_error"),
+                pl.lit(main_range).alias("main_range"),
+                pl.lit(perp_range).alias("perp_range"),
+                pl.lit(anisotropy_angle).alias("anisotropy_angle"),
+            ]
+        )
+
+        # Re-arrange columns to match dataframes from well production
+        # data and seismic data
+        new_order_of_columns = [
+            "response_key",
+            "index",
+            "observation_key",
+            "observations",
+            "std",
+            "min_error",
+            "max_error",
+            "xpos",
+            "ypos",
+            "main_range",
+            "perp_range",
+            "anisotropy_angle",
+            "zone_name",
+        ]
+        df_rft_current_zone = df_rft_current_zone.select(new_order_of_columns)
+        df_rft_obs_and_response_dict[zone_name] = df_rft_current_zone
+
+    # Read ensemble of responses for RFT pressure
+    for zone_name, rft_data_dict in rft_input_spec.items():
+        response_file_name = rft_data_dict["response_file"]
+        df_obs = df_rft_obs_and_response_dict[zone_name]
+
+        for real_number in iens_active_index:
+            path_real = SCRATCH_PATH + "/realization-" + str(real_number) + "/iter-0/"
+            full_filename = path_real + response_file_name
+            file = Path(full_filename)
+            assert file.exists()
+
+            df_rft_response = pl.read_csv(full_filename, separator=",")
+
+            # Get only lines with current zone
+            df_rft_response = df_rft_response.filter(pl.col("zone") == zone_name)
+
+            # Set `pressure` to None where `is_active` is False
+            df_rft_response = df_rft_response.with_columns(
+                pl.when(pl.col("is_active") == False)  # noqa
+                .then(None)  # Set to None
+                .otherwise(pl.col("pressure"))  # Keep existing value
+                .alias("pressure")  # Update the 'pressure' column
+            )
+            df_rft_response = df_rft_response.select(["pressure", "utm_x", "utm_y"])
             rename_dict = {
                 "utm_x": "xpos",
                 "utm_y": "ypos",
-                "observed": "observations",
-                "error": "std",
-                "zone": "zone_name",
-                "pressure": str(real_number),
             }
-            df_rft_one_real = df_rft_one_real.rename(rename_dict)
-            # Add columns with localiza tion ranges
-            # Note: The values in response_key and observation_key is here
-            # arbitrarily set to 'RFT'. It is not used for anything but makes
-            # it easier to look at the output of the dataframe.
-            df_rft_one_real = df_rft_one_real.with_columns(
-                [
-                    pl.lit("RFT").alias("response_key"),
-                    pl.lit("Undefined").alias("index"),
-                    pl.lit("RFT").alias("observation_key"),
-                    pl.lit(0.0).alias("min_error"),
-                    pl.lit(0.0).alias("max_error"),
-                    pl.lit(main_rft_range).alias("main_range"),
-                    pl.lit(perp_rft_range).alias("perp_range"),
-                    pl.lit(anisotropy_angle_rft).alias("anisotropy_angle"),
-                    pl.lit(0.0).alias("influence_area"),
-                ]
-            )
+            df_rft_response = df_rft_response.rename(rename_dict)
 
-            # Re-arrange columns to match dataframes from well production
-            # data and seismic data
-            new_order_of_columns = [
-                "response_key",
-                "index",
-                "observation_key",
-                "observations",
-                "std",
-                "min_error",
-                "max_error",
-                "xpos",
-                "ypos",
-                "main_range",
-                "perp_range",
-                "anisotropy_angle",
-                "0",
+            df_tmp1 = df_obs.select(["xpos", "ypos"])
+            df_tmp2 = df_rft_response.select(["xpos", "ypos"])
+            if df_tmp1.equals(df_tmp2):
+                # Observations and response have same same position
+                # Add column with response values for the observations for this zone
+                df_rft_response = df_rft_response.select(["pressure"])
+                df_rft_response = df_rft_response.rename({"pressure": str(real_number)})
+                df_obs = df_obs.hstack(df_rft_response)
+                df_rft_obs_and_response_dict[zone_name] = df_obs
+        # Add a column at end after all responses to make it having same layout as
+        # dataframe for obs from production wells
+        df_obs = df_obs.with_columns([pl.lit(0.0).alias("influence_area")])
+
+        # Convert to 32 bits float
+        df_obs = df_obs.with_columns(
+            [
+                pl.col(col).cast(pl.Float32)
+                for col, dtype in df_obs.schema.items()
+                if dtype == pl.Float64
             ]
-            df_rft_one_real = df_rft_one_real.select(new_order_of_columns)
-            df_rft = df_rft_one_real
-            first = False
+        )
 
-        else:
-            remove_columns = ["utm_x", "utm_y", "observed", "error", "zone"]
-            df_rft_one_real = df_rft_one_real.drop(remove_columns)
-            rename_dict = {"pressure": str(real_number)}
-            df_rft_one_real = df_rft_one_real.rename(rename_dict)
-
-            # Convert to 32 bits float
-            df_rft_one_real = df_rft_one_real.with_columns(
-                [
-                    pl.col(col).cast(pl.Float32)
-                    for col, dtype in df_rft_one_real.schema.items()
-                    if dtype == pl.Float64
-                ]
-            )
-
-            df_rft = df_rft.hstack(df_rft_one_real)
-    # Add a column at end after all responses to make it having same layout as
-    # dataframe for obs from production wells
-    df_rft = df_rft.with_columns([pl.lit(0.0).alias("influence_area")])
-    return df_rft
+        df_rft_obs_and_response_dict[zone_name] = df_obs
+    return df_rft_obs_and_response_dict
 
 
 def read_tracer_obs(
@@ -2040,7 +2316,6 @@ def update_2D_field_with_distance_esmda(
             )
             rho_out = rho[:, obs_nr]
             rho_out_2D = rho_out.reshape((nx, ny))
-            print(f"Write file: {filename}")
             write_2D_field_param_to_file(filename, surface_coord_dict, rho_out_2D)
 
     print(f"  Assimilate 2D field parameter {field_param_name}")
@@ -2192,7 +2467,7 @@ def update_with_distance_esmda_new(
 
     print("")
     print(" Start update of all 3D field parameters for all zones.")
-    previous_ertbox_params = None
+
     for zone_group_number, zone_list in group_of_zones_with_same_obs_dict.items():
         print("")
         print(f" Zone group {zone_group_number} with:")
@@ -2240,10 +2515,11 @@ def update_with_distance_esmda_new(
             covariance=C_D, observations=observations, alpha=alpha, seed=seed
         )
         distance_based_esmda_smoother.prepare_assimilation(Y, truncation=truncation)
-
+        previous_ertbox_params = None
         for zone_name in zone_list:
             # For current zone all field parameters should have same size
-            # and belong to same ERTBOX coordinate system
+            # and belong to same ERTBOX coordinate system, but to be sure
+            # we check the ertbox.
             print(f"  Zone name: {zone_name}")
             field_param_list_current_zone = field_params_3D_list_per_zone[zone_name]
             print("   Field params for this zone:")
@@ -3050,7 +3326,7 @@ def main():
     if not SAVE_UPDATE_TO_STORAGE:
         print("Updated parameters are not saved to ERT storage")
 
-    Nmax_rows = 500
+    Nmax_rows = 100
     Nmax_cols = 15
     pl.Config.set_tbl_rows(Nmax_rows)
     pl.Config.set_tbl_cols(Nmax_cols)
@@ -3167,22 +3443,76 @@ def main():
             "Step 7: Read seismic obs from config path and response from scratch disk."
         )
         print("Assign localization range for each seismic obs")
-        df_seis_obs_and_response = (
-            read_seis_obs_and_response_with_localization_attributes(
-                iens_active_index=iens_active_index,
-                main_seis_range=SEIS_MAIN_RANGE,
-                perp_seis_range=SEIS_PERP_RANGE,
-                anisotropy_angle_seis=SEIS_ANISOTROPY_ROTATION,
-            )
+        df_seis_obs_and_response_per_zone = read_seis_obs_and_response_for_3D_fields_per_zone(  # noqa
+            iens_active_index=iens_active_index,
+            seismic_obs_and_response_per_zone=SEISMIC_OBS_AND_RESPONSE_DICT_PER_ZONE,
         )
+        if DEBUG_PRINT:
+            print("Selected columns of observation dataframe from seismic:")
+            selected_columns = [
+                "response_key",
+                "observation_key",
+                "observations",
+                "std",
+                "xpos",
+                "ypos",
+                "main_range",
+                "perp_range",
+                "anisotropy_angle",
+                "zone_name",
+            ]
+            for zone_name in list(SEISMIC_OBS_AND_RESPONSE_DICT_PER_ZONE.keys()):
+                print(f"Zone name: {zone_name}")
+                print(
+                    df_seis_obs_and_response_per_zone[zone_name].select(
+                        selected_columns
+                    )
+                )
+
+        df_seis_obs_and_response_for_2D_fields = read_seis_obs_and_response_for_2D_fields(  # noqa
+            iens_active_index=iens_active_index,
+            seismic_obs_and_response_for_2D_fields=SEISMIC_OBS_AND_RESPONSE_DICT_FOR_2D_FIELDS,
+        )
+        if DEBUG_PRINT:
+            print("Selected columns of observation dataframe from seismic:")
+            selected_columns = [
+                "response_key",
+                "observation_key",
+                "observations",
+                "std",
+                "xpos",
+                "ypos",
+                "main_range",
+                "perp_range",
+                "anisotropy_angle",
+                "zone_name",
+            ]
+            print("Seismic obs data frame for 2D fields")
+            print(df_seis_obs_and_response_for_2D_fields.select(selected_columns))
+
     if USE_RFT_OBS:
         print("Step 8: Read RFT obs and response from scratch disk")
-        df_rft = read_rft_obs_and_response(
+        df_rft_obs_and_response = read_rft_obs_and_response(
             iens_active_index,
-            RFT_MAIN_RANGE,
-            RFT_PERP_RANGE,
-            RFT_ANISOTROPY_ROTATION,
+            RFT_OBS_AND_RESPONSE_DICT,
         )
+        if DEBUG_PRINT:
+            print("Selected columns of observation dataframe from rft:")
+            selected_columns = [
+                "observations",
+                "std",
+                "xpos",
+                "ypos",
+                "main_range",
+                "perp_range",
+                "anisotropy_angle",
+                "zone_name",
+                "0",
+                "99",
+            ]
+            for zone_name in list(RFT_OBS_AND_RESPONSE_DICT.keys()):
+                print(f"zone: {zone_name}:")
+                print(df_rft_obs_and_response[zone_name].select(selected_columns))
 
     if USE_TRACER_OBS:
         print("Step 9: Read TRACER obs")
@@ -3190,7 +3520,7 @@ def main():
             TRACER_OBS_FILENAME, TRACER_RESPONSE_FILENAME, iens_active_index
         )
 
-    print("Step 10: Split observations into one set per zone")
+    print("Step 10: Split summary observations into one set per zone")
     # dict with observation dataframe per zone
     df_obs_per_zone_dict = split_observations_into_one_dataframe_per_zone(df_obs, ZONES)
 
@@ -3217,51 +3547,67 @@ def main():
 
     if USE_SEIS_OBS:
         print("Step 12: Combine summary obs with seismic obs")
+        # Will define one dataframe per zone for obs and response for
+        # conditioning of 3D fields
+        # Will define one dataframe with all obs for conditioning of all 2D fields"
+
         # Re-arrange colums of obs dataframe for seismic before merging
         zones = list(df_obs_per_zone_dict.keys())
         df_obs_one_zone = df_obs_per_zone_dict[zones[0]]
-        df_seis_obs_and_response_rearranged = {}
-        for key, df in df_seis_obs_and_response.items():
+        df_seis_obs_and_response_per_zone_rearranged = {}
+        for zone_name, df in df_seis_obs_and_response_per_zone.items():
             df_reordered = df.select(df_obs_one_zone.columns)
-            df_seis_obs_and_response_rearranged[key] = df_reordered
+            df_seis_obs_and_response_per_zone_rearranged[zone_name] = df_reordered
 
         # Merge dataframe with summary obs and seismic obs for 3D fields (zones)
         df_obs_with_seis_per_zone_dict = {}
-        for key, df in df_obs_per_zone_dict.items():
-            for seis_key, df_seis in df_seis_obs_and_response_rearranged.items():
-                print(f" Add seismic obs {seis_key} to observations for {key}")
-                df = pl.concat([df, df_seis], how="vertical")
-            df_obs_with_seis_per_zone_dict[key] = df
+        for zone_name in zones:
+            print(f" Add seismic obs to summary observations for zone {zone_name}")
+            df_summary = df_obs_per_zone_dict[zone_name]
+            df_seis = df_seis_obs_and_response_per_zone_rearranged[zone_name]
+            df = pl.concat([df_summary, df_seis], how="vertical")
+            df_obs_with_seis_per_zone_dict[zone_name] = df
         df_obs_per_zone_dict = df_obs_with_seis_per_zone_dict
 
-        # Merge dataframe with summary obs and seismic obs for 2D fields (surfaces)
-        for seis_key, df_seis in df_seis_obs_and_response_rearranged.items():
-            print(f" Add seismic obs {seis_key} to observations for 2D fields")
-            df_obs_for_2D_fields = pl.concat(
-                [df_obs_for_2D_fields, df_seis], how="vertical"
-            )
-    if USE_RFT_OBS:
-        print("Step 13: Combine obs with RFT obs")
-        # Convert to 32 bits float
-        df_rft = df_rft.with_columns(
-            [
-                pl.col(col).cast(pl.Float32)
-                for col, dtype in df_rft.schema.items()
-                if dtype == pl.Float64
-            ]
+        # Re-arrange colums of obs dataframe for seismic for 2D fields before merging
+        # and merge summary obs and seismic obs for conditioning of 2D fields
+        print(" Add seismic obs to summary observations for 2D fields")
+        df_rearranged = df_seis_obs_and_response_for_2D_fields.select(
+            df_obs_for_2D_fields.columns
+        )
+        df_obs_for_2D_fields = pl.concat(
+            [df_obs_for_2D_fields, df_rearranged], how="vertical"
         )
 
-        # Merge dataframe with summary obs and RFT obs for 3D fields (zones)
-        df_merged_dict = {}
-        for key, df in df_obs_per_zone_dict.items():
-            print(f" Add RFT obs to observations for {key}")
-            df = pl.concat([df, df_rft], how="vertical")
-            df_merged_dict[key] = df
-        df_obs_per_zone_dict = df_merged_dict
+    if USE_RFT_OBS:
+        print("Step 13: Combine obs with RFT obs")
+        # Will define one dataframe per zone for obs and response for
+        # conditioning of 3D fields
+        # Will define one dataframe with all obs for conditioning of all 2D fields"
+        # Re-arrange colums of obs dataframe for rft before merging
+        zones = list(df_obs_per_zone_dict.keys())
+        df_obs_one_zone = df_obs_per_zone_dict[zones[0]]
+        df_rft_obs_and_response_rearranged = {}
+        for zone_name, df in df_rft_obs_and_response.items():
+            df_reordered = df.select(df_obs_one_zone.columns)
+            df_rft_obs_and_response_rearranged[zone_name] = df_reordered
 
-        # Merge dataframe with summary obs and RFT obs for 2D fields (surfaces)
-        print(" Add RFT obs to observations for 2D fields")
-        df_obs_for_2D_fields = pl.concat([df_obs_for_2D_fields, df_rft], how="vertical")
+        # Merge dataframe with summary obs and rft obs for 3D fields (zones)
+        df_obs_with_rft_per_zone_dict = {}
+        for zone_name in zones:
+            print(f" Add rft obs to summary observations for zone {zone_name}")
+            df_summary = df_obs_per_zone_dict[zone_name]
+            df_rft = df_rft_obs_and_response_rearranged[zone_name]
+            df = pl.concat([df_summary, df_rft], how="vertical")
+            df_obs_with_rft_per_zone_dict[zone_name] = df
+        df_obs_per_zone_dict = df_obs_with_rft_per_zone_dict
+
+        # Merge dataframe with summary obs and seismic obs for 2D fields (surfaces)
+        for zone_name, df_rft in df_rft_obs_and_response_rearranged.items():
+            print(f" Add rft obs for zone {zone_name} to observations for 2D fields")
+            df_obs_for_2D_fields = pl.concat(
+                [df_obs_for_2D_fields, df_rft], how="vertical"
+            )
 
     if USE_TRACER_OBS:
         print("Step 14: Combine obs with TRACER obs")
@@ -3290,9 +3636,14 @@ def main():
             "perp_range",
             "anisotropy_angle",
         ]
-        print("Selected columns:")
+        print("Data frames for 3D fields per zone using selected columns:")
         for zone_name, df in df_obs_per_zone_dict.items():
             print(f"{zone_name} {df.select(selected_columns)}")
+
+        print(
+            " Dataframe for 2D fields using selected columns: "
+            f"{df_obs_for_2D_fields.select(selected_columns)}"
+        )
 
     if not SKIP_DL_UPDATE:
         print("")
