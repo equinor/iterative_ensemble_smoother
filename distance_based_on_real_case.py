@@ -19,7 +19,7 @@ from ert.storage import open_storage
 from surfio import IrapHeader, IrapSurface
 
 from iterative_ensemble_smoother.esmda import ESMDA
-from iterative_ensemble_smoother.experimental import DistanceESMDA
+from iterative_ensemble_smoother.experimental import AdaptiveESMDA, DistanceESMDA
 
 """
 This script will read info to test distance-based localisation from various sources:
@@ -312,7 +312,7 @@ SAVE_UPDATE_TO_STORAGE = True
 # Turn on/off the two types of update
 SKIP_GLOBAL_UPDATE = False
 SKIP_DL_UPDATE = False
-ENSEMBLE_TAG = "_rft"
+ENSEMBLE_TAG = "_as"
 
 # Create unique label for each ensemble created by running this script
 ENSEMBLE_LABEL = run_number()
@@ -325,6 +325,7 @@ DEBUG_PRINT = True
 
 # Result directory for ROFF and irap files created for the mean and stdev of fields
 OUTPUT_PATH = "TMP"
+SCALAR_UPDATE_METHOD = "ADAPTIVE"  # ESMDA or ADAPTIVE
 
 # Storage
 STORAGE_PATH = (
@@ -2239,90 +2240,51 @@ def update_3D_field_with_distance_esmda(
     return X_prior_3D, X_post_3D
 
 
-def update_2D_field_with_distance_esmda(
-    distance_based_esmda_smoother,
-    field_param_name: str,
-    param_config_all,
-    X_prior: npt.NDArray[np.double],
-    Y: npt.NDArray[np.double],
-    obs_xpos: npt.NDArray[np.double],
-    obs_ypos: npt.NDArray[np.double],
-    obs_main_ranges: npt.NDArray[np.double],
-    obs_perp_ranges: npt.NDArray[np.double],
-    obs_anisotropy_angle: npt.NDArray[np.double],
-) -> list[npt.NDArray[np.double], dict]:
-    """
-    Calculate posterior update with distance-based ESMDA for one 2D parameter
-    The RHO is set to the same for each 2D fields.
-    Result is prior and posterior parameter matrices of field parameters for one field.
-    """
+def equal_surface_coord_system(surface_config1, surface_config2):
+    assert surface_config1.type == "surface"
+    assert surface_config1.type == "surface"
+    if (
+        (surface_config1.ncol == surface_config2.ncol)
+        and (surface_config1.nrow == surface_config2.nrow)
+        and (surface_config1.xori == surface_config2.xori)
+        and (surface_config1.yori == surface_config2.yori)
+        and (surface_config1.xinc == surface_config2.xinc)
+        and (surface_config1.yinc == surface_config2.yinc)
+        and (surface_config1.rotation == surface_config2.rotation)
+        and (surface_config1.yflip == surface_config2.yflip)
+    ):
+        return True
+    return False
 
-    surface_coord_dict = {}
-    surface_coord_dict["nx"] = param_config_all[field_param_name].ncol
-    surface_coord_dict["ny"] = param_config_all[field_param_name].nrow
-    yflip = param_config_all[field_param_name].yflip
-    surface_coord_dict["yflip"] = yflip
-    surface_coord_dict["xinc"] = param_config_all[field_param_name].xinc
-    surface_coord_dict["yinc"] = param_config_all[field_param_name].yinc
-    surface_coord_dict["xorigo"] = param_config_all[field_param_name].xori
-    surface_coord_dict["yorigo"] = param_config_all[field_param_name].yori
-    surface_coord_dict["rotation"] = param_config_all[field_param_name].rotation
-    # TODO  Workaround due to missing info for param_config for surface
-    # Assume origo and rotation point for the 2D map is the same.
-    #    surface_coord_dict["xrotationpoint"] = param_config_all[field_param_name].xrot
-    #    surface_coord_dict["yrotationpoint"] = param_config_all[field_param_name].yrot
-    surface_coord_dict["xrotationpoint"] = surface_coord_dict["xorigo"]
-    surface_coord_dict["yrotationpoint"] = surface_coord_dict["yorigo"]
 
-    assert yflip == 1  # TODO Maybe this can be -1  and we need to set yinc to -yinc
-    assert surface_coord_dict["yinc"] > 0
-    assert surface_coord_dict["xinc"] > 0
+def check_and_group_2D_fields(param_config, field_params_2D_list: list[str]) -> dict:
+    if len(field_params_2D_list) == 0:
+        return {}
 
-    nx = surface_coord_dict["nx"]
-    ny = surface_coord_dict["ny"]
-    nparam = nx * ny
-    nobs = Y.shape[0]
-    assert nparam == X_prior.shape[0]
-    assert nobs == len(obs_xpos)
+    surface_name = field_params_2D_list[0]
+    surface_config = param_config[surface_name]
+    group_dict = {}
+    group_number = 1
+    group_dict[group_number] = [surface_name]
 
-    print(
-        "  Transform observation position and localization anisotropy angle to "
-        "local surface coordinate."
-    )
-    obs_xpos_transf, obs_ypos_transf, obs_anisotropy_angle_transf = (
-        transform_to_local_coordinates_2D(
-            surface_coord_dict, obs_xpos, obs_ypos, obs_anisotropy_angle
-        )
-    )
-
-    print(f"  Define rho for 2D field {field_param_name}")
-    if USE_LOCALIZATION:
-        rho = calculate_rho_for_summary_obs_for_2D_field(
-            surface_coord_dict,
-            obs_xpos_transf,
-            obs_ypos_transf,
-            obs_main_ranges,
-            obs_perp_ranges,
-            obs_anisotropy_angle_transf,
-            scaling_function_name=SCALING_FUNCTION_NAME,
-        )
-
-    else:
-        rho = np.ones(shape=(nparam, nobs), dtype=np.float64)
-    if DEBUG_PRINT:
-        for obs_nr in range(10):
-            filename = (
-                "rho_for_2D_fields_" + field_param_name + "_" + str(obs_nr) + ".irap"
-            )
-            rho_out = rho[:, obs_nr]
-            rho_out_2D = rho_out.reshape((nx, ny))
-            write_2D_field_param_to_file(filename, surface_coord_dict, rho_out_2D)
-
-    print(f"  Assimilate 2D field parameter {field_param_name}")
-    X_post = distance_based_esmda_smoother.assimilate_batch(
-        X_batch=X_prior, Y=Y, rho_batch=rho
-    )
-    return X_post, surface_coord_dict
+    for surface_name in field_params_2D_list:
+        surface_config = param_config[surface_name]
+        found = False
+        for _, group_list in group_dict.items():
+            if surface_name in group_list:
+                found = True
+                break
+            else:
+                # Check if surface has same surface_config
+                s_config = param_config[group_list[0]]
+                if equal_surface_coord_system(surface_config, s_config):
+                    group_list.append(surface_name)
+                    found = True
+                    break
+        if not found:
+            group_number += 1
+            group_dict[group_number] = [surface_name]
+    return group_dict
 
 
 def update_2D_field_with_esmda(
@@ -2734,127 +2696,277 @@ def update_with_distance_esmda_new(
                 print("")
 
     # Update 2D field parameters:
-    print("")
-    print("Start Update of all 2D field parameters.")
-    print("")
-    print(
-        " Calculate response matrix Y, observation vector "
-        "and localization attribute vectors"
-    )
-    (
-        Y,
-        observations,
-        C_D,
-        obs_xpos,
-        obs_ypos,
-        obs_main_ranges,
-        obs_perp_ranges,
-        obs_anisotropy_angle,
-    ) = define_response_and_observations(
-        ensemble_size, obs_and_response_df_for_2D_fields
-    )
-    nobs = Y.shape[0]
-    print(f" Surfaces are conditioned to {nobs} observations.")
-    if DEBUG_PRINT:
-        print(f" Y matrix shape for use when updating surfaces:  {Y.shape}")
+    # Check all 2D field parameters and group them such that all 2D fields with the same
+    # local coordinate system is grouped together to avoid having to transform
+    # global position of observations to local coordinates more than necessary
+    # and to avoid having to re-calculate RHO unnecessary.
+    if len(field_params_2D_list) > 0:
+        print("")
+        print("Start Update of all 2D field parameters.")
+        print("")
         print(
-            f" Observations shape for use when updating surfaces:  {observations.shape}"
+            " Calculate response matrix Y, observation vector "
+            "and localization attribute vectors"
+        )
+        print(
+            "All 2D fields will use the same set of observations and "
+            "localization ranges."
         )
 
-    # Initialize smoother again for this set of observations and observation error
-    distance_based_esmda_smoother = DistanceESMDA(
-        covariance=C_D, observations=observations, alpha=alpha, seed=seed
-    )
-    distance_based_esmda_smoother.prepare_assimilation(Y, truncation=truncation)
-    if SAVE_UPDATE_TO_STORAGE:
-        with open_storage(STORAGE_PATH, mode="w") as storage:
-            experiment = storage.get_experiment_by_name(EXPERIMENT_NAME)
-            param_config_all = experiment.parameter_configuration
-            prior_ensemble = experiment.get_ensemble_by_name(ENSEMBLE_NAME)
+        (
+            Y,
+            observations,
+            C_D,
+            obs_xpos,
+            obs_ypos,
+            obs_main_ranges,
+            obs_perp_ranges,
+            obs_anisotropy_angle,
+        ) = define_response_and_observations(
+            ensemble_size, obs_and_response_df_for_2D_fields
+        )
+        nobs = Y.shape[0]
+        print(f" Surfaces are conditioned to {nobs} observations.")
+        if DEBUG_PRINT:
+            print(f" Y matrix shape for use when updating surfaces:  {Y.shape}")
+            print(
+                " Observations shape for use when updating surfaces:  "
+                f"{observations.shape}"
+            )
 
-            for surface_name in field_params_2D_list:
-                print(f"  Surface field: {surface_name}")
-                X_prior_group = prior_ensemble.load_parameters_numpy(
-                    surface_name, realizations
-                )
+        # Initialize smoother again for this set of observations and observation error
+        distance_based_esmda_smoother = DistanceESMDA(
+            covariance=C_D, observations=observations, alpha=alpha, seed=seed
+        )
+        distance_based_esmda_smoother.prepare_assimilation(Y, truncation=truncation)
+        if SAVE_UPDATE_TO_STORAGE:
+            with open_storage(STORAGE_PATH, mode="w") as storage:
+                experiment = storage.get_experiment_by_name(EXPERIMENT_NAME)
+                param_config_all = experiment.parameter_configuration
+                prior_ensemble = experiment.get_ensemble_by_name(ENSEMBLE_NAME)
 
-                X_post_group, surface_coord_dict = update_2D_field_with_distance_esmda(
-                    distance_based_esmda_smoother,
-                    surface_name,
-                    param_config_all,
-                    X_prior_group,
-                    Y,
-                    obs_xpos,
-                    obs_ypos,
-                    obs_main_ranges,
-                    obs_perp_ranges,
-                    obs_anisotropy_angle,
+                groups_of_2D_field_names = check_and_group_2D_fields(
+                    param_config_all, field_params_2D_list
                 )
-                # Store the field parameter to storage
-                post_ensemble = experiment.get_ensemble_by_name(ENSEMBLE_NAME_UPDATE)
-                print(f"  Store {surface_name} to {ENSEMBLE_NAME_UPDATE}")
-                nparam = X_post_group.shape[0]
-                print(f"  Number of parameters in {surface_name}: {nparam}")
-                print("")
-                post_ensemble.save_parameters_numpy(
-                    parameters=X_post_group,
-                    param_group=surface_name,
-                    iens_active_index=iens_active_index,
-                )
-                if WRITE_STATS_PARAMS:
-                    print("  Calculate statistics and write 2D field params to file")
-                    prefix = "local"
-                    write_2D_field_statistics(
-                        surface_name,
-                        X_prior_group,
-                        X_post_group,
-                        surface_coord_dict,
-                        prefix,
-                        output_path=OUTPUT_PATH,
+                print("Groups of 2D fields:")
+                for group_number, group_list in groups_of_2D_field_names.items():
+                    print(f"  Group: {group_number}")
+                    for s in group_list:
+                        print(f"  {s}")
+
+                for group_number, surface_list in groups_of_2D_field_names.items():
+                    # Calculate rho once per group since same obs and
+                    # same local coordinate system for all surface in a group.
+                    print(f"  Surface group number: {group_number}")
+                    surface_name = surface_list[0]
+                    rho_2D, surface_coord_dict = (
+                        transform_coord_and_define_rho_for_2D_fields(
+                            surface_name,
+                            param_config_all,
+                            obs_xpos,
+                            obs_ypos,
+                            obs_main_ranges,
+                            obs_perp_ranges,
+                            obs_anisotropy_angle,
+                        )
                     )
 
-    else:
-        with open_storage(STORAGE_PATH, mode="r") as storage:
-            experiment = storage.get_experiment_by_name(EXPERIMENT_NAME)
-            param_config_all = experiment.parameter_configuration
-            prior_ensemble = experiment.get_ensemble_by_name(ENSEMBLE_NAME)
+                    # Update 2D fields within the group using same Y and RHO matrix
+                    for surface_name in surface_list:
+                        print(f"  Surface field: {surface_name}")
+                        X_prior = prior_ensemble.load_parameters_numpy(
+                            surface_name, realizations
+                        )
+                        print(f"  Assimilate 2D field parameter {field_param_name}")
+                        X_post = distance_based_esmda_smoother.assimilate_batch(
+                            X_batch=X_prior, Y=Y, rho_batch=rho_2D
+                        )
 
-            for surface_name in field_params_2D_list:
-                print(f"  Surface field: {surface_name}")
-                X_prior_group = prior_ensemble.load_parameters_numpy(
-                    surface_name, realizations
+                        # Store the field parameter to storage
+                        post_ensemble = experiment.get_ensemble_by_name(
+                            ENSEMBLE_NAME_UPDATE
+                        )
+                        print(f"  Store {surface_name} to {ENSEMBLE_NAME_UPDATE}")
+                        nparam = X_post.shape[0]
+                        print(f"  Number of parameters in {surface_name}: {nparam}")
+                        print("")
+                        post_ensemble.save_parameters_numpy(
+                            parameters=X_post,
+                            param_group=surface_name,
+                            iens_active_index=iens_active_index,
+                        )
+                        if WRITE_STATS_PARAMS:
+                            print(
+                                "  Calculate statistics and write 2D field "
+                                "params to file"
+                            )
+                            prefix = "local"
+                            write_2D_field_statistics(
+                                surface_name,
+                                X_prior,
+                                X_post,
+                                surface_coord_dict,
+                                prefix,
+                                output_path=OUTPUT_PATH,
+                            )
+
+        else:
+            with open_storage(STORAGE_PATH, mode="r") as storage:
+                experiment = storage.get_experiment_by_name(EXPERIMENT_NAME)
+                param_config_all = experiment.parameter_configuration
+                prior_ensemble = experiment.get_ensemble_by_name(ENSEMBLE_NAME)
+
+                groups_of_2D_field_names = check_and_group_2D_fields(
+                    param_config_all, field_params_2D_list
                 )
+                print(f"{groups_of_2D_field_names=}")
 
-                X_post_group, surface_coord_dict = update_2D_field_with_distance_esmda(
-                    distance_based_esmda_smoother,
-                    surface_name,
-                    param_config_all,
-                    X_prior_group,
-                    Y,
-                    obs_xpos,
-                    obs_ypos,
-                    obs_main_ranges,
-                    obs_perp_ranges,
-                    obs_anisotropy_angle,
-                )
-
-                if WRITE_STATS_PARAMS:
-                    print("  Calculate statistics and write 2D field params to file")
-                    prefix = "local"
-                    write_2D_field_statistics(
-                        surface_name,
-                        X_prior_group,
-                        X_post_group,
-                        surface_coord_dict,
-                        prefix,
-                        output_path=OUTPUT_PATH,
+                for group_number, surface_list in groups_of_2D_field_names.items():
+                    # Calculate rho once per group since same obs and same
+                    # local coordinate system for all surface in a group.
+                    print(f"  Surface group number: {group_number}")
+                    surface_name = surface_list[0]
+                    rho_2D, surface_coord_dict = (
+                        transform_coord_and_define_rho_for_2D_fields(
+                            surface_name,
+                            param_config_all,
+                            obs_xpos,
+                            obs_ypos,
+                            obs_main_ranges,
+                            obs_perp_ranges,
+                            obs_anisotropy_angle,
+                        )
                     )
+
+                    # Update 2D fields within the group using same Y and RHO matrix
+                    for surface_name in surface_list:
+                        print(f"  Surface field: {surface_name}")
+                        X_prior = prior_ensemble.load_parameters_numpy(
+                            surface_name, realizations
+                        )
+                        print(f"  Assimilate 2D field parameter {field_param_name}")
+                        X_post = distance_based_esmda_smoother.assimilate_batch(
+                            X_batch=X_prior, Y=Y, rho_batch=rho_2D
+                        )
+
+                        if WRITE_STATS_PARAMS:
+                            print(
+                                "  Calculate statistics and write 2D "
+                                "field params to file"
+                            )
+                            prefix = "local"
+                            write_2D_field_statistics(
+                                surface_name,
+                                X_prior,
+                                X_post,
+                                surface_coord_dict,
+                                prefix,
+                                output_path=OUTPUT_PATH,
+                            )
 
     # Update scalarparameter groups using ordinary global ESMDA
     # TODO: Note this implementation is slow since it initialize ESMDA for every
     # scalar parameter. Better to update all scalar parameters in one update
     # operation with ESMDA instead.
     if SAVE_UPDATE_TO_STORAGE:
+        method = SCALAR_UPDATE_METHOD
+        update_scalars_all(
+            method,
+            scalar_param_list,
+            iens_active_index,
+            observations,
+            C_D,
+            Y,
+            ALPHA,
+            SEED,
+        )
+        update_storage_with_const_params(non_updatable_list, iens_active_index)
+
+
+def transform_coord_and_define_rho_for_2D_fields(
+    field_param_name: str,
+    param_config_all,
+    obs_xpos: npt.NDArray[np.double],
+    obs_ypos: npt.NDArray[np.double],
+    obs_main_ranges: npt.NDArray[np.double],
+    obs_perp_ranges: npt.NDArray[np.double],
+    obs_anisotropy_angle: npt.NDArray[np.double],
+) -> tuple[npt.NDArray[np.double], dict]:
+    print(f"  Surface field: {field_param_name}")
+    surface_coord_dict = {}
+    surface_coord_dict["nx"] = param_config_all[field_param_name].ncol
+    surface_coord_dict["ny"] = param_config_all[field_param_name].nrow
+    yflip = param_config_all[field_param_name].yflip
+    surface_coord_dict["yflip"] = yflip
+    surface_coord_dict["xinc"] = param_config_all[field_param_name].xinc
+    surface_coord_dict["yinc"] = param_config_all[field_param_name].yinc
+    surface_coord_dict["xorigo"] = param_config_all[field_param_name].xori
+    surface_coord_dict["yorigo"] = param_config_all[field_param_name].yori
+    surface_coord_dict["rotation"] = param_config_all[field_param_name].rotation
+    # TODO  Workaround due to missing info for param_config for surface
+    # Assume origo and rotation point for the 2D map is the same.
+    #    surface_coord_dict["xrotationpoint"] = param_config_all[field_param_name].xrot
+    #    surface_coord_dict["yrotationpoint"] = param_config_all[field_param_name].yrot
+    surface_coord_dict["xrotationpoint"] = surface_coord_dict["xorigo"]
+    surface_coord_dict["yrotationpoint"] = surface_coord_dict["yorigo"]
+
+    assert yflip == 1  # TODO Maybe this can be -1  and we need to set yinc to -yinc
+    assert surface_coord_dict["yinc"] > 0
+    assert surface_coord_dict["xinc"] > 0
+
+    nx = surface_coord_dict["nx"]
+    ny = surface_coord_dict["ny"]
+    nparam = nx * ny
+
+    print(
+        "  Transform observation position and localization anisotropy angle to "
+        "local surface coordinate."
+    )
+    obs_xpos_transf, obs_ypos_transf, obs_anisotropy_angle_transf = (
+        transform_to_local_coordinates_2D(
+            surface_coord_dict, obs_xpos, obs_ypos, obs_anisotropy_angle
+        )
+    )
+
+    print(f"  Define rho for 2D field {field_param_name}")
+    if USE_LOCALIZATION:
+        rho = calculate_rho_for_summary_obs_for_2D_field(
+            surface_coord_dict,
+            obs_xpos_transf,
+            obs_ypos_transf,
+            obs_main_ranges,
+            obs_perp_ranges,
+            obs_anisotropy_angle_transf,
+            scaling_function_name=SCALING_FUNCTION_NAME,
+        )
+
+    else:
+        nobs = len(obs_xpos)
+        rho = np.ones(shape=(nparam, nobs), dtype=np.float64)
+
+    if DEBUG_PRINT:
+        for obs_nr in range(10):
+            filename = (
+                "rho_for_2D_fields_" + field_param_name + "_" + str(obs_nr) + ".irap"
+            )
+            rho_out = rho[:, obs_nr]
+            rho_out_2D = rho_out.reshape((nx, ny))
+            write_2D_field_param_to_file(filename, surface_coord_dict, rho_out_2D)
+
+    return rho, surface_coord_dict
+
+
+def update_scalars(
+    method: str,
+    scalar_param_list: list[str],
+    iens_active_index: npt.NDArray[np.int32],
+    observations: npt.NDArray[np.double],
+    C_D: npt.NDArray[np.double],
+    Y: npt.NDArray[np.double],
+    alpha: float,
+    seed: int,
+):
+    if method == "ESMDA":
         for group_name in scalar_param_list:
             print(f"  Scalar parameter group: {group_name}")
 
@@ -2864,11 +2976,10 @@ def update_with_distance_esmda_new(
                 alpha=alpha,
                 seed=seed,
             )
-
+            realizations = list(iens_active_index)
             with open_storage(STORAGE_PATH, mode="w") as storage:
                 experiment = storage.get_experiment_by_name(EXPERIMENT_NAME)
                 prior_ensemble = experiment.get_ensemble_by_name(ENSEMBLE_NAME)
-                param_config_all = experiment.parameter_configuration
                 X_prior_group = prior_ensemble.load_parameters_numpy(
                     group_name, realizations
                 )
@@ -2891,17 +3002,129 @@ def update_with_distance_esmda_new(
                     iens_active_index=iens_active_index,
                 )
 
+
+def update_scalars_all(
+    method: str,
+    scalar_param_list: list[str],
+    iens_active_index: npt.NDArray[np.int32],
+    observations: npt.NDArray[np.double],
+    C_D: npt.NDArray[np.double],
+    Y: npt.NDArray[np.double],
+    alpha: float,
+    seed: int,
+):
+    if method == "ESMDA":
+        print("Update scalar parameters with ordinary ESMDA")
+        nparam = len(scalar_param_list)
+        nreal = Y.shape[1]
+        realizations = list(iens_active_index)
+        with open_storage(STORAGE_PATH, mode="r") as storage:
+            experiment = storage.get_experiment_by_name(EXPERIMENT_NAME)
+            prior_ensemble = experiment.get_ensemble_by_name(ENSEMBLE_NAME)
+
+            print(f"  Number of scalar parameters to update: {nparam}")
+            X_prior = np.zeros((nparam, nreal), dtype=np.float64)
+            for n, group_name in enumerate(scalar_param_list):
+                X_prior_group = prior_ensemble.load_parameters_numpy(
+                    group_name, realizations
+                )
+                X_prior[n, :] = X_prior_group[0, :]
+
+        esmda_smoother = ESMDA(
+            covariance=C_D,
+            observations=observations,
+            alpha=alpha,
+            seed=seed,
+        )
+        with open_storage(STORAGE_PATH, mode="w") as storage:
+            experiment = storage.get_experiment_by_name(EXPERIMENT_NAME)
+            post_ensemble = experiment.get_ensemble_by_name(ENSEMBLE_NAME_UPDATE)
+
+            # Parameters in X_prior_group are standard normal N(0,1)
+            # and not transformed and should not be transformed
+            # before update and not before saving to storage
+
+            # Update with ESMDA
+            X_post = esmda_smoother.assimilate(X=X_prior, Y=Y)
+
+            print(f"  Store scalar parameters to {ENSEMBLE_NAME_UPDATE}")
+            for n, group_name in enumerate(scalar_param_list):
+                X_post_group = X_post[n, :]
+                post_ensemble.save_parameters_numpy(
+                    parameters=X_post_group,
+                    param_group=group_name,
+                    iens_active_index=iens_active_index,
+                )
+    elif method == "ADAPTIVE":
+        print("Update scalar parameters with Adaptive localization with ESMDA")
+        nparam = len(scalar_param_list)
+        nreal = Y.shape[1]
+        realizations = list(iens_active_index)
+        with open_storage(STORAGE_PATH, mode="r") as storage:
+            experiment = storage.get_experiment_by_name(EXPERIMENT_NAME)
+            prior_ensemble = experiment.get_ensemble_by_name(ENSEMBLE_NAME)
+
+            print(f"  Number of scalar parameters to update: {nparam}")
+            X_prior = np.zeros((nparam, nreal), dtype=np.float64)
+            for n, group_name in enumerate(scalar_param_list):
+                X_prior_group = prior_ensemble.load_parameters_numpy(
+                    group_name, realizations
+                )
+                X_prior[n, :] = X_prior_group[0, :]
+
+        adaptive_esmda_smoother = AdaptiveESMDA(
+            covariance=C_D,
+            observations=observations,
+            seed=seed,
+        )
+        corr_threshold = adaptive_esmda_smoother.correlation_threshold(nreal)
+        # Calculate D
+        D = adaptive_esmda_smoother.perturb_observations(
+            ensemble_size=nreal, alpha=alpha
+        )
+
+        X_post = adaptive_esmda_smoother.assimilate(
+            X=X_prior,
+            Y=Y,
+            D=D,
+            overwrite=False,
+            alpha=ALPHA,
+            correlation_threshold=corr_threshold,
+            n_jobs=1,
+        )
+        with open_storage(STORAGE_PATH, mode="w") as storage:
+            experiment = storage.get_experiment_by_name(EXPERIMENT_NAME)
+            post_ensemble = experiment.get_ensemble_by_name(ENSEMBLE_NAME_UPDATE)
+
+            # Parameters in X_prior_group are standard normal N(0,1)
+            # and not transformed and should not be transformed
+            # before update and not before saving to storage
+            print(f"  Store scalar parameters to {ENSEMBLE_NAME_UPDATE}")
+            for n, group_name in enumerate(scalar_param_list):
+                X_post_group = X_post[n, :]
+                post_ensemble.save_parameters_numpy(
+                    parameters=X_post_group,
+                    param_group=group_name,
+                    iens_active_index=iens_active_index,
+                )
+    else:
+        raise ValueError(f"Scalar update method {method} is not implemented.")
+
+
+def update_storage_with_const_params(
+    non_updatable_list: list[str],
+    iens_active_index: npt.NDArray[np.int32],
+):
+    with open_storage(STORAGE_PATH, mode="w") as storage:
+        experiment = storage.get_experiment_by_name(EXPERIMENT_NAME)
+        prior_ensemble = experiment.get_ensemble_by_name(ENSEMBLE_NAME)
+        post_ensemble = experiment.get_ensemble_by_name(ENSEMBLE_NAME_UPDATE)
+        param_config = prior_ensemble.experiment.parameter_configuration
         for group_name in non_updatable_list:
-            print(f"  Scalar parameter group: {group_name}")
-            with open_storage(STORAGE_PATH, mode="w") as storage:
-                experiment = storage.get_experiment_by_name(EXPERIMENT_NAME)
-                prior_ensemble = experiment.get_ensemble_by_name(ENSEMBLE_NAME)
-                post_ensemble = experiment.get_ensemble_by_name(ENSEMBLE_NAME_UPDATE)
-                prior_ensemble.experiment.parameter_configuration[
-                    group_name
-                ].copy_parameters(prior_ensemble, post_ensemble, iens_active_index)
-                print(f"    Store {group_name} to {ENSEMBLE_NAME_UPDATE}")
-                print("")
+            param_config[group_name].copy_parameters(
+                prior_ensemble, post_ensemble, iens_active_index
+            )
+            print(f"    Store {group_name} to {ENSEMBLE_NAME_UPDATE}")
 
 
 def write_rho(rho_2D: npt.NDArray[np.double], nx: int, ny: int, nz: int, nobs: int):
