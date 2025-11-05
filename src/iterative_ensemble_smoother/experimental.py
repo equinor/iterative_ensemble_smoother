@@ -16,6 +16,7 @@ from iterative_ensemble_smoother import ESMDA
 from iterative_ensemble_smoother.esmda import BaseESMDA
 from iterative_ensemble_smoother.esmda_inversion import (
     empirical_cross_covariance,
+    singular_values_to_keep,
 )
 
 T = TypeVar("T")
@@ -449,6 +450,217 @@ def ensemble_smoother_update_step_row_scaling(
         row_scale.multiply(X, transition_matrix)
 
     return X_with_row_scaling
+
+
+class DistanceESMDA(ESMDA):
+    def assimilate(
+        self,
+        *,
+        X: npt.NDArray[np.double],
+        Y: npt.NDArray[np.double],
+        rho: npt.NDArray[np.double],
+        truncation: float = 0.99,
+    ):
+        """
+        Implementation of algorithm described in Appendix B of emerick16a.
+
+        X_posterior = smoother.assimilate(X, Y, D, alpha, rho)
+
+        """
+
+        N_n, N_e = Y.shape
+
+        # Subtract the mean of every parameter, see Eqn (B.4)
+        M_delta = X - np.mean(X, axis=1, keepdims=True)
+
+        # Subtract the mean of every observation, see Eqn (B.5)
+        D_delta = Y - np.mean(Y, axis=1, keepdims=True)
+
+        # See Eqn (B.8)
+        # Compute the diagonal of the inverse of S directly, without forming S itself.
+        if self.C_D.ndim == 1:
+            # If C_D is 1D, it's a vector of variances. S_inv_diag is 1/sqrt(variances).
+            S_inv_diag = 1.0 / np.sqrt(self.C_D)
+        else:
+            # If C_D is 2D, extract its diagonal of variances, then compute S_inv_diag.
+            S_inv_diag = 1.0 / np.sqrt(np.diag(self.C_D))
+
+        # See Eqn (B.10)
+        U, w, VT = sp.linalg.svd(S_inv_diag[:, np.newaxis] * D_delta)
+        idx = singular_values_to_keep(w, truncation=truncation)
+        N_r = min(N_n, N_e - 1, idx)  # Number of values in SVD to keep
+        U_r, w_r = U[:, :N_r], w[:N_r]
+
+        # See Eqn (B.12)
+        # Calculate C_hat_D, the correlation matrix of measurement errors.
+        # This is defined as C_hat_D = S^-1 * C_D * S^-1
+        if self.C_D.ndim == 1:
+            # If C_D is a 1D vector of variances,
+            # it represents a diagonal matrix.
+            # In this special case,
+            # S_inv * C_D * S_inv simplifies to the identity matrix.
+            C_hat_D = np.identity(N_n)
+        else:  # C_D is a 2D matrix
+            # This scales each ROW i of self.C_D by the scalar S_inv_diag[i].
+            # This is numerically identical to the matrix multiplication S⁻¹ @ C_D
+            C_hat_D_temp = S_inv_diag[:, np.newaxis] * self.C_D
+
+            # This scales each COLUMN j of C_hat_D_temp by the scalar S_inv_diag[j].
+            # This is numerically identical to the matrix multiplication (result) @ S⁻¹
+            C_hat_D = C_hat_D_temp * S_inv_diag
+
+        U_r_w_inv = U_r / w_r
+        # See Eqn (B.13)
+        R = (
+            self.alpha[self.iteration]
+            * (N_e - 1)
+            * np.linalg.multi_dot([U_r_w_inv.T, C_hat_D, U_r_w_inv])
+        )
+
+        # See Eqn (B.14)
+        H_r, Z_r = sp.linalg.eigh(R, driver="evr", overwrite_a=True)
+
+        # See Eqn (B.18)
+        _X = (S_inv_diag[:, np.newaxis] * U_r) * (1 / w_r) @ Z_r
+
+        # See Eqn (B.19)
+        L = np.diag(1.0 / (1.0 + H_r))
+
+        # See Eqn (B.20)
+        X1 = L @ _X.T
+        # See Eqn (B.21)
+        X2 = D_delta.T @ _X
+        # See Eqn (B.22)
+        X3 = X2 @ X1
+
+        # See Eqn (B.23)
+        K_i = M_delta @ X3
+
+        # See Eqn (B.24)
+        K_rho_i = rho * K_i
+
+        D = self.perturb_observations(
+            ensemble_size=N_e, alpha=self.alpha[self.iteration]
+        )
+        # See Eqn (B.25)
+        X4 = K_rho_i @ (D - Y)
+
+        # See Eqn (B.26)
+        return X + X4
+
+    def prepare_assimilation(
+        self,
+        Y: npt.NDArray[np.double],
+        truncation: float = 0.99,
+    ):
+        """
+        Implementation of algorithm described in Appendix B of emerick16a.
+        The first steps to prepare X3 only depends on Y and observations.
+        These steps can be calculated once when running multiple batches of
+        field parameters. This function will calculate X3 and perturbed observations D.
+        """
+        N_n, N_e = Y.shape
+
+        # Subtract the mean of every observation, see Eqn (B.5)
+        D_delta = Y - np.mean(Y, axis=1, keepdims=True)
+
+        # See Eqn (B.8)
+        # Compute the diagonal of the inverse of S directly, without forming S itself.
+        if self.C_D.ndim == 1:
+            # If C_D is 1D, it's a vector of variances. S_inv_diag is 1/sqrt(variances).
+            S_inv_diag = 1.0 / np.sqrt(self.C_D)
+        else:
+            # If C_D is 2D, extract its diagonal of variances, then compute S_inv_diag.
+            S_inv_diag = 1.0 / np.sqrt(np.diag(self.C_D))
+
+        # See Eqn (B.10)
+        U, w, VT = sp.linalg.svd(S_inv_diag[:, np.newaxis] * D_delta)
+        idx = singular_values_to_keep(w, truncation=truncation)
+        N_r = min(N_n, N_e - 1, idx)  # Number of values in SVD to keep
+        U_r, w_r = U[:, :N_r], w[:N_r]
+
+        # See Eqn (B.12)
+        # Calculate C_hat_D, the correlation matrix of measurement errors.
+        # This is defined as C_hat_D = S^-1 * C_D * S^-1
+        if self.C_D.ndim == 1:
+            # If C_D is a 1D vector of variances,
+            # it represents a diagonal matrix.
+            # In this special case,
+            # S_inv * C_D * S_inv simplifies to the identity matrix.
+            C_hat_D = np.identity(N_n)
+        else:  # C_D is a 2D matrix
+            # This scales each ROW i of self.C_D by the scalar S_inv_diag[i].
+            # This is numerically identical to the matrix multiplication S⁻¹ @ C_D
+            C_hat_D_temp = S_inv_diag[:, np.newaxis] * self.C_D
+
+            # This scales each COLUMN j of C_hat_D_temp by the scalar S_inv_diag[j].
+            # This is numerically identical to the matrix multiplication (result) @ S⁻¹
+            C_hat_D = C_hat_D_temp * S_inv_diag
+
+        U_r_w_inv = U_r / w_r
+        # See Eqn (B.13)
+        R = (
+            self.alpha
+            * (N_e - 1)
+            * np.linalg.multi_dot([U_r_w_inv.T, C_hat_D, U_r_w_inv])
+        )
+
+        # See Eqn (B.14)
+        H_r, Z_r = sp.linalg.eigh(R, driver="evr", overwrite_a=True)
+
+        # See Eqn (B.18)
+        _X = (S_inv_diag[:, np.newaxis] * U_r) * (1 / w_r) @ Z_r
+
+        # See Eqn (B.19)
+        L = np.diag(1.0 / (1.0 + H_r))
+
+        # See Eqn (B.20)
+        X1 = L @ _X.T
+        # See Eqn (B.21)
+        X2 = D_delta.T @ _X
+
+        # The matrices X3 and D with perturbed observations is saved
+        # and reused in assimilation of each batch of field parameters
+
+        # See Eqn (B.22)
+        self.X3 = X2 @ X1
+
+        # Observations with added perturbations
+        self.D = self.perturb_observations(ensemble_size=N_e, alpha=self.alpha)
+        return
+
+    def assimilate_batch(
+        self,
+        *,
+        X_batch: npt.NDArray[np.double],
+        Y: npt.NDArray[np.double],
+        rho_batch: npt.NDArray[np.double],
+    ):
+        """
+        Implementation of algorithm described in Appendix B of emerick16a.
+        Require that prepare_assimilation is run after the DistanceESMDA is created.
+        It's main purpose is to avoid recalculating matrices in the algorithm
+        that do not change from batch to batch when running batch by batch
+        of field parameters through assimilation.
+
+        X_posterior_batch = smoother.assimilate_batch(X_batch, Y, rho_batch)
+
+        """
+
+        # Subtract the mean of every parameter, see Eqn (B.4)
+        M_delta = X_batch - np.mean(X_batch, axis=1, keepdims=True)
+
+        # See Eqn (B.23)
+        K_i = M_delta @ self.X3
+
+        # See Eqn (B.24)
+        K_rho_i = rho_batch * K_i
+
+        # See Eqn (B.25)
+        X4 = K_rho_i @ (self.D - Y)
+
+        # See Eqn (B.26)
+        return X_batch + X4
 
 
 if __name__ == "__main__":
