@@ -222,6 +222,7 @@ class ESMDA(BaseESMDA):
         *,
         overwrite: bool = False,
         truncation: float = 1.0,
+        D: npt.NDArray[np.double] = None,
     ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble X_posterior.
 
@@ -279,9 +280,11 @@ class ESMDA(BaseESMDA):
         # if C_D = L L.T by the cholesky factorization, then drawing y from
         # a zero cented normal means that y := L @ z, where z ~ norm(0, 1)
         # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha)
-        D = self.perturb_observations(
-            ensemble_size=num_ensemble, alpha=self.alpha[self.iteration]
-        )
+        if D is None:
+            D = self.perturb_observations(
+                ensemble_size=num_ensemble, alpha=self.alpha[self.iteration]
+            )
+
         assert D.shape == (num_outputs, num_ensemble)
 
         # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper

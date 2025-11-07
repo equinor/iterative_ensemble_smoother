@@ -550,6 +550,7 @@ class DistanceESMDA(ESMDA):
         self,
         Y: npt.NDArray[np.double],
         truncation: float = 0.99,
+        D: npt.NDArray[np.double] = None,
     ):
         """
         Implementation of algorithm described in Appendix B of emerick16a.
@@ -624,7 +625,13 @@ class DistanceESMDA(ESMDA):
         self.X3 = X2 @ X1
 
         # Observations with added perturbations
-        self.D = self.perturb_observations(ensemble_size=N_e, alpha=self.alpha)
+        if D is None:
+            print("Calculate C_D inside class DistanceESMDA")
+            self.D = self.perturb_observations(ensemble_size=N_e, alpha=self.alpha)
+        else:
+            print("Assign D inside class DistanceESMDA")
+            assert self.C_D.shape[0] == D.shape[0]
+            self.D = D
         return
 
     def assimilate_batch(
