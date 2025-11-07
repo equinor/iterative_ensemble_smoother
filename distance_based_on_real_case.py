@@ -6,6 +6,7 @@
 
 import copy
 import json
+import math
 import time
 from datetime import datetime
 from pathlib import Path
@@ -312,7 +313,10 @@ SAVE_UPDATE_TO_STORAGE = True
 # Turn on/off the two types of update
 SKIP_GLOBAL_UPDATE = False
 SKIP_DL_UPDATE = False
-ENSEMBLE_TAG = "_as"
+ALPHA = np.array([1.0])
+ALPHA_LABEL = "_1_0"
+
+ENSEMBLE_TAG = "_corr_seis_" + ALPHA_LABEL
 
 # Create unique label for each ensemble created by running this script
 ENSEMBLE_LABEL = run_number()
@@ -321,8 +325,10 @@ ENSEMBLE_LABEL = run_number()
 TESTS = False
 
 # Turn on/off more extensive output to screed
-DEBUG_PRINT = True
+DEBUG_PRINT = False
 
+# Write seismic obs with perturations
+WRITE_D_MATRIX = True
 # Result directory for ROFF and irap files created for the mean and stdev of fields
 OUTPUT_PATH = "TMP"
 SCALAR_UPDATE_METHOD = "ADAPTIVE"  # ESMDA or ADAPTIVE
@@ -336,6 +342,7 @@ STORAGE_PATH = (
 EXPERIMENT_NAME = "ensemble_experiment"
 # EXPERIMENT_NAME = "ensemble_experiment_ertbox"
 ENSEMBLE_NAME = "ensemble"
+# ENSEMBLE_NAME = "ensemble-post-86169_zone_3_5"
 
 # For distance-based update
 ENSEMBLE_NAME_UPDATE = "ensemble-post-" + ENSEMBLE_LABEL + ENSEMBLE_TAG
@@ -344,7 +351,7 @@ ENSEMBLE_NAME_UPDATE = "ensemble-post-" + ENSEMBLE_LABEL + ENSEMBLE_TAG
 ENSEMBLE_NAME_UPDATE_GLOBAL = "ensemble-post-global-" + ENSEMBLE_LABEL + ENSEMBLE_TAG
 
 SEED = 123456  # Test with same as in ERT config file for Drogon
-ALPHA = 1
+
 TRUNCATION = 0.99
 NLAYER_PER_BATCH = (
     33  # 66 layers in ERTBOX for Drogon which is split into 2 batches here
@@ -577,6 +584,11 @@ ERT_CONFIG_PATH = (
 )
 ERT_SEIS_OBS_PATH = ERT_CONFIG_PATH + "/" + "../input/observations/seismic"
 
+USE_SEISMIC_OBS_ERR_CORRELATION = True
+
+# exponent in general exponential variogram model for simulation of
+# correlated seismic observations
+SEISMIC_GEN_EXP_POWER = 1.9
 SEISMIC_OBS_AND_RESPONSE_DICT_PER_ZONE = {
     # Valysar related seismic observations and localization ranges
     "Valysar": [
@@ -587,6 +599,11 @@ SEISMIC_OBS_AND_RESPONSE_DICT_PER_ZONE = {
             "main_range": 1000.0,
             "perp_range": 1000.0,
             "anisotropy_angle": 0.0,
+            "obs_err_variogram": "gen_exponential",
+            "obs_err_power": SEISMIC_GEN_EXP_POWER,
+            "obs_err_main_range": 2000.0,
+            "obs_err_perp_range": 2000.0,
+            "obs_err_anisotropy_angle": 0.0,
         },
         {
             "name": "basevolantis",
@@ -595,44 +612,43 @@ SEISMIC_OBS_AND_RESPONSE_DICT_PER_ZONE = {
             "main_range": 1000.0,
             "perp_range": 1000.0,
             "anisotropy_angle": 0.0,
+            "obs_err_variogram": "gen_exponential",
+            "obs_err_power": SEISMIC_GEN_EXP_POWER,
+            "obs_err_main_range": 2000.0,
+            "obs_err_perp_range": 2000.0,
+            "obs_err_anisotropy_angle": 0.0,
         },
     ],
     # Therys related seismic observations and localization ranges
     "Therys": [
         {
-            "name": "topvolantis",
-            "obs_file": "meta--topvolantis_amplitude_mean_20200701_20180101_1.txt",
-            "response_file": "share/results/points/topvolantis_amplitude_mean_20200701_20180101_1.txt",  # noqa
-            "main_range": 1000.0,
-            "perp_range": 1000.0,
-            "anisotropy_angle": 0.0,
-        },
-        {
             "name": "basevolantis",
             "obs_file": "meta--basevolantis_amplitude_mean_20200701_20180101_1.txt",
             "response_file": "share/results/points/basevolantis_amplitude_mean_20200701_20180101_1.txt",  # noqa
             "main_range": 1000.0,
             "perp_range": 1000.0,
             "anisotropy_angle": 0.0,
+            "obs_err_variogram": "gen_exponential",
+            "obs_err_power": SEISMIC_GEN_EXP_POWER,
+            "obs_err_main_range": 2000.0,
+            "obs_err_perp_range": 2000.0,
+            "obs_err_anisotropy_angle": 0.0,
         },
     ],
     # Volon related seismic observations and localization ranges
     "Volon": [
         {
-            "name": "topvolantis",
-            "obs_file": "meta--topvolantis_amplitude_mean_20200701_20180101_1.txt",
-            "response_file": "share/results/points/topvolantis_amplitude_mean_20200701_20180101_1.txt",  # noqa
-            "main_range": 1000.0,
-            "perp_range": 1000.0,
-            "anisotropy_angle": 0.0,
-        },
-        {
             "name": "basevolantis",
             "obs_file": "meta--basevolantis_amplitude_mean_20200701_20180101_1.txt",
             "response_file": "share/results/points/basevolantis_amplitude_mean_20200701_20180101_1.txt",  # noqa
             "main_range": 1000.0,
             "perp_range": 1000.0,
             "anisotropy_angle": 0.0,
+            "obs_err_variogram": "gen_exponential",
+            "obs_err_power": SEISMIC_GEN_EXP_POWER,
+            "obs_err_main_range": 2000.0,
+            "obs_err_perp_range": 2000.0,
+            "obs_err_anisotropy_angle": 0.0,
         },
     ],
 }
@@ -644,6 +660,11 @@ SEISMIC_OBS_AND_RESPONSE_DICT_FOR_2D_FIELDS = [
         "main_range": 1000.0,
         "perp_range": 1000.0,
         "anisotropy_angle": 0.0,
+        "obs_err_variogram": "gen_exponential",
+        "obs_err_power": SEISMIC_GEN_EXP_POWER,
+        "obs_err_main_range": 3000.0,
+        "obs_err_perp_range": 3000.0,
+        "obs_err_anisotropy_angle": 0.0,
     },
     {
         "name": "basevolantis",
@@ -652,16 +673,17 @@ SEISMIC_OBS_AND_RESPONSE_DICT_FOR_2D_FIELDS = [
         "main_range": 1000.0,
         "perp_range": 1000.0,
         "anisotropy_angle": 0.0,
+        "obs_err_variogram": "gen_exponential",
+        "obs_err_power": SEISMIC_GEN_EXP_POWER,
+        "obs_err_main_range": 3000.0,
+        "obs_err_perp_range": 3000.0,
+        "obs_err_anisotropy_angle": 0.0,
     },
 ]
 
 SCRATCH_PATH = "/scratch/fmu/olia/drogon_ahm_base"
 
 
-# SEISMIC_RESPONSE = {
-#    "topvolantis": "topvolantis_amplitude_mean_20200701_20180101_1.txt",
-#    "basevolantis": "basevolantis_amplitude_mean_20200701_20180101_1.txt",
-# }
 USE_SEIS_OBS = True
 # SEIS_MAIN_RANGE = 100.0 # Case s100
 # SEIS_PERP_RANGE = 100.0
@@ -682,29 +704,26 @@ RFT_OBS_AND_RESPONSE_DICT = {
     "Valysar": {
         "obs_file": "share/results/tables/rft_ert.csv",
         "response_file": "share/results/tables/rft_ert.csv",
-        "main_range": 2000.0,
-        "perp_range": 2000.0,
-        "anisotropy_angle": 0.0,
-    },
-    "Therys": {
-        "obs_file": "share/results/tables/rft_ert.csv",
-        "response_file": "share/results/tables/rft_ert.csv",
         "main_range": 1500.0,
         "perp_range": 1500.0,
         "anisotropy_angle": 0.0,
     },
-    "Volon": {
+    "Therys": {
         "obs_file": "share/results/tables/rft_ert.csv",
         "response_file": "share/results/tables/rft_ert.csv",
         "main_range": 1000.0,
         "perp_range": 1000.0,
         "anisotropy_angle": 0.0,
     },
+    "Volon": {
+        "obs_file": "share/results/tables/rft_ert.csv",
+        "response_file": "share/results/tables/rft_ert.csv",
+        "main_range": 700.0,
+        "perp_range": 700.0,
+        "anisotropy_angle": 0.0,
+    },
 }
 RFT_FILENAME = "rft_ert.csv"
-RFT_MAIN_RANGE = 1000.0
-RFT_PERP_RANGE = 1000.0
-RFT_ANISOTROPY_ROTATION = 0.0
 USE_RFT_OBS = True
 
 USE_TRACER_OBS = True
@@ -784,6 +803,7 @@ def read_seis_obs_and_response_for_3D_fields_per_zone(
             main_seis_range = data_dict["main_range"]
             perp_seis_range = data_dict["perp_range"]
             anisotropy_angle_seis = data_dict["anisotropy_angle"]
+            seis_obs_name = data_dict["name"]
             full_filename = ERT_SEIS_OBS_PATH + "/" + filename
             df_zone = pl.read_csv(full_filename, separator=",")
 
@@ -806,7 +826,7 @@ def read_seis_obs_and_response_for_3D_fields_per_zone(
                 [
                     pl.lit("SEISMIC").alias("response_key"),
                     pl.lit("Undefined").alias("index"),
-                    pl.lit("SEISMIC").alias("observation_key"),
+                    pl.lit(seis_obs_name).alias("observation_key"),
                     pl.lit(0.0).alias("min_error"),
                     pl.lit(0.0).alias("max_error"),
                     pl.lit(main_seis_range).alias("main_range"),
@@ -919,7 +939,7 @@ def read_seis_obs_and_response_for_2D_fields(
             [
                 pl.lit("SEISMIC").alias("response_key"),
                 pl.lit("Undefined").alias("index"),
-                pl.lit("SEISMIC").alias("observation_key"),
+                pl.lit(seis_obs_name).alias("observation_key"),
                 pl.lit(0.0).alias("min_error"),
                 pl.lit(0.0).alias("max_error"),
                 pl.lit(main_seis_range).alias("main_range"),
@@ -1261,6 +1281,123 @@ def transform_to_local_coordinates_2D(
     return x2, y2, ellipse_anisotropy_transformed
 
 
+def perturb_seismic_2D_observations_with_correlated_errors(
+    # Errors are simulated and added to all observations.
+    # For seismic observations (2D point set), the error is simulated with
+    # spatial correlations.
+    ensemble_size: int,
+    obs_xpos: npt.NDArray[np.double],
+    obs_ypos: npt.NDArray[np.double],
+    observations: npt.NDArray[np.double],
+    obs_std: npt.NDArray[np.double],
+    ertbox_params: ErtboxParameters,
+    variogram_name: str = "gen_exponential",
+    obs_err_main_corr_range: float = 1000.0,
+    obs_err_perp_corr_range: float = 1000.0,
+    obs_err_anisotropy_angle: float = 0.0,
+    obs_err_power_genexponential_variogram: float = SEISMIC_GEN_EXP_POWER,
+    alpha: float = 1.0,
+    start_seed: int = SEED,
+) -> npt.NDArray[np.double]:
+    """Create a matrix D for seismic 2D observations with spatially correlated error.
+
+    The observations come with a standard deviation. The observation error
+    is assumed to be multinormally distributed and defined by a specified
+    spatial correlation function with a correlation ellipse.
+    The output is observation value + std_obs * alpha * normalized observation error
+    The scaling, alpha is used as part of multiple-data assimilation with
+    inflation factor alpha.
+    The normalized observation error has mean = 0 and standard deviation = 1
+    but is spatially correlated.
+
+    The method is as follows:
+    - Transform observations into a coordinate system defined by the ertbox.
+    - Simulate ensemble_size number of 2D unconditional Gaussian random field with
+        0 expectation and variance 1 with specified spatial correlation in the
+        coordinate system defined by ertbox with a grid resolution (xinc, yinc)
+        and size (nx, ny) equal to the specified ertbox grid definition.
+    - Extract the simulated values in all observation positions for all realizations
+    - Return the D matrix. Each column of D matrix consists of the perturbed
+      observations scaled by alpha.
+
+
+
+    In the Emerick (2013) paper, the matrix D is defined in section 6.
+    See section 2(b) of the ES-MDA algorithm in the paper.
+
+    Parameters
+    ----------
+    ensemble_size : int
+        The ensemble size, i.e., the number of columns in the returned array,
+        which is of shape (num_observations, ensemble_size).
+    alpha : float
+        The covariance inflation factor. The sequence of alphas should
+        obey the equation sum_i (1/alpha_i) = 1. However, this is NOT enforced
+        in this method call. The user/caller is responsible for this.
+
+    Returns
+    -------
+    D : np.ndarray
+        Each column consists of perturbed observations, scaled by alpha.
+
+    """
+    import gaussianfft as sim
+
+    # Transform observations to ertbox coordinates.
+    xpos_transf, ypos_transf, _ = transform_to_local_coordinates_3D(
+        ertbox_params,
+        obs_xpos,
+        obs_ypos,
+        0.0,
+    )
+    # Setup simulation og 2D field
+    if variogram_name not in ["gen_exponential", "exponential", "gaussian"]:
+        raise ValueError(f"Variogram {variogram_name} is not implemented.")
+    if variogram_name == "gen_exponential":
+        variogram = sim.variogram(
+            variogram_name,
+            main_range=obs_err_main_corr_range,
+            perp_range=obs_err_perp_corr_range,
+            azimuth=obs_err_anisotropy_angle,
+            power=obs_err_power_genexponential_variogram,
+        )
+    elif variogram_name in ["exponential", "gaussian"]:
+        variogram = sim.variogram(
+            variogram_name,
+            main_range=obs_err_main_corr_range,
+            perp_range=obs_err_perp_corr_range,
+            azimuth=obs_err_anisotropy_angle,
+        )
+
+    # Simulate realization of gaussian 2D fiel and define D matrix
+    nobs = len(observations)
+    assert len(obs_xpos) == nobs
+    assert len(obs_ypos) == nobs
+    assert len(obs_std) == nobs
+    sim.seed(start_seed)
+    nx = ertbox_params.nx
+    ny = ertbox_params.ny
+    xinc = ertbox_params.xinc
+    yinc = ertbox_params.yinc
+    assert nobs <= (nx * ny)
+    print("  Simulate correlated seismic observation errors")
+    D = np.zeros((nobs, ensemble_size), dtype=np.float64)
+    gaussfields = np.zeros((nx * ny, ensemble_size), dtype=np.float32)
+    for i in range(ensemble_size):
+        # This result has F-indexing
+        gaussfields[:, i] = sim.simulate(
+            variogram, nx, xinc, ny, yinc
+        )  # (nx*ny ,nreal)
+    i_indx = np.round(xpos_transf / xinc).astype(int)  # (nobs)
+    j_indx = np.round(ypos_transf / yinc).astype(int)
+    indx = i_indx + j_indx * nx
+    values = gaussfields[indx, :]
+    for i in range(ensemble_size):
+        D[:, i] = observations[:] + alpha * obs_std[:] * values[:, i]
+
+    return D
+
+
 def update_with_esmda(
     iens_active_index: npt.NDArray[np.int32],
     realizations: list[int],
@@ -1279,6 +1416,15 @@ def update_with_esmda(
     group_of_zones_with_same_obs_dict = define_group_of_zones_with_same_observations(
         obs_and_response_df_per_zone_dict
     )
+    # Use the ertbox definition of one of the fields for simulation of
+    # seismic observation error correlations. Not important which ertbox to use.
+    zone_group_number = 1
+    zone_list = group_of_zones_with_same_obs_dict[zone_group_number]
+    first_zone_name_in_group = zone_list[0]
+    field_param_name = field_params_3D_list_per_zone[first_zone_name_in_group][0]
+    ertbox_params_for_seismic_error_simulation = ertbox_per_field_param_dict[
+        field_param_name
+    ]
 
     print("")
     print(" Start update of all 3D field parameters for all zones.")
@@ -1306,8 +1452,17 @@ def update_with_esmda(
             _,
             _,
             _,
+            D,
         ) = define_response_and_observations(
-            ensemble_size, df_obs_this_zone, zone_group_number
+            ensemble_size,
+            df_obs_this_zone,
+            seed,
+            zone_group_number,
+            zone_list=zone_list,
+            use_obs_err_correlations=USE_SEISMIC_OBS_ERR_CORRELATION,
+            seis_obs_and_response_dict_per_zone=SEISMIC_OBS_AND_RESPONSE_DICT_PER_ZONE,
+            alpha=alpha,
+            ertbox_params=ertbox_params_for_seismic_error_simulation,
         )
         nobs = Y.shape[0]
         print(
@@ -1379,6 +1534,7 @@ def update_with_esmda(
                             nx,
                             ny,
                             nz,
+                            D=D,
                         )
 
                         # Store the field parameter to storage
@@ -1415,6 +1571,7 @@ def update_with_esmda(
                             nx,
                             ny,
                             nz,
+                            D=D,
                         )
 
                 # Write updated 3D field parameter to file
@@ -1468,8 +1625,15 @@ def update_with_esmda(
         _,
         _,
         _,
+        D,
     ) = define_response_and_observations(
-        ensemble_size, obs_and_response_df_for_2D_fields
+        ensemble_size,
+        obs_and_response_df_for_2D_fields,
+        start_seed=seed,
+        use_obs_err_correlations=USE_SEISMIC_OBS_ERR_CORRELATION,
+        seis_obs_and_response_dict_for_2D_fields=SEISMIC_OBS_AND_RESPONSE_DICT_FOR_2D_FIELDS,
+        alpha=alpha,
+        ertbox_params=ertbox_params_for_seismic_error_simulation,
     )
     nobs = Y.shape[0]
     print(f" Surfaces are conditioned to {nobs} observations.")
@@ -1501,6 +1665,7 @@ def update_with_esmda(
                     param_config,
                     X_prior_group,
                     Y,
+                    D=D,
                 )
 
                 # Store the field parameter to storage
@@ -1536,6 +1701,7 @@ def update_with_esmda(
                     param_config,
                     X_prior_group,
                     Y,
+                    D=D,
                 )
 
         if WRITE_STATS_PARAMS:
@@ -1574,7 +1740,7 @@ def update_with_esmda(
                 # and not transformed
 
                 # Update with ESMDA
-                X_post = esmda_smoother.assimilate(X=X_prior_group, Y=Y)
+                X_post = esmda_smoother.assimilate(X=X_prior_group, Y=Y, D=D)
 
                 print(f"    Store {group_name} to {ENSEMBLE_NAME_UPDATE_GLOBAL}")
                 print(f"    Number of parameters in {group_name}: {nparam}")
@@ -1603,11 +1769,77 @@ def update_with_esmda(
                 print("")
 
 
+def corr_func_gen_exponential(
+    # Ranges must be positive,
+    # azimuth must be angle in radians,
+    # power must be a value between 1 and 2
+    main_range: float,
+    perp_range: float,
+    azimuth: float,
+    dx: float,
+    dy: float,
+    power: float = SEISMIC_GEN_EXP_POWER,
+) -> float:
+    if azimuth != 0.0:
+        dx_rotated = dx * math.cos(azimuth) + dy * math.sin(azimuth)
+        dy_rotated = -dx * math.sin(azimuth) + dy * math.cos(azimuth)
+        d = math.sqrt((dx_rotated / main_range) ** 2 + (dy_rotated / perp_range) ** 2)
+    else:
+        d = math.sqrt((dx / main_range) ** 2 + (dy / perp_range) ** 2)
+    return math.exp(-3.0 * math.pow(d, power))
+
+
+def corr_func_exponential(
+    # Ranges must be positive,
+    # azimuth must be angle in radians,
+    # power must be a value between 1 and 2
+    main_range: float,
+    perp_range: float,
+    azimuth: float,
+    dx: float,
+    dy: float,
+) -> float:
+    if azimuth != 0.0:
+        dx_rotated = dx * math.cos(azimuth) + dy * math.sin(azimuth)
+        dy_rotated = -dx * math.sin(azimuth) + dy * math.cos(azimuth)
+        d = math.sqrt((dx_rotated / main_range) ** 2 + (dy_rotated / perp_range) ** 2)
+    else:
+        d = math.sqrt((dx / main_range) ** 2 + (dy / perp_range) ** 2)
+    return math.exp(-3.0 * d)
+
+
+def corr_func_gaussian(
+    # Ranges must be positive,
+    # azimuth must be angle in radians,
+    # power must be a value between 1 and 2
+    main_range: float,
+    perp_range: float,
+    azimuth: float,
+    dx: float,
+    dy: float,
+) -> float:
+    if azimuth != 0.0:
+        dx_rotated = dx * math.cos(azimuth) + dy * math.sin(azimuth)
+        dy_rotated = -dx * math.sin(azimuth) + dy * math.cos(azimuth)
+        d2 = (dx_rotated / main_range) ** 2 + (dy_rotated / perp_range) ** 2
+    else:
+        d2 = (dx / main_range) ** 2 + (dy / perp_range) ** 2
+    return math.exp(-3.0 * d2)
+
+
 def define_response_and_observations(
     ensemble_size: int,
     observations_and_responses: pl.DataFrame,
+    start_seed: int,
     zone_group_number: int = None,
+    zone_list=None,
+    use_obs_err_correlations: bool = False,
+    seis_obs_and_response_dict_per_zone: dict = None,
+    seis_obs_and_response_dict_for_2D_fields: list[dict] = None,
+    alpha: float = 1.0,
+    ertbox_params: ErtboxParameters = None,
 ) -> tuple[
+    npt.NDArray[np.double],
     npt.NDArray[np.double],
     npt.NDArray[np.double],
     npt.NDArray[np.double],
@@ -1658,81 +1890,293 @@ def define_response_and_observations(
     observations = df_filtered["observations"].to_numpy()
     std = df_filtered["std"].to_numpy()
     C_D = std**2
+
+    assert ensemble_size == Y.shape[1]
+
     if DEBUG_PRINT:
         print(f"{C_D.shape}")
+
     xpos = df_filtered["xpos"].to_numpy()
     ypos = df_filtered["ypos"].to_numpy()
     main_ranges = df_filtered["main_range"].to_numpy()
     perp_ranges = df_filtered["perp_range"].to_numpy()
     anisotropy_angle = df_filtered["anisotropy_angle"].to_numpy()
 
-    return Y, observations, C_D, xpos, ypos, main_ranges, perp_ranges, anisotropy_angle
+    # Draw uncorrelated observation errors for all observations.
+    # The standard deviation is increased by factor alpha.
+    nobs = observations.shape[0]
+    rng = np.random.default_rng(start_seed)
+    D = np.zeros((nobs, ensemble_size), dtype=np.float64)
+    for i in range(ensemble_size):
+        D[:, i] = observations + rng.standard_normal(nobs) * std * alpha
 
+    if use_obs_err_correlations:
+        # First fill the diagonal of the observation error covariance matrix C_D_matrix
+        C_D_matrix = np.zeros((nobs, nobs), dtype=np.float64)
+        np.fill_diagonal(C_D_matrix, C_D)
 
-def define_response_and_observations_with_seismic(  # TODO Fix this
-    ensemble,
-    observations_and_responses: pl.DataFrame,
-    obs_and_response_seis: pl.DataFrame = None,
-    zone_group_number: int = None,
-) -> tuple[
-    npt.NDArray[np.double],
-    npt.NDArray[np.double],
-    npt.NDArray[np.double],
-    npt.NDArray[np.double],
-    npt.NDArray[np.double],
-    npt.NDArray[np.double],
-    npt.NDArray[np.double],
-    npt.NDArray[np.double],
-]:
-    """
-    Calculate Y matrix, C_D matrix and return numpy vectors with:
-    - observations
-    - xpos for obs in global coordinates (UTM)
-    - ypos for obs in global coordinates (UTM)
-    - main_range   influence range (first half-axis in influence ellipse
-    - perp_range   influence range (second half-axis in influence ellipse
-    - anisotropy_angle  rotation of first half-axis of influence ellipse
-      relative to global coordinate system
-    """
-    response_cols = [str(i) for i in range(0, ensemble.ensemble_size)]
+        # For each zone find the seismic obs
+        # Calculate observation covariance matrix for seismic obs and update C_D_matrix
+        # Simulate observation error for seismic obs and update D matrix
 
-    # Here responses with 0 std is not included?
-    df_filtered = observations_and_responses.filter(
-        pl.concat_list([pl.col(col) for col in response_cols])
-        .list.eval(pl.element().std())
-        .list.first()
-        > 0
-    )
-
-    df_removed = observations_and_responses.filter(
-        pl.concat_list([pl.col(col) for col in response_cols])
-        .list.eval(pl.element().std())
-        .list.first()
-        <= 0
-    )
-    if DEBUG_PRINT:
-        print(" Observations removed due to 0 standard deviation of responses:")
-        columns_to_print = ["observation_key", "response_key"]
-        print(df_removed.select(columns_to_print))
+        # Add column with index of observations
+        df_new = df_filtered.with_columns(
+            pl.arange(0, df_filtered.height).alias("line_index")
+        )
         if zone_group_number:
-            filename = "tmp_obs_for_zone_group_" + str(zone_group_number) + ".csv"
-            print(f"Write file:  {filename}")
-            df_filtered.write_csv(filename, separator=" ")
+            # Now calculating the D matrix for use when updating 3D field parameters
+            for zone_name in zone_list:
+                zone_param_list = seis_obs_and_response_dict_per_zone[zone_name]
+                for zone_param_dict in zone_param_list:
+                    # For each seismic observation dataset for this zone
+                    # extract the observations, observation errors and
+                    # correlation function and modify the observation
+                    # error covariance matrix
+                    seis_name = zone_param_dict["name"]
+                    obs_err_variogram = zone_param_dict["obs_err_variogram"]
+                    obs_err_main_range = zone_param_dict["obs_err_main_range"]
+                    obs_err_perp_range = zone_param_dict["obs_err_perp_range"]
+                    obs_err_azimuth = zone_param_dict["obs_err_anisotropy_angle"]
 
-    # Select only realizations of responses
-    Y = df_filtered.select(response_cols).to_numpy()
+                    df_new_seis_obs = df_new.filter(
+                        df_new["observation_key"] == seis_name
+                    )
+                    number_of_seis_obs = df_new_seis_obs.height
+                    if number_of_seis_obs > 0:
+                        print(
+                            f"  Zone: {zone_name}\n"
+                            f"  Draw observation error for seismic observation set: {seis_name}.\n"  # noqa
+                            f"  Spatial correlations with variogram type: {obs_err_variogram}\n"  # noqa
+                            f"  Ranges: {obs_err_main_range} and {obs_err_perp_range}"
+                        )
+                        # Get observation error and position of seismic obs
+                        # for this seismic observation data set
+                        columns_to_extract = ["line_index"]
+                        seis_obs_indices = np.zeros(number_of_seis_obs, dtype=np.int32)
+                        df = df_new_seis_obs.select(columns_to_extract)
+                        seis_obs_indices = df["line_index"].to_numpy()
+                        columns_to_extract = ["xpos", "ypos"]
+                        seis_obs_values = observations[seis_obs_indices]
+                        seis_obs_std = std[seis_obs_indices]
+                        seis_obs_xpos = xpos[seis_obs_indices]
+                        seis_obs_ypos = ypos[seis_obs_indices]
 
-    observations = df_filtered["observations"].to_numpy()
-    std = df_filtered["std"].to_numpy()
-    C_D = std**2
+                        # Calculate covariance matrix
+                        if obs_err_variogram == "gen_exponential":
+                            corr_function = corr_func_gen_exponential
+                        elif obs_err_variogram == "exponential":
+                            corr_function = corr_func_exponential
+                        elif obs_err_variogram == "gaussian":
+                            corr_function = corr_func_gaussian
+                        else:
+                            raise ValueError(
+                                "Observation error covariance function "
+                                f"{obs_err_variogram} is not implemented."
+                            )
 
-    xpos = df_filtered["xpos"].to_numpy()
-    ypos = df_filtered["ypos"].to_numpy()
-    main_ranges = df_filtered["main_range"].to_numpy()
-    perp_ranges = df_filtered["perp_range"].to_numpy()
-    anisotropy_angle = df_filtered["anisotropy_angle"].to_numpy()
+                        print("  Calculate observation error covariance matrix C_D")
+                        for i in range(number_of_seis_obs):
+                            indx1 = seis_obs_indices[i]
+                            x1 = xpos[indx1]
+                            y1 = ypos[indx1]
+                            for j in range(i + 1, number_of_seis_obs):
+                                indx2 = seis_obs_indices[j]
+                                x2 = xpos[indx2]
+                                y2 = ypos[indx2]
+                                dx = x1 - x2
+                                dy = y1 - y2
+                                C_D_matrix[indx1, indx2] = (
+                                    corr_function(
+                                        obs_err_main_range,
+                                        obs_err_perp_range,
+                                        obs_err_azimuth,
+                                        dx,
+                                        dy,
+                                    )
+                                    * std[indx1]
+                                    * std[indx2]
+                                )
+                                C_D_matrix[indx2, indx1] = C_D_matrix[indx1, indx2]
 
-    return Y, observations, C_D, xpos, ypos, main_ranges, perp_ranges, anisotropy_angle
+                        # Draw correlated observation error for the seismic observations
+                        # for this seismic observation data set.
+                        # Overwrite the uncorrelated observation errors for the seismic
+                        # observations for this observation data set.
+                        seis_obs_perturbed = perturb_seismic_2D_observations_with_correlated_errors(  # noqa
+                            ensemble_size,
+                            seis_obs_xpos,
+                            seis_obs_ypos,
+                            seis_obs_values,
+                            seis_obs_std,
+                            ertbox_params,
+                            variogram_name=obs_err_variogram,
+                            obs_err_main_corr_range=obs_err_main_range,
+                            obs_err_perp_corr_range=obs_err_perp_range,
+                            obs_err_anisotropy_angle=obs_err_azimuth,
+                            obs_err_power_genexponential_variogram=SEISMIC_GEN_EXP_POWER,
+                            alpha=alpha,
+                            start_seed=start_seed,
+                        )
+                        # Update the D matrix
+                        assert seis_obs_perturbed.shape[0] == seis_obs_values.shape[0]
+                        assert seis_obs_perturbed.shape[1] == ensemble_size
+                        assert seis_obs_indices.shape[0] == seis_obs_perturbed.shape[0]
+                        D[seis_obs_indices, :] = seis_obs_perturbed[:, :]
+                        # Ensure not same start seed for all
+                        # seismic obs error simulations
+                        start_seed += 876541
+        else:
+            # Now calculating the D matrix for use when updating 2D field parameters
+            for surf_param_dict in seis_obs_and_response_dict_for_2D_fields:
+                # For each seismic observation dataset for this 2D field
+                # extract the observations, observation errors and correlation function
+                # and modify the observation error covariance matrix
+                seis_name = surf_param_dict["name"]
+                obs_err_variogram = surf_param_dict["obs_err_variogram"]
+                obs_err_main_range = surf_param_dict["obs_err_main_range"]
+                obs_err_perp_range = surf_param_dict["obs_err_perp_range"]
+                obs_err_azimuth = surf_param_dict["obs_err_anisotropy_angle"]
+
+                df_new_seis_obs = df_new.filter(df_new["observation_key"] == seis_name)
+                number_of_seis_obs = df_new_seis_obs.height
+                if number_of_seis_obs > 0:
+                    print(
+                        f"  Draw observation error for seismic observation set: {seis_name}.\n"  # noqa
+                        f"  Spatial correlations with variogram type: {obs_err_variogram}\n"  # noqa
+                        f"  Ranges: {obs_err_main_range} and {obs_err_perp_range}"
+                    )
+                    # Get observation error and position of seismic obs for this
+                    # seismic observation data set
+                    columns_to_extract = ["line_index"]
+                    seis_obs_indices = np.zeros(number_of_seis_obs, dtype=np.int32)
+                    df = df_new_seis_obs.select(columns_to_extract)
+                    seis_obs_indices = df["line_index"].to_numpy()
+                    seis_obs_values = observations[seis_obs_indices]
+                    seis_obs_std = std[seis_obs_indices]
+                    seis_obs_xpos = xpos[seis_obs_indices]
+                    seis_obs_ypos = ypos[seis_obs_indices]
+
+                    # Calculate covariance matrix
+                    if obs_err_variogram == "gen_exponential":
+                        corr_function = corr_func_gen_exponential
+                    elif obs_err_variogram == "exponential":
+                        corr_function = corr_func_exponential
+                    elif obs_err_variogram == "gaussian":
+                        corr_function = corr_func_gaussian
+                    else:
+                        raise ValueError(
+                            "Observation error covariance function "
+                            f"{obs_err_variogram} is not implemented."
+                        )
+
+                    print("  Calculate observation error covariance matrix C_D")
+                    for i in range(number_of_seis_obs):
+                        indx1 = seis_obs_indices[i]
+                        x1 = xpos[indx1]
+                        y1 = ypos[indx1]
+                        for j in range(i + 1, number_of_seis_obs):
+                            indx2 = seis_obs_indices[j]
+                            x2 = xpos[indx2]
+                            y2 = ypos[indx2]
+                            dx = x1 - x2
+                            dy = y1 - y2
+                            C_D_matrix[indx1, indx2] = (
+                                corr_function(
+                                    obs_err_main_range,
+                                    obs_err_perp_range,
+                                    obs_err_azimuth,
+                                    dx,
+                                    dy,
+                                )
+                                * std[indx1]
+                                * std[indx2]
+                            )
+                            C_D_matrix[indx2, indx1] = C_D_matrix[indx1, indx2]
+
+                    # Draw correlated observation error for the seismic observations
+                    # for this seismic observation data set.
+                    # Overwrite the uncorrelated observation errors for the
+                    # seismic observations for this observation data set.
+                    seis_obs_perturbed = perturb_seismic_2D_observations_with_correlated_errors(  # noqa
+                        ensemble_size,
+                        seis_obs_xpos,
+                        seis_obs_ypos,
+                        seis_obs_values,
+                        seis_obs_std,
+                        ertbox_params,
+                        variogram_name=obs_err_variogram,
+                        obs_err_main_corr_range=obs_err_main_range,
+                        obs_err_perp_corr_range=obs_err_perp_range,
+                        obs_err_anisotropy_angle=obs_err_azimuth,
+                        obs_err_power_genexponential_variogram=SEISMIC_GEN_EXP_POWER,
+                        alpha=alpha,
+                        start_seed=start_seed,
+                    )
+                    # Update the D matrix
+                    assert seis_obs_perturbed.shape[0] == seis_obs_values.shape[0]
+                    assert seis_obs_perturbed.shape[1] == ensemble_size
+                    assert seis_obs_indices.shape[0] == seis_obs_perturbed.shape[0]
+                    D[seis_obs_indices, :] = seis_obs_perturbed[:, :]
+                    # Ensure not same start seed for all seismic obs error simulations
+                    start_seed += 876541
+
+        # Seismic obs are spatially correlated here and then use the full covariance
+        # matrix instead of the diagonal covariance matrix.
+        # TODO: Check if this really is necessary in DL or if the algorithm can be run
+        # with the same result with diagonal C_D since we here draw the errors for the
+        # D matrix outside of the algorithm.
+        C_D = C_D_matrix
+        if WRITE_D_MATRIX:
+            if zone_group_number is not None:
+                filename = "tmp_seis_obs_pointset" + str(zone_group_number) + ".csv"
+                write_seis_obs_errors(
+                    filename,
+                    df_new_seis_obs,
+                    observations,
+                    seis_obs_indices,
+                    D,
+                )
+
+    return (
+        Y,
+        observations,
+        C_D,
+        xpos,
+        ypos,
+        main_ranges,
+        perp_ranges,
+        anisotropy_angle,
+        D,
+    )
+
+
+def write_seis_obs_errors(
+    filename,
+    df_seis_obs: pl.DataFrame,
+    observations: npt.NDArray[np.double],
+    seis_obs_indices: npt.NDArray[np.double],
+    D: npt.NDArray[np.double],
+):
+    selected_columns = [
+        "xpos",
+        "ypos",
+        "observations",
+    ]
+    df = df_seis_obs.select(selected_columns)
+    # This D-matrix contains observation value + simulated error
+    D_seis_err1 = D[seis_obs_indices, :]
+    obs_seis_array = observations[seis_obs_indices]
+    nreal = D_seis_err1.shape[1]
+    # Subtract observation value from the values in D-matrix for the seismic obs
+    # This D-matrix contains only the observation error
+    D_seis_err2 = D_seis_err1 - np.tile(obs_seis_array, (nreal, 1)).T
+
+    # Set column name equal to realization number
+    column_names = [str(i) for i in range(D_seis_err2.shape[1])]
+    df2 = pl.DataFrame(D_seis_err2, schema=column_names)
+    df_obs_error = df.hstack(df2)
+    print(f"Write file: {filename}")
+    df_obs_error.write_csv(filename)
 
 
 def write_3D_field_param_to_file(
@@ -2293,6 +2737,7 @@ def update_2D_field_with_esmda(
     param_config,
     X_prior: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
+    D: npt.NDArray[np.double] = None,
 ) -> list[npt.NDArray[np.double], dict]:
     """
     Calculate posterior update with ESMDA for one 2D parameter
@@ -2326,7 +2771,7 @@ def update_2D_field_with_esmda(
     assert nparam == X_prior.shape[0]
 
     print(f"  Assimilate 2D field parameter {field_param_name}")
-    X_post = esmda_smoother.assimilate(X=X_prior, Y=Y)
+    X_post = esmda_smoother.assimilate(X=X_prior, Y=Y, D=D)
     return X_post, surface_coord_dict
 
 
@@ -2338,6 +2783,7 @@ def update_3D_field_with_esmda(
     nx: int,
     ny: int,
     nz: int,
+    D: npt.NDArray[np.double] = None,
 ) -> list[npt.NDArray[np.double], npt.NDArray[np.double]]:
     """
     Calculate posterior update with ESMDA for one 3D parameter
@@ -2348,7 +2794,7 @@ def update_3D_field_with_esmda(
     print(f"    Calculate update for {field_param_name} with {nparam} parameters")
     assert nparam == X_prior.shape[0]
     print("     Assimilate with ESMDA")
-    X_post = esmda_smoother.assimilate(X=X_prior, Y=Y)
+    X_post = esmda_smoother.assimilate(X=X_prior, Y=Y, D=D)
 
     return X_prior, X_post
 
@@ -2439,6 +2885,13 @@ def update_with_distance_esmda_new(
         first_zone_name_in_group = zone_list[0]
         df_obs_this_zone = obs_and_response_df_per_zone_dict[first_zone_name_in_group]
 
+        # Use the ertbox definition of one of the fields for simulation of
+        # seismic observation error correlations.
+        field_param_name = field_params_3D_list_per_zone[first_zone_name_in_group][0]
+        ertbox_params_for_seismic_error_simulation = ertbox_per_field_param_dict[
+            field_param_name
+        ]
+
         # Calculate Y matrix etc
         print(
             " Define response matrix Y, obs vectors and "
@@ -2453,8 +2906,17 @@ def update_with_distance_esmda_new(
             obs_local_main_ranges,
             obs_local_perp_ranges,
             obs_local_anisotropy_angle,
+            D,
         ) = define_response_and_observations(
-            ensemble_size, df_obs_this_zone, zone_group_number
+            ensemble_size,
+            df_obs_this_zone,
+            start_seed=seed,
+            zone_group_number=zone_group_number,
+            zone_list=zone_list,
+            use_obs_err_correlations=USE_SEISMIC_OBS_ERR_CORRELATION,
+            seis_obs_and_response_dict_per_zone=SEISMIC_OBS_AND_RESPONSE_DICT_PER_ZONE,
+            alpha=alpha,
+            ertbox_params=ertbox_params_for_seismic_error_simulation,
         )
         nobs = Y.shape[0]
         print(
@@ -2476,7 +2938,10 @@ def update_with_distance_esmda_new(
         distance_based_esmda_smoother = DistanceESMDA(
             covariance=C_D, observations=observations, alpha=alpha, seed=seed
         )
-        distance_based_esmda_smoother.prepare_assimilation(Y, truncation=truncation)
+
+        distance_based_esmda_smoother.prepare_assimilation(
+            Y, truncation=truncation, D=D
+        )
         previous_ertbox_params = None
         for zone_name in zone_list:
             # For current zone all field parameters should have same size
@@ -2700,6 +3165,30 @@ def update_with_distance_esmda_new(
     # local coordinate system is grouped together to avoid having to transform
     # global position of observations to local coordinates more than necessary
     # and to avoid having to re-calculate RHO unnecessary.
+
+    # Calculate Y, position, observation, localizatio parameters
+    # and perturbed observation matrix D to be used for all surfaces
+    # and for all scalar parameter updates
+    (
+        Y,
+        observations,
+        C_D,
+        obs_xpos,
+        obs_ypos,
+        obs_main_ranges,
+        obs_perp_ranges,
+        obs_anisotropy_angle,
+        D,
+    ) = define_response_and_observations(
+        ensemble_size,
+        obs_and_response_df_for_2D_fields,
+        start_seed=seed,
+        use_obs_err_correlations=USE_SEISMIC_OBS_ERR_CORRELATION,
+        seis_obs_and_response_dict_for_2D_fields=SEISMIC_OBS_AND_RESPONSE_DICT_FOR_2D_FIELDS,
+        alpha=alpha,
+        ertbox_params=ertbox_params_for_seismic_error_simulation,
+    )
+
     if len(field_params_2D_list) > 0:
         print("")
         print("Start Update of all 2D field parameters.")
@@ -2709,21 +3198,8 @@ def update_with_distance_esmda_new(
             "and localization attribute vectors"
         )
         print(
-            "All 2D fields will use the same set of observations and "
+            " All 2D fields will use the same set of observations and "
             "localization ranges."
-        )
-
-        (
-            Y,
-            observations,
-            C_D,
-            obs_xpos,
-            obs_ypos,
-            obs_main_ranges,
-            obs_perp_ranges,
-            obs_anisotropy_angle,
-        ) = define_response_and_observations(
-            ensemble_size, obs_and_response_df_for_2D_fields
         )
         nobs = Y.shape[0]
         print(f" Surfaces are conditioned to {nobs} observations.")
@@ -2738,7 +3214,9 @@ def update_with_distance_esmda_new(
         distance_based_esmda_smoother = DistanceESMDA(
             covariance=C_D, observations=observations, alpha=alpha, seed=seed
         )
-        distance_based_esmda_smoother.prepare_assimilation(Y, truncation=truncation)
+        distance_based_esmda_smoother.prepare_assimilation(
+            Y, truncation=truncation, D=D
+        )
         if SAVE_UPDATE_TO_STORAGE:
             with open_storage(STORAGE_PATH, mode="w") as storage:
                 experiment = storage.get_experiment_by_name(EXPERIMENT_NAME)
@@ -2753,11 +3231,11 @@ def update_with_distance_esmda_new(
                     print(f"  Group: {group_number}")
                     for s in group_list:
                         print(f"  {s}")
-
+                    print("\n")
                 for group_number, surface_list in groups_of_2D_field_names.items():
                     # Calculate rho once per group since same obs and
                     # same local coordinate system for all surface in a group.
-                    print(f"  Surface group number: {group_number}")
+                    print(f" Surface group number: {group_number}")
                     surface_name = surface_list[0]
                     rho_2D, surface_coord_dict = (
                         transform_coord_and_define_rho_for_2D_fields(
@@ -2868,6 +3346,9 @@ def update_with_distance_esmda_new(
     # TODO: Note this implementation is slow since it initialize ESMDA for every
     # scalar parameter. Better to update all scalar parameters in one update
     # operation with ESMDA instead.
+    # NOTE: it will use same observations, response matrix Y
+    # and perturbed observation matrix D and same covariance matrix
+    # C_D as for 2D fields.
     if SAVE_UPDATE_TO_STORAGE:
         method = SCALAR_UPDATE_METHOD
         update_scalars_all(
@@ -2877,8 +3358,9 @@ def update_with_distance_esmda_new(
             observations,
             C_D,
             Y,
-            ALPHA,
+            alpha,
             SEED,
+            D,
         )
         update_storage_with_const_params(non_updatable_list, iens_active_index)
 
@@ -2965,6 +3447,7 @@ def update_scalars(
     Y: npt.NDArray[np.double],
     alpha: float,
     seed: int,
+    D: npt.NDArray[np.double] = None,
 ):
     if method == "ESMDA":
         for group_name in scalar_param_list:
@@ -2990,7 +3473,7 @@ def update_scalars(
                 #
 
                 # Update with ESMDA
-                X_post = esmda_smoother.assimilate(X=X_prior_group, Y=Y)
+                X_post = esmda_smoother.assimilate(X=X_prior_group, Y=Y, D=D)
 
                 print(f"    Store {group_name} to {ENSEMBLE_NAME_UPDATE}")
                 print(f"    Number of parameters in {group_name}: {nparam}")
@@ -3012,6 +3495,7 @@ def update_scalars_all(
     Y: npt.NDArray[np.double],
     alpha: float,
     seed: int,
+    D: npt.NDArray[np.double] = None,
 ):
     if method == "ESMDA":
         print("Update scalar parameters with ordinary ESMDA")
@@ -3045,7 +3529,7 @@ def update_scalars_all(
             # before update and not before saving to storage
 
             # Update with ESMDA
-            X_post = esmda_smoother.assimilate(X=X_prior, Y=Y)
+            X_post = esmda_smoother.assimilate(X=X_prior, Y=Y, D=D)
 
             print(f"  Store scalar parameters to {ENSEMBLE_NAME_UPDATE}")
             for n, group_name in enumerate(scalar_param_list):
@@ -3079,16 +3563,18 @@ def update_scalars_all(
         )
         corr_threshold = adaptive_esmda_smoother.correlation_threshold(nreal)
         # Calculate D
-        D = adaptive_esmda_smoother.perturb_observations(
-            ensemble_size=nreal, alpha=alpha
-        )
-
+        if D is None:
+            D = adaptive_esmda_smoother.perturb_observations(
+                ensemble_size=nreal, alpha=alpha
+            )
+        assert D.shape[0] == observations.shape[0]
+        assert D.shape[1] == Y.shape[1]
         X_post = adaptive_esmda_smoother.assimilate(
             X=X_prior,
             Y=Y,
             D=D,
             overwrite=False,
-            alpha=ALPHA,
+            alpha=alpha,
             correlation_threshold=corr_threshold,
             n_jobs=1,
         )
