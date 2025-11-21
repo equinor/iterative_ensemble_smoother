@@ -21,7 +21,7 @@ jobs:
       - name: Build sdist
         run: pipx run build --wheel
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: built-wheel-${{ matrix.os }}
           path: dist/*.whl
@@ -38,7 +38,7 @@ jobs:
       - name: Build sdist
         run: pipx run build --sdist
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: built-sdist-${{ matrix.os }}
           path: dist/*.tar.gz
