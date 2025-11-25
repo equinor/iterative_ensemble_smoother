@@ -108,7 +108,8 @@ class BaseESMDA(ABC):
         Returns
         -------
         D : np.ndarray
-            Each column consists of perturbed observations, scaled by alpha.
+            Each column consists of perturbed observations,
+            observation std is scaled by sqrt(alpha).
 
         """
         # Draw samples from zero-centered multivariate normal with cov=alpha * C_D,
