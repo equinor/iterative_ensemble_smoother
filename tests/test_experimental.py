@@ -12,6 +12,7 @@ from iterative_ensemble_smoother.esmda_inversion import (
 )
 from iterative_ensemble_smoother.experimental import (
     AdaptiveESMDA,
+    DistanceESMDA,
     ensemble_smoother_update_step_row_scaling,
 )
 
@@ -628,6 +629,293 @@ class TestRowScaling:
         assert np.allclose(
             X_posterior, np.vstack([X_i for (X_i, _) in X_with_row_scaling_updated])
         )
+
+
+@pytest.mark.parametrize("seed", list(range(9)))
+def test_distance_based_localization_on_1D_case_with_single_observation(seed):
+    N_m = 100  # Number of model parameters (grid points)
+    N_e = 50  # Ensemble size
+    j_obs = 50  # Index of the single observation
+
+    obs_error_var = 0.01  # Variance of observation error
+
+    true_parameters = np.zeros(N_m)
+
+    true_observations = np.array([1.0])
+
+    C_D = np.array([obs_error_var])
+
+    rng = np.random.default_rng(seed)
+    X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))
+
+    # Predict observations `Y` using the identity model `g(x) = x`
+    # We only observe the state at `j_obs`.
+    Y = X_prior[[j_obs], :]
+
+    # Using a simple Gaussian decay for rho
+    localization_radius = 10.0
+    model_grid = np.arange(N_m)
+    distances = np.abs(model_grid - j_obs)
+    rho = np.exp(-0.5 * (distances / localization_radius) ** 2).reshape(-1, 1)
+
+    alpha_i = 2
+    esmda_distance = DistanceESMDA(
+        covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
+    )
+    for _ in range(esmda_distance.num_assimilations()):
+        X_posterior = esmda_distance.assimilate(X=X_prior, Y=Y, rho=rho)
+
+    # Find parameters far from the observation where localization weight is near zero
+    zero_weight_indices = np.where(rho < 1e-5)[0]
+    assert len(zero_weight_indices) > 0
+
+    # Assert that parameters in the zero-weight region have not been updated
+    assert np.allclose(
+        X_posterior[zero_weight_indices, :], X_prior[zero_weight_indices, :], rtol=1e-2
+    )
+    # Assert that parameters near the observation *have* been updated
+    assert not np.allclose(X_posterior[j_obs, :], X_prior[j_obs, :])
+
+    prior_mean = np.mean(X_prior, axis=1)
+    posterior_mean = np.mean(X_posterior, axis=1)
+
+    # The largest update to the mean should occur exactly at the observation point
+    update_magnitude = np.abs(posterior_mean - prior_mean)
+    assert np.argmax(update_magnitude) == j_obs
+
+    prior_variance = np.var(X_prior, axis=1)
+    posterior_variance = np.var(X_posterior, axis=1)
+
+    # The variance of the ensemble should decrease where the update was applied
+    assert posterior_variance[j_obs] < prior_variance[j_obs]
+    # The variance of the ensemble should NOT change where there was no update
+    assert np.allclose(
+        posterior_variance[zero_weight_indices], prior_variance[zero_weight_indices]
+    )
+
+    esmda = ESMDA(
+        covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
+    )
+    for _ in range(esmda.num_assimilations()):
+        X_posterior_global = esmda.assimilate(X=X_prior, Y=Y)
+
+    # The global update MUST change distant parameters due to spurious correlations.
+    assert not np.allclose(
+        X_posterior_global[zero_weight_indices, :],
+        X_prior[zero_weight_indices, :],
+    )
+
+    posterior_variance_global = np.var(X_posterior_global, axis=1)
+    # The non-localized update should reduce the AVERAGE variance everywhere due to
+    # spurious correlations. This test is more robust to random sampling noise
+    # than asserting that every single variance must decrease.
+    assert np.mean(posterior_variance_global[zero_weight_indices]) < np.mean(
+        prior_variance[zero_weight_indices]
+    )
+
+    # The localized posterior mean should be a better estimate of the true parameters
+    # overall, because it avoids polluting the entire field with noise.
+    posterior_mean_global = np.mean(X_posterior_global, axis=1)
+
+    # Calculate Mean Squared Error (MSE) against the true parameters
+    mse_localized = np.mean((posterior_mean - true_parameters) ** 2)
+    mse_non_localized = np.mean((posterior_mean_global - true_parameters) ** 2)
+
+    # The MSE of the localized result should be significantly smaller.
+    assert mse_localized < mse_non_localized
+
+
+@pytest.mark.parametrize("seed", list(range(9)))
+def test_distance_based_localization_on_2D_case_with_single_observation(seed):
+    Nx, Ny = 10, 10  # Dimensions of the 2D parameter grid
+    N_m = Nx * Ny  # Total number of model parameters
+    N_e = 50  # Ensemble size
+    x_obs, y_obs = 5, 5  # Index of the single observation in 2D
+
+    alpha_i = 1
+    obs_error_var = 0.01
+
+    true_parameters = np.zeros(N_m)
+    true_observations = np.array([1.0])
+    C_D = np.array([obs_error_var])
+
+    # --- Generate Initial Ensemble and Predictions ---
+    rng = np.random.default_rng(seed)
+    X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))
+
+    # Convert the 2D observation index to a flat 1D index for slicing
+    flat_obs_index = y_obs * Nx + x_obs
+    Y = X_prior[[flat_obs_index], :]
+
+    # --- Construct 2D Localization `rho` ---
+    localization_radius = 1.0
+    xx, yy = np.meshgrid(np.arange(Nx), np.arange(Ny))
+    distances_2d = np.sqrt((xx - x_obs) ** 2 + (yy - y_obs) ** 2)
+    distances = distances_2d.flatten()
+    rho = np.exp(-0.5 * (distances / localization_radius) ** 2).reshape(-1, 1)
+
+    # --- Run Assimilations ---
+    # Initialize smoothers with the current run's seeded RNG
+    esmda_distance = DistanceESMDA(
+        covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
+    )
+    X_posterior = esmda_distance.assimilate(X=X_prior, Y=Y, rho=rho)
+
+    esmda_global = ESMDA(
+        covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
+    )
+    X_posterior_global = esmda_global.assimilate(X=X_prior, Y=Y)
+
+    # --- Assertions ---
+    # Find parameters far from the observation where localization weight is near zero
+    zero_weight_indices = np.where(rho < 1e-6)[0]
+    assert len(zero_weight_indices) > 0, (
+        "No distant points found for testing localization."
+    )
+
+    # --- Assertions for Localized Smoother ---
+    prior_mean = np.mean(X_prior, axis=1)
+    posterior_mean = np.mean(X_posterior, axis=1)
+    prior_variance = np.var(X_prior, axis=1)
+    posterior_variance = np.var(X_posterior, axis=1)
+
+    # Assert distant parameters are not updated
+    assert np.allclose(
+        X_posterior[zero_weight_indices, :], X_prior[zero_weight_indices, :], rtol=1e-2
+    )
+    # Assert parameter at observation IS updated
+    assert not np.allclose(X_posterior[flat_obs_index, :], X_prior[flat_obs_index, :])
+
+    # Assert update is maximal at the observation point
+    update_magnitude = np.abs(posterior_mean - prior_mean)
+    assert np.argmax(update_magnitude) == flat_obs_index
+
+    # Assert variance is reduced at observation, but preserved far away
+    assert posterior_variance[flat_obs_index] < prior_variance[flat_obs_index]
+    assert np.allclose(
+        posterior_variance[zero_weight_indices], prior_variance[zero_weight_indices]
+    )
+
+    # --- Comparison Assertions for Global Smoother ---
+    posterior_mean_global = np.mean(X_posterior_global, axis=1)
+    posterior_variance_global = np.var(X_posterior_global, axis=1)
+
+    # Assert distant parameters ARE updated due to spurious correlations
+    assert not np.allclose(
+        X_posterior_global[zero_weight_indices, :],
+        X_prior[zero_weight_indices, :],
+    )
+
+    # Assert AVERAGE variance is reduced everywhere (the sign of ensemble collapse)
+    assert np.mean(posterior_variance_global[zero_weight_indices]) < np.mean(
+        prior_variance[zero_weight_indices]
+    )
+
+    # --- Overall Quality Assertion (MSE) ---
+    # Assert that the localized result is a more plausible estimate
+    mse_localized = np.mean((posterior_mean - true_parameters) ** 2)
+    mse_non_localized = np.mean((posterior_mean_global - true_parameters) ** 2)
+    assert mse_localized < mse_non_localized
+
+
+@pytest.mark.parametrize("seed", list(range(9)))
+def test_distance_based_localization_on_3D_case(seed):
+    # --- 1. System and Assimilation Setup (3D Grid) ---
+    Nx, Ny, Nz = 10, 10, 10  # Dimensions of the 3D parameter grid
+    N_m = Nx * Ny * Nz  # Total number of model parameters (now 1000)
+    N_e = 50  # Ensemble size
+    x_obs, y_obs, z_obs = 5, 5, 5  # Index of the single observation in 3D
+
+    alpha_i = 1
+    obs_error_var = 0.01
+
+    true_parameters = np.zeros(N_m)
+    true_observations = np.array([1.0])
+    C_D = np.array([obs_error_var])
+
+    # --- 2. Generate Initial Ensemble and Predictions ---
+    rng = np.random.default_rng(seed)
+    X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))
+
+    # Convert the 3D observation index to a flat 1D index for slicing
+    flat_obs_index = (z_obs * Nx * Ny) + (y_obs * Nx) + x_obs
+    Y = X_prior[[flat_obs_index], :]
+
+    # --- 3. Construct 3D Localization `rho` ---
+    # A smaller radius is used to ensure the localization effect is clear
+    # and that some weights decay to near-zero within the grid boundaries.
+    localization_radius = 1.5
+
+    # Create 3D coordinate grids
+    zz, yy, xx = np.meshgrid(np.arange(Nz), np.arange(Ny), np.arange(Nx), indexing="ij")
+    # Calculate 3D Euclidean distance from every point to the observation
+    distances_3d = np.sqrt((xx - x_obs) ** 2 + (yy - y_obs) ** 2 + (zz - z_obs) ** 2)
+    distances = distances_3d.flatten()
+
+    rho = np.exp(-0.5 * (distances / localization_radius) ** 2).reshape(-1, 1)
+
+    # --- 4. Run Assimilations ---
+    # Initialize smoothers with the current run's seeded RNG
+    esmda_distance = DistanceESMDA(
+        covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
+    )
+    X_posterior = esmda_distance.assimilate(X=X_prior, Y=Y, rho=rho)
+
+    esmda_global = ESMDA(
+        covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
+    )
+    X_posterior_global = esmda_global.assimilate(X=X_prior, Y=Y)
+
+    # --- 5. Assertions ---
+    # Find parameters far from the observation where localization weight is near zero
+    zero_weight_indices = np.where(rho < 1e-6)[0]
+    assert len(zero_weight_indices) > 0, (
+        "No distant points found for testing localization."
+    )
+
+    # --- 5a. Assertions for Localized Smoother ---
+    prior_mean = np.mean(X_prior, axis=1)
+    posterior_mean = np.mean(X_posterior, axis=1)
+    prior_variance = np.var(X_prior, axis=1)
+    posterior_variance = np.var(X_posterior, axis=1)
+
+    # Assert distant parameters are not updated (within a small tolerance for the tail)
+    assert np.allclose(
+        X_posterior[zero_weight_indices, :], X_prior[zero_weight_indices, :], atol=1e-5
+    )
+    # Assert parameter at observation IS updated
+    assert not np.allclose(X_posterior[flat_obs_index, :], X_prior[flat_obs_index, :])
+
+    # Assert update is maximal at the observation point
+    update_magnitude = np.abs(posterior_mean - prior_mean)
+    assert np.argmax(update_magnitude) == flat_obs_index
+
+    # Assert variance is reduced at observation, but preserved far away
+    assert posterior_variance[flat_obs_index] < prior_variance[flat_obs_index]
+    assert np.allclose(
+        posterior_variance[zero_weight_indices], prior_variance[zero_weight_indices]
+    )
+
+    # --- 5b. Comparison Assertions for Global Smoother ---
+    posterior_mean_global = np.mean(X_posterior_global, axis=1)
+    posterior_variance_global = np.var(X_posterior_global, axis=1)
+
+    # Assert distant parameters ARE updated due to spurious correlations
+    assert not np.allclose(
+        X_posterior_global[zero_weight_indices, :],
+        X_prior[zero_weight_indices, :],
+    )
+
+    # Assert AVERAGE variance is reduced everywhere (the sign of ensemble collapse)
+    assert np.mean(posterior_variance_global[zero_weight_indices]) < np.mean(
+        prior_variance[zero_weight_indices]
+    )
+
+    # --- 5c. Overall Quality Assertion (MSE) ---
+    # Assert that the localized result is a more plausible estimate
+    mse_localized = np.mean((posterior_mean - true_parameters) ** 2)
+    mse_non_localized = np.mean((posterior_mean_global - true_parameters) ** 2)
+    assert mse_localized < mse_non_localized
 
 
 if __name__ == "__main__":
