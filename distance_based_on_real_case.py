@@ -309,6 +309,7 @@ def run_number():
 
 # Turn on/off to store results in ERT storage
 SAVE_UPDATE_TO_STORAGE = True
+# SAVE_UPDATE_TO_STORAGE = False
 
 # Turn on/off the two types of update
 SKIP_GLOBAL_UPDATE = True
@@ -338,7 +339,7 @@ SEED = SEED_1_75
 TESTS = False
 
 # Turn on/off more extensive output to screed
-DEBUG_PRINT = False
+DEBUG_PRINT = True
 
 # Turn on/of use of seismic obs
 USE_SEIS_OBS = True
@@ -362,12 +363,16 @@ SCALAR_UPDATE_METHOD = "ADAPTIVE"  # ESMDA or ADAPTIVE
 #    "/project/fmu/users/olia/drogon_20250623_11-50/"
 #    + "resmod/ff/25.0.0/ert/output/drogon_ahm/storage"
 # )
+# STORAGE_PATH = (
+#     "/project/fmu/users/olia/drogon_20250623_11-50/"
+#     + "resmod/ff/25.0.0/ert/output/drogon_ahm_ertbox/storage"
+# )
 STORAGE_PATH = (
-    "/project/fmu/users/olia/drogon_20250623_11-50/"
-    + "resmod/ff/25.0.0/ert/output/drogon_ahm_ertbox/storage"
+    "/project/fmu/tutorial/drogon/resmod/ff/users/"
+    + "olia/drogon_20240709_15-30/resmod/ff/24.3.0/ert/"
+    + "output/drogon_ahm_facies_petro_ertbox_test/storage"
 )
-
-EXPERIMENT_NAME = "ensemble_experiment_ertbox"
+EXPERIMENT_NAME = "ensemble_experiment_petro_ertbox"
 # EXPERIMENT_NAME = "ensemble_experiment_ertbox"
 # ENSEMBLE_NAME = "ensemble"
 # ENSEMBLE_NAME = "ensemble-post-global-102018corr_seis_7_0"
@@ -390,8 +395,8 @@ EXPERIMENT_NAME = "ensemble_experiment_ertbox"
 # ENSEMBLE_NAME = "ensemble-post-115814seis_nocorr_DL_R2000_7_0"
 # ENSEMBLE_NAME = "ensemble-post-115958seis_nocorr_DL_R2000_3_5"
 # ENSEMBLE_NAME = "ensemble-post-121949DL_R2000_7_0"
-ENSEMBLE_NAME = "ensemble-post-122244DL_R2000_3_5"
-
+# ENSEMBLE_NAME = "ensemble-post-122244DL_R2000_3_5"
+ENSEMBLE_NAME = "ensemble-post-126770DL_R2000_3_5"
 # For distance-based update
 ENSEMBLE_NAME_UPDATE = "ensemble-post-" + ENSEMBLE_LABEL + ENSEMBLE_TAG
 
@@ -465,16 +470,43 @@ ZONES = ["Valysar", "Therys", "Volon"]
 # Is used to assosiate fields with zones for cases where we need to distinguish
 # between zones (due to different obs per zone). The first version of this script
 # should use obs data frames that are equal for all zones.
+# ZONE_PER_3D_FIELD_PARAM_GROUP = {
+#     "aps_Valysar_GRF1": "Valysar",
+#     "aps_Valysar_GRF2": "Valysar",
+#     "aps_Valysar_GRF3": "Valysar",
+#     "aps_Therys_GRF1": "Therys",
+#     "aps_Therys_GRF2": "Therys",
+#     "aps_Therys_GRF3": "Therys",
+#     "aps_Volon_GRF1": "Volon",
+#     "aps_Volon_GRF2": "Volon",
+#     "aps_Volon_GRF3": "Volon",
+# }
+
 ZONE_PER_3D_FIELD_PARAM_GROUP = {
     "aps_Valysar_GRF1": "Valysar",
     "aps_Valysar_GRF2": "Valysar",
     "aps_Valysar_GRF3": "Valysar",
+    "Valysar_Floodplain_PHIT": "Valysar",
+    "Valysar_Channel_PHIT": "Valysar",
+    "Valysar_Crevasse_PHIT": "Valysar",
+    "Valysar_Floodplain_KLOGH": "Valysar",
+    "Valysar_Channel_KLOGH": "Valysar",
+    "Valysar_Crevasse_KLOGH": "Valysar",
     "aps_Therys_GRF1": "Therys",
     "aps_Therys_GRF2": "Therys",
     "aps_Therys_GRF3": "Therys",
+    "Therys_Offshore_PHIT": "Therys",
+    "Therys_Lowershoreface_PHIT": "Therys",
+    "Therys_Uppershoreface_PHIT": "Therys",
+    "Therys_Offshore_KLOGH": "Therys",
+    "Therys_Lowershoreface_KLOGH": "Therys",
+    "Therys_Uppershoreface_KLOGH": "Therys",
     "aps_Volon_GRF1": "Volon",
     "aps_Volon_GRF2": "Volon",
     "aps_Volon_GRF3": "Volon",
+    "Volon_Channel_PHIT": "Volon",
+    "Volon_Floodplain_PHIT": "Volon",
+    "Volon_Channel_KLOGH": "Volon",
 }
 # NOTE: ERTBOX should be fetched from the storage, but currently I have specified
 # this explicitly here.
@@ -521,114 +553,18 @@ ZONE_PER_3D_FIELD_PARAM_GROUP = {
 # all ERTBOX parameters are equal as in the case below.
 # In the new extended implementation with individual ERTBOX per 3D field parameter,
 # I assume each zone of Drogon will have its own value of NZ but the rest is the same.
-# ERTBOX_PER_3D_FIELD_PARAM_GROUP = {
-#     "aps_Valysar_GRF1": {
-#         "xorigo": XORIGO,
-#         "yorigo": YORIGO,
-#         "xinc": XINC,
-#         "yinc": YINC,
-#         "rotation": ROTATION,
-#         "nx": NX,
-#         "ny": NY,
-#         "nz": NZ,
-#         "handedness": HANDEDNESS,
-#     },
-#     "aps_Valysar_GRF2": {
-#         "xorigo": XORIGO,
-#         "yorigo": YORIGO,
-#         "xinc": XINC,
-#         "yinc": YINC,
-#         "rotation": ROTATION,
-#         "nx": NX,
-#         "ny": NY,
-#         "nz": NZ,
-#         "handedness": HANDEDNESS,
-#     },
-#     "aps_Valysar_GRF3": {
-#         "xorigo": XORIGO,
-#         "yorigo": YORIGO,
-#         "xinc": XINC,
-#         "yinc": YINC,
-#         "rotation": ROTATION,
-#         "nx": NX,
-#         "ny": NY,
-#         "nz": NZ,
-#         "handedness": HANDEDNESS,
-#     },
-#     "aps_Therys_GRF1": {
-#         "xorigo": XORIGO,
-#         "yorigo": YORIGO,
-#         "xinc": XINC,
-#         "yinc": YINC,
-#         "rotation": ROTATION,
-#         "nx": NX,
-#         "ny": NY,
-#         "nz": NZ,
-#         "handedness": HANDEDNESS,
-#     },
-#     "aps_Therys_GRF2": {
-#         "xorigo": XORIGO,
-#         "yorigo": YORIGO,
-#         "xinc": XINC,
-#         "yinc": YINC,
-#         "rotation": ROTATION,
-#         "nx": NX,
-#         "ny": NY,
-#         "nz": NZ,
-#         "handedness": HANDEDNESS,
-#     },
-#     "aps_Therys_GRF3": {
-#         "xorigo": XORIGO,
-#         "yorigo": YORIGO,
-#         "xinc": XINC,
-#         "yinc": YINC,
-#         "rotation": ROTATION,
-#         "nx": NX,
-#         "ny": NY,
-#         "nz": NZ,
-#         "handedness": HANDEDNESS,
-#     },
-#     "aps_Volon_GRF1": {
-#         "xorigo": XORIGO,
-#         "yorigo": YORIGO,
-#         "xinc": XINC,
-#         "yinc": YINC,
-#         "rotation": ROTATION,
-#         "nx": NX,
-#         "ny": NY,
-#         "nz": NZ,
-#         "handedness": HANDEDNESS,
-#     },
-#     "aps_Volon_GRF2": {
-#         "xorigo": XORIGO,
-#         "yorigo": YORIGO,
-#         "xinc": XINC,
-#         "yinc": YINC,
-#         "rotation": ROTATION,
-#         "nx": NX,
-#         "ny": NY,
-#         "nz": NZ,
-#         "handedness": HANDEDNESS,
-#     },
-#     "aps_Volon_GRF3": {
-#         "xorigo": XORIGO,
-#         "yorigo": YORIGO,
-#         "xinc": XINC,
-#         "yinc": YINC,
-#         "rotation": ROTATION,
-#         "nx": NX,
-#         "ny": NY,
-#         "nz": NZ,
-#         "handedness": HANDEDNESS,
-#     },
-# }
 
 SCALING_FUNCTION_NAME = (
     "gaspari-cohn"  # Alternatives: "gaussian", "exponential", "gaspari-cohn"
 )
+# ERT_CONFIG_PATH = (
+#    "/project/fmu/users/olia/drogon_20250623_11-50/resmod/ff/25.0.0/ert/model"
+# )
 ERT_CONFIG_PATH = (
-    "/project/fmu/users/olia/drogon_20250623_11-50/resmod/ff/25.0.0/ert/model"
+    "/project/fmu/tutorial/drogon/resmod/ff/users/olia/"
+    + "drogon_20240709_15-30/resmod/ff/24.3.0/ert/model"
 )
+
 ERT_SEIS_OBS_PATH = ERT_CONFIG_PATH + "/" + "../input/observations/seismic"
 
 
@@ -756,7 +692,7 @@ SEISMIC_OBS_AND_RESPONSE_DICT_FOR_2D_FIELDS = [
 
 # SCRATCH_PATH = "/scratch/fmu/olia/drogon_ahm_base"
 # SCRATCH_PATH = "/scratch/fmu/olia/drogon_ahm_500"
-SCRATCH_PATH = "/scratch/fmu/olia/drogon_ahm_ertbox"
+SCRATCH_PATH = "/scratch/fmu/olia/drogon_ahm_facies_petro_ertbox_test"
 
 
 # SEIS_MAIN_RANGE = 100.0 # Case s100
