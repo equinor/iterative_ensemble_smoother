@@ -94,6 +94,7 @@ select = [
     "I", # isort
     "W",
 ]
+preview = true
 
 # Allow autofix for all enabled rules (when `--fix`) is provided.
 fixable = ["A", "B", "C", "D", "E", "F", "I"]
