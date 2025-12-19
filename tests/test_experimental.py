@@ -4,6 +4,7 @@ from copy import deepcopy
 
 import numpy as np
 import pytest
+from numpy import typing as npt
 
 from iterative_ensemble_smoother import ESMDA
 from iterative_ensemble_smoother.esmda_inversion import (
@@ -12,6 +13,7 @@ from iterative_ensemble_smoother.esmda_inversion import (
 )
 from iterative_ensemble_smoother.experimental import (
     AdaptiveESMDA,
+    DistanceESMDA,
     ensemble_smoother_update_step_row_scaling,
 )
 
@@ -627,6 +629,332 @@ class TestRowScaling:
         # The result should be the same
         assert np.allclose(
             X_posterior, np.vstack([X_i for (X_i, _) in X_with_row_scaling_updated])
+        )
+
+
+def assert_tests_for_distance_based_localization(
+    X_prior: npt.NDArray[np.float64],
+    obs_index_flatten: int,
+    rho: npt.NDArray[np.float64],
+    true_parameters: npt.NDArray[np.float64],
+    X_posterior: npt.NDArray[np.float64],
+    X_posterior_global: npt.NDArray[np.float64],
+    rho_min: float = 1e-6,
+    atol: float = 1e-5,
+):
+    # Find parameters far from the observation where localization weight is near zero
+    zero_weight_indices = np.where(rho < rho_min)[0]
+    assert len(zero_weight_indices) > 0, (
+        "No distant points found for testing localization."
+    )
+    # --- Assertions for Localized Smoother ---
+    # Assert distant parameters are not updated
+    assert np.allclose(
+        X_posterior[zero_weight_indices, :], X_prior[zero_weight_indices, :], atol=atol
+    )
+    # Assert parameter at observation IS updated
+    assert not np.allclose(
+        X_posterior[obs_index_flatten, :], X_prior[obs_index_flatten, :]
+    )
+
+    prior_mean = np.mean(X_prior, axis=1)
+    posterior_mean = np.mean(X_posterior, axis=1)
+    prior_variance = np.var(X_prior, axis=1)
+    posterior_variance = np.var(X_posterior, axis=1)
+
+    # Assert update is maximal at the observation point
+    update_magnitude = np.abs(posterior_mean - prior_mean)
+    assert np.argmax(update_magnitude) == obs_index_flatten
+
+    # Assert variance is reduced at observation, but preserved far away
+    assert posterior_variance[obs_index_flatten] < prior_variance[obs_index_flatten]
+    # The variance of the ensemble should NOT change where there was no update
+    assert np.allclose(
+        posterior_variance[zero_weight_indices], prior_variance[zero_weight_indices]
+    )
+
+    # The global update MUST change distant parameters due to spurious correlations.
+    assert not np.allclose(
+        X_posterior_global[zero_weight_indices, :],
+        X_prior[zero_weight_indices, :],
+    )
+
+    # --- Comparison Assertions for Global Smoother ---
+    posterior_mean_global = np.mean(X_posterior_global, axis=1)
+    posterior_variance_global = np.var(X_posterior_global, axis=1)
+
+    # Assert distant parameters ARE updated due to spurious correlations
+    assert not np.allclose(
+        X_posterior_global[zero_weight_indices, :],
+        X_prior[zero_weight_indices, :],
+    )
+
+    # Assert AVERAGE variance is reduced everywhere (the sign of ensemble collapse)
+    assert np.mean(posterior_variance_global[zero_weight_indices]) < np.mean(
+        prior_variance[zero_weight_indices]
+    )
+
+    # Calculate Mean Squared Error (MSE) against the true parameters
+    mse_localized = np.mean((posterior_mean - true_parameters) ** 2)
+    mse_non_localized = np.mean((posterior_mean_global - true_parameters) ** 2)
+
+    # --- Overall Quality Assertion (MSE) ---
+    # Assert that the localized result is a more plausible estimate
+    assert mse_localized < mse_non_localized
+
+
+def calculate_rho_1d(
+    N_m: int, obs_index: int, localization_radius: float
+) -> npt.NDArray[np.float64]:
+    model_grid = np.arange(N_m)
+    distances = np.abs(model_grid - obs_index)
+    # Ordinary definition of range,
+    # rho is approximately 0.05 at localization_radius
+    rho = np.exp(-3.0 * (distances / localization_radius) ** 2).reshape(-1, 1)
+    return rho
+
+
+def calculate_rho_2d(
+    Nx: int, Ny: int, x_obs: int, y_obs: int, localization_radius: float
+) -> npt.NDArray[np.float64]:
+    xx, yy = np.meshgrid(np.arange(Nx), np.arange(Ny))
+    distances_2d = np.sqrt((xx - x_obs) ** 2 + (yy - y_obs) ** 2)
+    distances = distances_2d.flatten()
+    # Ordinary definition of range,
+    # rho is approximately 0.05 at localization_radius
+    rho = np.exp(-3.0 * (distances / localization_radius) ** 2).reshape(-1, 1)
+    return rho
+
+
+def calculate_rho_3d(
+    Nx: int,
+    Ny: int,
+    Nz: int,
+    x_obs: int,
+    y_obs: int,
+    z_obs: int,
+    localization_radius: float,
+) -> npt.NDArray[np.float64]:
+    # Create 3D coordinate grids
+    zz, yy, xx = np.meshgrid(np.arange(Nz), np.arange(Ny), np.arange(Nx), indexing="ij")
+    # Calculate 3D Euclidean distance from every point to the observation
+    distances_3d = np.sqrt((xx - x_obs) ** 2 + (yy - y_obs) ** 2 + (zz - z_obs) ** 2)
+    distances = distances_3d.flatten()
+    # Ordinary definition of range,
+    # rho is approximately 0.05 at localization_radius
+    rho = np.exp(-3.0 * (distances / localization_radius) ** 2).reshape(-1, 1)
+    return rho
+
+
+@pytest.mark.parametrize("seed", list(range(9)))
+def test_distance_based_localization_on_1D_case_with_single_observation(seed):
+    N_m = 100  # Number of model parameters (grid points)
+    N_e = 50  # Ensemble size
+    j_obs = 50  # Index of the single observation
+
+    alpha_i = 1
+    obs_error_var = 0.01  # Variance of observation error
+
+    true_parameters = np.zeros(N_m)
+
+    true_observations = np.array([1.0])
+
+    C_D = np.array([obs_error_var])
+
+    rng = np.random.default_rng(seed)
+    X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))
+
+    # Predict observations `Y` using the identity model `g(x) = x`
+    # We only observe the state at `j_obs`.
+    Y = X_prior[[j_obs], :]
+
+    # Using a simple Gaussian decay for rho
+    localization_radius = 20.0
+    rho = calculate_rho_1d(N_m, j_obs, localization_radius)
+
+    esmda_distance = DistanceESMDA(
+        covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
+    )
+    X_posterior = esmda_distance.assimilate(X=X_prior, Y=Y, rho=rho)
+
+    esmda = ESMDA(
+        covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
+    )
+    X_posterior_global = esmda.assimilate(X=X_prior, Y=Y)
+    assert_tests_for_distance_based_localization(
+        X_prior,
+        j_obs,
+        rho,
+        true_parameters,
+        X_posterior,
+        X_posterior_global,
+        rho_min=1e-5,
+        atol=1e-2,
+    )
+
+
+@pytest.mark.parametrize("seed", list(range(9)))
+def test_distance_based_localization_on_2D_case_with_single_observation(seed):
+    Nx, Ny = 10, 10  # Dimensions of the 2D parameter grid
+    N_m = Nx * Ny  # Total number of model parameters
+    N_e = 50  # Ensemble size
+    x_obs, y_obs = 5, 5  # Index of the single observation in 2D
+
+    alpha_i = 1
+    obs_error_var = 0.01
+
+    true_parameters = np.zeros(N_m)
+    true_observations = np.array([1.0])
+    C_D = np.array([obs_error_var])
+
+    # --- Generate Initial Ensemble and Predictions ---
+    rng = np.random.default_rng(seed)
+    X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))
+
+    # Convert the 2D observation index to a flat 1D index for slicing
+    flat_obs_index = y_obs * Nx + x_obs
+    Y = X_prior[[flat_obs_index], :]
+
+    # --- Construct 2D Localization `rho` ---
+    localization_radius = 2.5
+    rho = calculate_rho_2d(Nx, Ny, x_obs, y_obs, localization_radius)
+
+    # --- Run Assimilations ---
+    # Initialize smoothers with the current run's seeded RNG
+    esmda_distance = DistanceESMDA(
+        covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
+    )
+    X_posterior = esmda_distance.assimilate(X=X_prior, Y=Y, rho=rho)
+
+    esmda_global = ESMDA(
+        covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
+    )
+    X_posterior_global = esmda_global.assimilate(X=X_prior, Y=Y)
+
+    assert_tests_for_distance_based_localization(
+        X_prior,
+        flat_obs_index,
+        rho,
+        true_parameters,
+        X_posterior,
+        X_posterior_global,
+        rho_min=1e-6,
+        atol=1e-5,
+    )
+
+
+@pytest.mark.parametrize("seed", list(range(9)))
+def test_distance_based_localization_on_3D_case_with_single_observation(seed):
+    # --- 1. System and Assimilation Setup (3D Grid) ---
+    Nx, Ny, Nz = 10, 10, 10  # Dimensions of the 3D parameter grid
+    N_m = Nx * Ny * Nz  # Total number of model parameters (now 1000)
+    N_e = 50  # Ensemble size
+    x_obs, y_obs, z_obs = 5, 5, 5  # Index of the single observation in 3D
+
+    alpha_i = 1
+    obs_error_var = 0.01
+
+    true_parameters = np.zeros(N_m)
+    true_observations = np.array([1.0])
+    C_D = np.array([obs_error_var])
+
+    # --- 2. Generate Initial Ensemble and Predictions ---
+    rng = np.random.default_rng(seed)
+    X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))
+
+    # Convert the 3D observation index to a flat 1D index for slicing
+    flat_obs_index = (z_obs * Nx * Ny) + (y_obs * Nx) + x_obs
+    Y = X_prior[[flat_obs_index], :]
+
+    # --- 3. Construct 3D Localization `rho` ---
+    # A smaller radius is used to ensure the localization effect is clear
+    # and that some weights decay to near-zero within the grid boundaries.
+    localization_radius = 2.5
+    rho = calculate_rho_3d(Nx, Ny, Nz, x_obs, y_obs, z_obs, localization_radius)
+
+    # --- 4. Run Assimilations ---
+    # Initialize smoothers with the current run's seeded RNG
+    esmda_distance = DistanceESMDA(
+        covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
+    )
+    X_posterior = esmda_distance.assimilate(X=X_prior, Y=Y, rho=rho)
+
+    esmda_global = ESMDA(
+        covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
+    )
+    X_posterior_global = esmda_global.assimilate(X=X_prior, Y=Y)
+
+    assert_tests_for_distance_based_localization(
+        X_prior,
+        flat_obs_index,
+        rho,
+        true_parameters,
+        X_posterior,
+        X_posterior_global,
+        rho_min=1e-6,
+        atol=1e-5,
+    )
+
+
+@pytest.mark.parametrize("seed", list(range(9)))
+def test_distance_based_on_1D_case_multiple_data_assimilation(seed):
+    N_m = 100  # Number of model parameters (grid points)
+    N_e = 50  # Ensemble size
+    j_obs = 50  # Index of the single observation
+
+    alpha_vector = np.array([7.0, 3.5, 1.75])
+    inverse_alpha_vector = 1.0 / alpha_vector
+
+    # Consistency requirement for alpha
+    assert abs(inverse_alpha_vector.sum() - 1.0) < 1e-7
+
+    obs_error_var = 0.01  # Variance of observation error
+
+    true_parameters = np.zeros(N_m)
+
+    true_observations = np.array([1.0])
+
+    C_D = np.array([obs_error_var])
+
+    for iter in range(len(alpha_vector)):
+        alpha_i = np.array([alpha_vector[iter]])
+        if iter == 0:
+            # Draw prior
+            rng = np.random.default_rng(seed)
+            X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))
+            X_previous = X_prior.copy()
+            X_previous_global = X_prior.copy()
+            X_posterior = X_prior
+            X_posterior_global = X_prior
+        else:
+            X_previous = X_posterior
+            X_previous_global = X_posterior_global
+        # Predict observations `Y` using the identity model `g(x) = x`
+        # We only observe the state at `j_obs`.
+        Y = X_previous[[j_obs], :]
+
+        # Using a simple Gaussian decay for rho
+        localization_radius = 20.0
+        rho = calculate_rho_1d(N_m, j_obs, localization_radius)
+
+        esmda_distance = DistanceESMDA(
+            covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
+        )
+        X_posterior = esmda_distance.assimilate(X=X_previous, Y=Y, rho=rho)
+
+        esmda = ESMDA(
+            covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
+        )
+        X_posterior_global = esmda.assimilate(X=X_previous_global, Y=Y)
+        assert_tests_for_distance_based_localization(
+            X_prior,
+            j_obs,
+            rho,
+            true_parameters,
+            X_posterior,
+            X_posterior_global,
+            rho_min=1e-5,
+            atol=1e-2,
         )
 
 
