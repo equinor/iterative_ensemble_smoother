@@ -89,12 +89,45 @@ line-length = 88
 
 [tool.ruff.lint]
 select = [
-    "E", # Pycodestyle
-    "F", # Pyflakes
-    "I", # isort
-    "W",
+    "ALL"
 ]
 preview = true
+ignore = [
+    "A",
+    "ANN",
+    "ARG",
+    "B",
+    "C",
+    "COM",
+    "CPY",
+    "D",
+    "DOC",
+    "DTZ",
+    "EM",
+    "ERA",
+    "FBT",
+    "FIX",
+    "FURB",
+    "INP",
+    "ISC",
+    "N",
+    "NPY",
+    "PD",
+    "PGH",
+    "PLC",
+    "PLR",
+    "PT",
+    "PTH",
+    "RET",
+    "RUF",
+    "S",
+    "SIM",
+    "SLF",
+    "TD",
+    "T",
+    "TRY",
+    "UP",
+]
 
 # Exclude a variety of commonly ignored directories.
 exclude = [
