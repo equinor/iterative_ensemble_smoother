@@ -314,8 +314,8 @@ SAVE_UPDATE_TO_STORAGE = True
 # Turn on/off the two types of update
 SKIP_GLOBAL_UPDATE = True
 SKIP_DL_UPDATE = False
-ALPHA = np.array([1.75])
-ALPHA_LABEL = "_1_75"
+ALPHA = np.array([1.0])
+ALPHA_LABEL = "_1_0"
 
 ENSEMBLE_TAG = "DL_R2000" + ALPHA_LABEL
 
@@ -358,23 +358,35 @@ WRITE_D_MATRIX = True
 OUTPUT_PATH = "TMP"
 SCALAR_UPDATE_METHOD = "ADAPTIVE"  # ESMDA or ADAPTIVE
 
+ERT_CONFIG_PATH = (
+    "/project/fmu/users/olia/drogon_20250623_11-50/resmod/ff/25.0.0/ert/model"
+)
+# ERT_CONFIG_PATH = (
+#    "/project/fmu/tutorial/drogon/resmod/ff/users/olia/"
+#    + "drogon_20240709_15-30/resmod/ff/24.3.0/ert/model"
+# )
+
+SCRATCH_PATH = "/scratch/fmu/olia/drogon_ahm_ertbox_base"
+# SCRATCH_PATH = "/scratch/fmu/olia/drogon_ahm_500"
+# SCRATCH_PATH = "/scratch/fmu/olia/drogon_ahm_facies_petro_ertbox_test"
+
 # Storage
 # STORAGE_PATH = (
 #    "/project/fmu/users/olia/drogon_20250623_11-50/"
 #    + "resmod/ff/25.0.0/ert/output/drogon_ahm/storage"
 # )
-# STORAGE_PATH = (
-#     "/project/fmu/users/olia/drogon_20250623_11-50/"
-#     + "resmod/ff/25.0.0/ert/output/drogon_ahm_ertbox/storage"
-# )
 STORAGE_PATH = (
-    "/project/fmu/tutorial/drogon/resmod/ff/users/"
-    + "olia/drogon_20240709_15-30/resmod/ff/24.3.0/ert/"
-    + "output/drogon_ahm_facies_petro_ertbox_test/storage"
+    "/project/fmu/users/olia/drogon_20250623_11-50/"
+    + "resmod/ff/25.0.0/ert/output/drogon_ahm_ertbox/storage"
 )
-EXPERIMENT_NAME = "ensemble_experiment_petro_ertbox"
+# STORAGE_PATH = (
+#    "/project/fmu/tutorial/drogon/resmod/ff/users/"
+#    + "olia/drogon_20240709_15-30/resmod/ff/24.3.0/ert/"
+#    + "output/drogon_ahm_facies_petro_ertbox_test/storage"
+# )
+EXPERIMENT_NAME = "ensemble_experiment"
 # EXPERIMENT_NAME = "ensemble_experiment_ertbox"
-# ENSEMBLE_NAME = "ensemble"
+ENSEMBLE_NAME = "ensemble"
 # ENSEMBLE_NAME = "ensemble-post-global-102018corr_seis_7_0"
 # ENSEMBLE_NAME = "ensemble-post-global-102070corr_seis_3_5"
 # ENSEMBLE_NAME = "ensemble-post-102904corr_seis_DL_3_5"
@@ -396,7 +408,7 @@ EXPERIMENT_NAME = "ensemble_experiment_petro_ertbox"
 # ENSEMBLE_NAME = "ensemble-post-115958seis_nocorr_DL_R2000_3_5"
 # ENSEMBLE_NAME = "ensemble-post-121949DL_R2000_7_0"
 # ENSEMBLE_NAME = "ensemble-post-122244DL_R2000_3_5"
-ENSEMBLE_NAME = "ensemble-post-126770DL_R2000_3_5"
+# ENSEMBLE_NAME = "ensemble-post-126770DL_R2000_3_5"
 # For distance-based update
 ENSEMBLE_NAME_UPDATE = "ensemble-post-" + ENSEMBLE_LABEL + ENSEMBLE_TAG
 
@@ -557,13 +569,6 @@ ZONE_PER_3D_FIELD_PARAM_GROUP = {
 SCALING_FUNCTION_NAME = (
     "gaspari-cohn"  # Alternatives: "gaussian", "exponential", "gaspari-cohn"
 )
-# ERT_CONFIG_PATH = (
-#    "/project/fmu/users/olia/drogon_20250623_11-50/resmod/ff/25.0.0/ert/model"
-# )
-ERT_CONFIG_PATH = (
-    "/project/fmu/tutorial/drogon/resmod/ff/users/olia/"
-    + "drogon_20240709_15-30/resmod/ff/24.3.0/ert/model"
-)
 
 ERT_SEIS_OBS_PATH = ERT_CONFIG_PATH + "/" + "../input/observations/seismic"
 
@@ -689,10 +694,6 @@ SEISMIC_OBS_AND_RESPONSE_DICT_FOR_2D_FIELDS = [
         "obs_err_anisotropy_angle": 0.0,
     },
 ]
-
-# SCRATCH_PATH = "/scratch/fmu/olia/drogon_ahm_base"
-# SCRATCH_PATH = "/scratch/fmu/olia/drogon_ahm_500"
-SCRATCH_PATH = "/scratch/fmu/olia/drogon_ahm_facies_petro_ertbox_test"
 
 
 # SEIS_MAIN_RANGE = 100.0 # Case s100
