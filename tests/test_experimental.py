@@ -913,9 +913,9 @@ def test_distance_based_on_1D_case_multiple_data_assimilation(seed):
 
     C_D = np.array([obs_error_var])
 
-    for iter_ in range(len(alpha_vector)):
-        alpha_i = np.array([alpha_vector[iter_]])
-        if iter_ == 0:
+    for iteration in range(len(alpha_vector)):
+        alpha_i = np.array([alpha_vector[iteration]])
+        if iteration == 0:
             # Draw prior
             rng = np.random.default_rng(seed)
             X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))
@@ -953,6 +953,168 @@ def test_distance_based_on_1D_case_multiple_data_assimilation(seed):
             rho_min=1e-5,
             atol=1e-2,
         )
+
+
+@pytest.mark.parametrize("seed", list(range(9)))
+def test_distance_based_on_1D_case_multiple_data_assimilation_alternative(seed):
+    """
+    This test is almost equal to the one above, but here the function
+    assimilate and assimilate_batch are compared to check they give
+    same result. The purpose of assimilate_batch is to avoid
+    re-calculating steps that is not necessary when running a loop
+    over batches of parameters
+    """
+    N_m = 100  # Number of model parameters (grid points)
+    N_e = 50  # Ensemble size
+    j_obs = 50  # Index of the single observation
+    nalpha = 10  # Number of different sets of alpha values
+    number_of_alpha_values = np.arange(1, nalpha, 1, dtype=np.int32)
+    for m in number_of_alpha_values:
+        alpha_vector = generate_alpha_vector(m)
+        inverse_alpha_vector = 1.0 / alpha_vector
+
+        # Consistency requirement for alpha
+        # Sum of 1/alpha_vector[i] must be 1
+        assert abs(inverse_alpha_vector.sum() - 1.0) < 1e-7
+
+        obs_error_var = 0.01  # Variance of observation error
+
+        true_parameters = np.zeros(N_m)
+
+        true_observations = np.array([1.0])
+
+        C_D = np.array([obs_error_var])
+
+        for iteration in range(len(alpha_vector)):
+            alpha_i = np.array([alpha_vector[iteration]])
+            if iteration == 0:
+                # Draw prior
+                rng = np.random.default_rng(seed)
+                X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))
+                X_previous = X_prior.copy()
+                X_previous_global = X_prior.copy()
+                X_posterior = X_prior
+                X_posterior_global = X_prior
+            else:
+                X_previous = X_posterior
+                X_previous_global = X_posterior_global
+            # Predict observations `Y` using the identity model `g(x) = x`
+            # We only observe the state at `j_obs`.
+            Y = X_previous[[j_obs], :]
+
+            # Using a simple Gaussian decay for rho
+            localization_radius = 20.0
+            rho = calculate_rho_1d(N_m, j_obs, localization_radius)
+
+            # Use same seed for both instances of DistanceESMDA
+            esmda_distance = DistanceESMDA(
+                covariance=C_D, observations=true_observations, alpha=alpha_i, seed=seed
+            )
+            X_posterior_1 = esmda_distance.assimilate_batch(
+                X_batch=X_previous, Y=Y, rho_batch=rho
+            )
+
+            esmda_distance = DistanceESMDA(
+                covariance=C_D, observations=true_observations, alpha=alpha_i, seed=seed
+            )
+            X_posterior_2 = esmda_distance.assimilate(X=X_previous, Y=Y, rho=rho)
+
+            diff_X = X_posterior_2 - X_posterior_1
+            max_diff = np.max(np.abs(diff_X))
+            # Check that the results are equal
+            assert max_diff < 1e-9, (
+                "The function assimilate and assimilate_batch give different results"
+            )
+
+            esmda = ESMDA(
+                covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
+            )
+
+            X_posterior_global = esmda.assimilate(X=X_previous_global, Y=Y)
+            assert_tests_for_distance_based_localization(
+                X_prior,
+                j_obs,
+                rho,
+                true_parameters,
+                X_posterior_1,
+                X_posterior_global,
+                rho_min=1e-5,
+                atol=1e-2,
+            )
+
+
+def generate_alpha_vector(nalpha):
+    """Generate alpha vector with length nalpha
+    where sum of the inverse of alpha is 1.
+    """
+    alpha_vector = np.zeros(nalpha, dtype=np.float64)
+    a = 2**nalpha - 1
+    for k in range(nalpha):
+        alpha_vector[k] = a / 2**k
+    return alpha_vector
+
+
+@pytest.mark.parametrize("seed", list(range(9)))
+def test_distance_based_on_1D_case_with_rho_equal_one(seed):
+    N_m = 100  # Number of model parameters (grid points)
+    N_e = 50  # Ensemble size
+    j_obs = 50  # Index of the single observation
+
+    # Run the test over 9 different sets of alpha.
+    # Define alpha[k] = [2**(m-1) + 2**(m-2) + ... + 2**(0)] / 2**(k)
+    # such that alpha[k] = (2**m -1)/(2**k)
+    # Then sum (1/alpha[k]) for k=0,1,2,..m-1  is 1.0
+    nalpha = 10
+    number_of_alpha_values = np.arange(1, nalpha, 1, dtype=np.int32)
+    for m in number_of_alpha_values:
+        alpha_vector = generate_alpha_vector(m)
+        inverse_alpha_vector = 1.0 / alpha_vector
+
+        # Consistency requirement for alpha
+        # Sum of 1/alpha_vector[i] must be 1
+        assert abs(inverse_alpha_vector.sum() - 1.0) < 1e-7
+
+        obs_error_var = 0.01  # Variance of observation error
+        true_observations = np.array([1.0])
+        C_D = np.array([obs_error_var])
+        for iteration in range(len(alpha_vector)):
+            alpha_i = np.array([alpha_vector[iteration]])
+            if iteration == 0:
+                # Draw prior
+                rng = np.random.default_rng(seed)
+                X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))
+                X_previous = X_prior.copy()
+                X_previous_global = X_prior.copy()
+                X_posterior = X_prior
+                X_posterior_global = X_prior
+            else:
+                X_previous = X_posterior
+                X_previous_global = X_posterior_global
+            # Predict observations `Y` using the identity model `g(x) = x`
+            # We only observe the state at `j_obs`.
+            Y = X_previous[[j_obs], :]
+
+            # Set rho to 1 (no localization)
+            rho = np.ones((N_m, 1), dtype=np.float64)
+            # Must use same seed for both DistanceESMDA and ESMDA initialization
+            # to be able to compare
+            esmda_distance = DistanceESMDA(
+                covariance=C_D, observations=true_observations, alpha=alpha_i, seed=seed
+            )
+            X_posterior = esmda_distance.assimilate(X=X_previous, Y=Y, rho=rho)
+
+            esmda = ESMDA(
+                covariance=C_D, observations=true_observations, alpha=alpha_i, seed=seed
+            )
+            X_posterior_global = esmda.assimilate(X=X_previous_global, Y=Y)
+
+            diff_X = X_posterior - X_posterior_global
+            max_diff = np.max(np.abs(diff_X))
+            # Check that the results are equal
+            assert max_diff < 1e-8, (
+                "DistanceESMDA and ESMDA differs when using rho=1."
+                f"Difference is: {max_diff}"
+            )
 
 
 if __name__ == "__main__":
