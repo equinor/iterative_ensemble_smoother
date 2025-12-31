@@ -453,6 +453,26 @@ def ensemble_smoother_update_step_row_scaling(
 
 
 class DistanceESMDA(ESMDA):
+    def __init__(
+        self,
+        covariance: npt.NDArray[np.double],
+        observations: npt.NDArray[np.double],
+        alpha: Union[int, npt.NDArray[np.double]] = 5,
+        seed: Union[np.random._generator.Generator, int, None] = None,
+    ) -> None:
+        """
+        Initialize instance.
+        """
+        # Initialize instance
+        super().__init__(
+            covariance=covariance, observations=observations, alpha=alpha, seed=seed
+        )
+
+        # Ensure self.X3 is initialized to None
+        # Is set in prepare_assimilation and used in assimilate_batch
+        # Is not used when using assimilate
+        self.X3 = None
+
     def assimilate(
         self,
         *,
@@ -603,7 +623,9 @@ class DistanceESMDA(ESMDA):
                between observation errors.
 
         Results:
-            Updated internal matrices.
+            Updated internal matrices such that assimilate_batch function
+            can be used without having to re-calculate all steps not involving
+            the field parameters, but only the observations.
 
         """
 
@@ -675,7 +697,6 @@ class DistanceESMDA(ESMDA):
 
         # Observations with added perturbations
         if D is None:
-            print("Calculate C_D inside class DistanceESMDA")
             self.D = self.perturb_observations(ensemble_size=N_e, alpha=self.alpha)
         else:
             print("Assign D inside class DistanceESMDA")
@@ -707,8 +728,11 @@ class DistanceESMDA(ESMDA):
             X: Parameter matrix shape=(nparameters, nrealizations)
             Y: Response matrix with predictions of observations,
                shape=(nobservations, nrealizations)
-            rho: Localization matrix with scaling factors,
+            rho_batch: Localization matrix with scaling factors,
                  shape= (nparameters, nobservations)
+            D: Perturbed observations, shape=(nobservations,nrealizations)
+               Optional, default is to simulate the perturbations internally
+               within this class
 
         Results:
             Posterior (updated) matrix with parameters,
