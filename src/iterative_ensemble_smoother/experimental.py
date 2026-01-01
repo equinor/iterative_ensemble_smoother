@@ -80,10 +80,7 @@ class AdaptiveESMDA(BaseESMDA):
         # Compute cov(Y, Y) if it was not passed to the function.
         # Pre-computation might be faster, since covariance is commutative with
         # respect to indexing, ie, cov(Y[mask, :], YY[mask, :]) = cov(Y, Y)[mask, mask]
-        if cov_YY is None:
-            C_DD = empirical_cross_covariance(Y, Y)
-        else:
-            C_DD = cov_YY
+        C_DD = empirical_cross_covariance(Y, Y) if cov_YY is None else cov_YY
 
         assert C_DD.shape[0] == C_DD.shape[1]
         assert C_DD.shape[0] == Y.shape[0]
@@ -455,9 +452,9 @@ def ensemble_smoother_update_step_row_scaling(
 class DistanceESMDA(ESMDA):
     def __init__(
         self,
-        covariance: npt.NDArray[np.double],
-        observations: npt.NDArray[np.double],
-        alpha: Union[int, npt.NDArray[np.double]] = 5,
+        covariance: npt.NDArray[np.float64],
+        observations: npt.NDArray[np.float64],
+        alpha: Union[int, npt.NDArray[np.float64]] = 5,
         seed: Union[np.random._generator.Generator, int, None] = None,
     ) -> None:
         """
@@ -471,14 +468,14 @@ class DistanceESMDA(ESMDA):
         # Ensure self.X3 is initialized to None
         # Is set in prepare_assimilation and used in assimilate_batch
         # Is not used when using assimilate
-        self.X3 = None
+        self.X3: npt.NDArray[np.float64] = None
 
     def assimilate(
         self,
         *,
-        X: npt.NDArray[np.double],
-        Y: npt.NDArray[np.double],
-        rho: npt.NDArray[np.double],
+        X: npt.NDArray[np.float64],
+        Y: npt.NDArray[np.float64],
+        rho: npt.NDArray[np.float64],
         truncation: float = 0.99,
     ):
         """
@@ -592,9 +589,9 @@ class DistanceESMDA(ESMDA):
 
     def prepare_assimilation(
         self,
-        Y: npt.NDArray[np.double],
+        Y: npt.NDArray[np.float64],
         truncation: float = 0.99,
-        D: npt.NDArray[np.double] = None,
+        D: npt.NDArray[np.float64] = None,
     ):
         """
         The part of the algorithm that does not depend on the field parameters,
@@ -707,9 +704,9 @@ class DistanceESMDA(ESMDA):
     def assimilate_batch(
         self,
         *,
-        X_batch: npt.NDArray[np.double],
-        Y: npt.NDArray[np.double],
-        rho_batch: npt.NDArray[np.double],
+        X_batch: npt.NDArray[np.float64],
+        Y: npt.NDArray[np.float64],
+        rho_batch: npt.NDArray[np.float64],
         D: npt.NDArray[np.float64] = None,
         truncation: float = 0.99,
     ):
