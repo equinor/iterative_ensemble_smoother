@@ -12,17 +12,36 @@ However, it does mean that practictioners should know how they work and what the
 In almost all Bayesian statistics, where we have a prior over model parameters and update it with observed data to obtain a posterior, MCMC (Markov Chain Monte Carlo) is the preferred method.
 However, in reservoir models we use algorithms like ES and ESMDA.
 How come?
-The reason is that when models are complex, the method must be simple:
+The reason is that when running complex models, the method must remain simple for the overall inference to remain tractable:
 
 - Most statistical models are fast to compute, a reservoir simulator $`f`$ is expensive and slow
 - Most statistical models are differentiable, while a reservoir simulator $`f`$ is not (it is considered a "black-box")
 
+Algorithms like ES an ESMDA are simple in the sense that they are derived assuming a Gauss-Linear model.
+Both of the assumptions (1) linearity of the model $`f`$ and (2) Gaussian noise are untrue.
+More on that later.
 
 ## Lesson 2: Few samples lead to uncertain results
 
+In general statistics it is not uncommon to draw 1000 or even 10,000 samples from the posterior distribution.
+In reservoir models each function evaluation is expensive, so we have to make do with far fewer samples.
+
+This can be an issue even is small, simple problems.
+Suppose A and B are two variables that are uniformly distributed.
+What is the expected value of their product, i.e. E[A * B] ?
+
+## Lesson 3: Data assimilation will one-shot linear models
+
+![](linear_model_obs_noise.png)
 
 
-In statistics it is not uncommon to draw 1000 or even 10,000 samples from the posterior distribution
+
+
+
+
+
+
+-----------------
 
 
 

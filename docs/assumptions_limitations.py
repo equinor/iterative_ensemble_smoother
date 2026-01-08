@@ -2,6 +2,10 @@ import numpy as np
 import scipy as sp
 from iterative_ensemble_smoother import ESMDA
 import matplotlib.pyplot as plt
+prop_cycle = plt.rcParams['axes.prop_cycle']
+COLORS = prop_cycle.by_key()['color']
+
+
 
 rng = np.random.default_rng(42)
 
@@ -12,6 +16,26 @@ for experiment in range(5):
     B = rng.uniform(size=n)
     E_AB = np.mean(A * B)
     print(f"  E[A * B] = {E_AB:.3f}")
+    
+    
+plt.figure(figsize=(6, 2.5))
+for samples in range(1, 51):
+    obs = np.mean(np.prod(rng.uniform(size=(2, samples, 10)), axis=0), axis=0)
+    x = samples + rng.uniform(-0.5, 0.25, size=len(obs))
+    plt.scatter(x, obs, color="black", s=10, alpha=0.8)
+    
+    
+x = np.linspace(1, 51, num=2**10)
+sigma = np.sqrt(7 / 144) # Var[A*B] = E[A] * E[B] - E[A*B]
+
+plt.plot(x, 0.25 + sigma/ np.sqrt(x), color=COLORS[0])
+plt.plot(x, 0.25 - sigma/ np.sqrt(x), color=COLORS[0])
+
+plt.xlabel("Number of samples")
+plt.ylabel("E[AB]")
+plt.grid(True, ls="--", alpha=0.4)
+    
+plt.show()
 
 
 # =================================================
@@ -133,6 +157,8 @@ for i, covariance_factor in enumerate([0.1, 0.01, 0.001]):
 
 
 fig.tight_layout()
+plt.savefig("linear_model_obs_noise.png", dpi=200)
+plt.show()
 
 
 # =================================================
@@ -224,10 +250,20 @@ def plot_esmda(forward_model, iterations=2, seed=42, title=None, covar_scale=0.0
 def forward_model(x):
     return np.abs(np.sum(x, keepdims=True)) ** 2 + x[0] * 5
 
+fig, axes = plot_esmda(forward_model, iterations=2, seed=42, 
+                       title="A non-linear model: $f(x_1, x_2) = (x_1 + x_2)^2 + 5 x_1$")
+fig, axes = plot_esmda(forward_model, iterations=1, seed=42, 
+                       title="A non-linear model: $f(x_1, x_2) = (x_1 + x_2)^2 + 5 x_1$")
 
-fig, axes = plot_esmda(forward_model, iterations=2, seed=42, title="A non-linear model")
+def forward_model(x):
+    summed = np.sum(x, keepdims=True)
+    
+    return np.abs(summed) ** 0.5 * np.sign(np.sum(x)) + x[0]
 
-fig, axes = plot_esmda(forward_model, iterations=1, seed=42, title="A non-linear model")
+fig, axes = plot_esmda(forward_model, iterations=2, seed=42, 
+                       title=r"A non-linear model: $f(x_1, x_2) = \operatorname{sign}(x_1 + x_2)\sqrt{| x_1 + x_2 |} + x_1$")
+fig, axes = plot_esmda(forward_model, iterations=1, seed=42, 
+                       title=r"A non-linear model: $f(x_1, x_2) = \operatorname{sign}(x_1 + x_2)\sqrt{| x_1 + x_2 |} + x_1$")
 
 
 def forward_model(x):
@@ -249,7 +285,7 @@ fig, axes = plot_esmda(forward_model, iterations=3, seed=42, title="A non-linear
 
 
 def forward_model(x):
-    return np.sum((x - np.array([0.5, 1])) ** 2, keepdims=True) - 1
+    return np.sum((x - np.array([0.5, 1])) ** 2, keepdims=True) - 0.5
 
 
 fig, axes = plot_esmda(forward_model, iterations=1, seed=42, title="A non-linear model")
