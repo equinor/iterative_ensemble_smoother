@@ -32,7 +32,17 @@ What is the expected value of their product, i.e. E[A * B] ?
 
 ## Lesson 3: Data assimilation will one-shot linear models
 
+The figure below shows a linear model $`f(x_1, x_2) = x_1 + x_2`$, where $`x_1`$ and $`x_2`$ are input parameters.
+Our prior belief is a normal distribution around the point $`(x_1, x_2) = (1, 1)`$ and the scalar observation is $`y = f(x_1, x_2) = 0`$.
+ES and ESMDA answer the question "_How can our prior belief be reconsiled with the observation?_".
+
+The answer depends on the noise associated with the observation $`y = 0`$.
+With high noise, the answer moves the prior distribution "half-way" toward the line $`y = f(x_1, x_2) = 0`$.
+With low noise, the answer moves the prior distribution all the way toward the line $`y = f(x_1, x_2) = 0`$, but retains uncertainty along that line.
+
 ![](linear_model_obs_noise.png)
+
+Either way, with Gaussian noise and a linear model $`f`$ the answer is correct -- this is the _only_ model where the answer is correct.
 
 
 
