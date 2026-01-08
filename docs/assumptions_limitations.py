@@ -9,7 +9,7 @@ COLORS = prop_cycle.by_key()['color']
 
 rng = np.random.default_rng(42)
 
-n = 10
+n = 25
 print(f"Computing E[A * B] with n={n} samples")
 for experiment in range(5):
     A = rng.uniform(size=n)
@@ -18,22 +18,25 @@ for experiment in range(5):
     print(f"  E[A * B] = {E_AB:.3f}")
     
     
-plt.figure(figsize=(6, 2.5))
+plt.figure(figsize=(5, 3.0))
+plt.title(r"Error decreases like $1/\sqrt{n}$")
 for samples in range(1, 51):
     obs = np.mean(np.prod(rng.uniform(size=(2, samples, 10)), axis=0), axis=0)
     x = samples + rng.uniform(-0.5, 0.25, size=len(obs))
-    plt.scatter(x, obs, color="black", s=10, alpha=0.8)
+    plt.scatter(x, obs, color="black", s=5, alpha=0.8)
     
     
 x = np.linspace(1, 51, num=2**10)
 sigma = np.sqrt(7 / 144) # Var[A*B] = E[A] * E[B] - E[A*B]
 
-plt.plot(x, 0.25 + sigma/ np.sqrt(x), color=COLORS[0])
-plt.plot(x, 0.25 - sigma/ np.sqrt(x), color=COLORS[0])
+plt.plot(x, 0.25 + sigma/ np.sqrt(x), color=COLORS[0], lw=2, alpha=0.8)
+plt.plot(x, 0.25 - sigma/ np.sqrt(x), color=COLORS[0], lw=2, alpha=0.8)
 
-plt.xlabel("Number of samples")
-plt.ylabel("E[AB]")
+plt.xlabel("Number of samples $n$")
+plt.ylabel("E[AB] : Expected value\nof product of uniforms")
 plt.grid(True, ls="--", alpha=0.4)
+plt.tight_layout()
+plt.savefig("sample_estimation_sqrt.png", dpi=200)
     
 plt.show()
 
@@ -89,7 +92,10 @@ for iteration in range(700):
 ax3.scatter(*X.T, s=10)
 
 fig.tight_layout()
+plt.savefig("identical_marginals.png", dpi=200)
 plt.show()
+
+1/0
 # =================================================
 
 
@@ -214,6 +220,11 @@ def plot_esmda(forward_model, iterations=2, seed=42, title=None, covar_scale=0.0
 
     # Generate text labels dynamically
     texts = ["Prior"] + [f"Iteration {i + 1}" for i in range(iterations)]
+    texts[-1] += " (posterior)"
+    
+    # Blue for first, orange for last
+    colors = COLORS[:1] + COLORS[2:] 
+    colors[iterations] = COLORS[1]
 
     for i in range(esmda.num_assimilations() + 1):
         ax = next(axes_iter)
@@ -232,7 +243,7 @@ def plot_esmda(forward_model, iterations=2, seed=42, title=None, covar_scale=0.0
         if i == 0:
             ax.clabel(cs0, inline=True, fontsize=8, fmt="%.1f")
 
-        ax.scatter(*X, label="Prior" if i == 0 else "_nolegend_", s=10)
+        ax.scatter(*X, label="Prior" if i == 0 else "_nolegend_", s=10, color=colors[i])
 
         if i == iterations:
             break
@@ -252,8 +263,12 @@ def forward_model(x):
 
 fig, axes = plot_esmda(forward_model, iterations=2, seed=42, 
                        title="A non-linear model: $f(x_1, x_2) = (x_1 + x_2)^2 + 5 x_1$")
+plt.show()
+
 fig, axes = plot_esmda(forward_model, iterations=1, seed=42, 
                        title="A non-linear model: $f(x_1, x_2) = (x_1 + x_2)^2 + 5 x_1$")
+plt.savefig("non_linear_model_overshoot.png", dpi=200)
+plt.show()
 
 def forward_model(x):
     summed = np.sum(x, keepdims=True)
@@ -262,18 +277,22 @@ def forward_model(x):
 
 fig, axes = plot_esmda(forward_model, iterations=2, seed=42, 
                        title=r"A non-linear model: $f(x_1, x_2) = \operatorname{sign}(x_1 + x_2)\sqrt{| x_1 + x_2 |} + x_1$")
+plt.show()
+
 fig, axes = plot_esmda(forward_model, iterations=1, seed=42, 
                        title=r"A non-linear model: $f(x_1, x_2) = \operatorname{sign}(x_1 + x_2)\sqrt{| x_1 + x_2 |} + x_1$")
+plt.savefig("non_linear_model_overshoot.png", dpi=200)
+plt.show()
 
 
 def forward_model(x):
-    return np.sum((x - np.array([-0.5, 1])) ** 2, keepdims=True) - 0.1
+    return np.sum((x - np.array([-0.5, 1])) ** 2, keepdims=True) - 0.001
 
 
 fig, axes = plot_esmda(forward_model, iterations=1, seed=42, title="A non-linear model")
 
 fig, axes = plot_esmda(forward_model, iterations=2, seed=42, title="A non-linear model")
-
+1/0
 
 def forward_model(x):
     return np.sum((x - np.array([-0.5, 1])) ** 2, keepdims=True) - 0.1
