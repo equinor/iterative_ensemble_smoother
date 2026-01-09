@@ -102,8 +102,7 @@ def sample_mvnormal(
         return C_dd_cholesky @ z
 
     # A 1D diagonal of a covariance matrix was passed
-    else:
-        return C_dd_cholesky.reshape(-1, 1) * z
+    return C_dd_cholesky.reshape(-1, 1) * z
 
 
 if __name__ == "__main__":

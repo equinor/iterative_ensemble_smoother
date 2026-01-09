@@ -317,8 +317,7 @@ class TestESMDA:
         def G(x):
             if x.ndim == 1:
                 return A @ x + b
-            else:
-                return (b.reshape(-1, 1) + (A @ x)).squeeze()
+            return (b.reshape(-1, 1) + (A @ x)).squeeze()
 
         assert np.allclose(
             G(np.arange(num_inputs)), G(np.arange(num_inputs).reshape(-1, 1)).squeeze()

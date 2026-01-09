@@ -710,8 +710,7 @@ def calculate_rho_1d(
     distances = np.abs(model_grid - obs_index)
     # Ordinary definition of range,
     # rho is approximately 0.05 at localization_radius
-    rho = np.exp(-3.0 * (distances / localization_radius) ** 2).reshape(-1, 1)
-    return rho
+    return np.exp(-3.0 * (distances / localization_radius) ** 2).reshape(-1, 1)
 
 
 def calculate_rho_2d(
@@ -722,8 +721,7 @@ def calculate_rho_2d(
     distances = distances_2d.flatten()
     # Ordinary definition of range,
     # rho is approximately 0.05 at localization_radius
-    rho = np.exp(-3.0 * (distances / localization_radius) ** 2).reshape(-1, 1)
-    return rho
+    return np.exp(-3.0 * (distances / localization_radius) ** 2).reshape(-1, 1)
 
 
 def calculate_rho_3d(
@@ -742,8 +740,7 @@ def calculate_rho_3d(
     distances = distances_3d.flatten()
     # Ordinary definition of range,
     # rho is approximately 0.05 at localization_radius
-    rho = np.exp(-3.0 * (distances / localization_radius) ** 2).reshape(-1, 1)
-    return rho
+    return np.exp(-3.0 * (distances / localization_radius) ** 2).reshape(-1, 1)
 
 
 @pytest.mark.parametrize("seed", list(range(9)))
