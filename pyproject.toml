@@ -107,6 +107,7 @@ select = [
     "LOG",
     "PERF",
     "PIE",
+    "PLC",
     "PLE",
     "PLW",
     "PTH",

@@ -1,3 +1,5 @@
+from time import perf_counter
+
 import numpy as np
 import pytest
 
@@ -335,8 +337,6 @@ def test_timing(num_outputs=100, num_inputs=50, ensemble_members=25):
         # inversion_lstsq,
     ]
 
-    from time import perf_counter
-
     print("-" * 32)
 
     for func in exact_inversion_funcs:
@@ -358,8 +358,6 @@ def test_timing(num_outputs=100, num_inputs=50, ensemble_members=25):
         inversion_exact_subspace_woodbury,
         inversion_rescaled_subspace,
     ]
-
-    from time import perf_counter
 
     for func in subspace_inversion_funcs:
         start_time = perf_counter()
