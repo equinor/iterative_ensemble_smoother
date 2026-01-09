@@ -105,6 +105,7 @@ select = [
     "ICN",
     "INT",
     "LOG",
+    "PD",
     "PERF",
     "PIE",
     "PLC",

@@ -89,12 +89,12 @@ plt.show()
 # ## Assume diagonal observation error covariance matrix and define perturbed observations
 
 # %%
-R = np.diag(d.sd.values**2)
+R = np.diag(d.sd.to_numpy() ** 2)
 
 E = rng.multivariate_normal(mean=np.zeros(len(R)), cov=R, size=ensemble_size).T
 assert E.shape == (num_obs, ensemble_size)
 
-D = d.value.values.reshape(-1, 1) + E
+D = d.value.to_numpy().reshape(-1, 1) + E
 
 # %% [markdown]
 # ## Define Gaussian priors
@@ -144,8 +144,8 @@ X_ES_ert = X.copy()
 Y_ES_ert = Y.copy()
 smoother_es = ies.SIES(
     parameters=X_ES_ert,
-    covariance=d.sd.values**2,
-    observations=d.value.values,
+    covariance=d.sd.to_numpy() ** 2,
+    observations=d.value.to_numpy(),
     seed=42,
 )
 X_ES_ert = smoother_es.sies_iteration(Y_ES_ert, step_length=1.0)
@@ -155,7 +155,7 @@ X_IES_ert = X.copy()
 Y_IES_ert = Y.copy()
 smoother_ies = ies.SIES(
     parameters=X_IES_ert,
-    covariance=d.sd.values**2,
+    covariance=d.sd.to_numpy() ** 2,
     observations=d.value.values,
     seed=42,
 )
