@@ -103,7 +103,7 @@ select = [
     "FLY",
     "FURB",
     "G",
-    "I"
+    "I",
     "ICN",
     "INT",
     "LOG",
@@ -120,10 +120,6 @@ select = [
     "W",
     "YTT",
 ]
-
-# Allow autofix for all enabled rules (when `--fix`) is provided.
-fixable = ["A", "B", "C", "D", "E", "F", "I"]
-unfixable = []
 
 # Exclude a variety of commonly ignored directories.
 exclude = [
