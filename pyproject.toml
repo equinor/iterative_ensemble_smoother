@@ -89,13 +89,10 @@ line-length = 88
 
 [tool.ruff.lint]
 select = [
-    # Pyflakes
-    "F",
-    # Pycodestyle
     "E",
-    "W",
-    # isort
+    "F",
     "I"
+    "W",
 ]
 
 # Allow autofix for all enabled rules (when `--fix`) is provided.
