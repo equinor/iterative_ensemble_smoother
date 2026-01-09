@@ -89,10 +89,36 @@ line-length = 88
 
 [tool.ruff.lint]
 select = [
+    "AIR",
+    "ASYNC",
+    "BLE",
+    "CPY",
+    "DJ",
+    "DOC",
     "E",
+    "EXE",
     "F",
+    "FA",
+    "FAST",
+    "FLY",
+    "FURB",
+    "G",
     "I"
+    "ICN",
+    "INT",
+    "LOG",
+    "PERF",
+    "PIE",
+    "PLE",
+    "PLW",
+    "PYI",
+    "Q",
+    "RSE",
+    "SLOT",
+    "TC",
+    "TID",
     "W",
+    "YTT",
 ]
 
 # Allow autofix for all enabled rules (when `--fix`) is provided.
