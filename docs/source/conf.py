@@ -15,7 +15,7 @@ sys.path.insert(0, package_path)
 
 project = "iterative_ensemble_smoother"
 author = "Equinor"
-copyright = f"2022-{datetime.datetime.today().year}, {author}"
+copyright = f"2022-{datetime.datetime.today().year}, {author}"  # noqa: A001
 # The default replacements for |version| and |release|, also used in various
 # other places throughout the built documents.
 version = re.sub(r"\.dev.*$", r".dev", ies.__version__)
