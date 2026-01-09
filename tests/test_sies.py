@@ -165,7 +165,7 @@ class TestSIESObjective:
                 else:
                     msg = (
                         "Terminating. No improvement"
-                        + f"after {BACKTRACK_ITERATIONS} iterations."
+                        f"after {BACKTRACK_ITERATIONS} iterations."
                     )
                     print(msg)
                     return X_i
