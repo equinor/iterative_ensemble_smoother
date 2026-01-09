@@ -3,14 +3,14 @@ iterative_ensemble_smoother documentation build configuration file.
 """
 
 import datetime
-import os
 import re
 import sys
+from pathlib import Path
 from subprocess import check_output
 
 import iterative_ensemble_smoother as ies
 
-package_path = os.path.abspath("..")
+package_path = str(Path("..").resolve())
 sys.path.insert(0, package_path)
 
 project = "iterative_ensemble_smoother"
