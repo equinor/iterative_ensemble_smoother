@@ -170,7 +170,7 @@ X_i = np.copy(X)
 for i, alpha_i in enumerate(smoother.alpha, 1):
     print(
         f"ESMDA iteration {i}/{smoother.num_assimilations()}"
-        + f" with inflation factor alpha_i={alpha_i}"
+        f" with inflation factor alpha_i={alpha_i}"
     )
     X_i = smoother.assimilate(X_i, Y=g(X_i))
 
@@ -219,7 +219,7 @@ assert np.isclose(np.sum(1 / smoother.alpha), 1), "Incorrect scaling"
 for i, alpha_i in enumerate(smoother.alpha, 1):
     print(
         f"AdaptiveESMDA iteration {i}/{len(smoother.alpha)}"
-        + f" with inflation factor alpha_i={alpha_i}"
+        f" with inflation factor alpha_i={alpha_i}"
     )
 
     # Run forward model
