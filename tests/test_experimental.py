@@ -913,9 +913,9 @@ def test_distance_based_on_1D_case_multiple_data_assimilation(seed):
 
     C_D = np.array([obs_error_var])
 
-    for iter in range(len(alpha_vector)):
-        alpha_i = np.array([alpha_vector[iter]])
-        if iter == 0:
+    for iter_ in range(len(alpha_vector)):
+        alpha_i = np.array([alpha_vector[iter_]])
+        if iter_ == 0:
             # Draw prior
             rng = np.random.default_rng(seed)
             X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))

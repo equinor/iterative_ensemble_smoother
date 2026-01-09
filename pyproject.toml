@@ -89,6 +89,7 @@ line-length = 88
 
 [tool.ruff.lint]
 select = [
+    "A",
     "AIR",
     "ASYNC",
     "BLE",
