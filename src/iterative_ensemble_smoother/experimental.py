@@ -80,10 +80,7 @@ class AdaptiveESMDA(BaseESMDA):
         # Compute cov(Y, Y) if it was not passed to the function.
         # Pre-computation might be faster, since covariance is commutative with
         # respect to indexing, ie, cov(Y[mask, :], YY[mask, :]) = cov(Y, Y)[mask, mask]
-        if cov_YY is None:
-            C_DD = empirical_cross_covariance(Y, Y)
-        else:
-            C_DD = cov_YY
+        C_DD = empirical_cross_covariance(Y, Y) if cov_YY is None else cov_YY
 
         assert C_DD.shape[0] == C_DD.shape[1]
         assert C_DD.shape[0] == Y.shape[0]
