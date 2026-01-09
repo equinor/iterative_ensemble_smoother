@@ -195,7 +195,7 @@ class ESMDA(BaseESMDA):
                 "Argument `inversion` must be a string in "
                 f"{tuple(self._inversion_methods.keys())}, but got {inversion}"
             )
-        if inversion not in self._inversion_methods.keys():
+        if inversion not in self._inversion_methods:
             raise ValueError(
                 "Argument `inversion` must be a string in "
                 f"{tuple(self._inversion_methods.keys())}, but got {inversion}"
