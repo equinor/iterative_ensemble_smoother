@@ -392,17 +392,16 @@ def inversion_exact_subspace_woodbury(
 
     # A diagonal covariance matrix was given as a 1D array.
     # Same computation as above, but exploit the diagonal structure
-    else:
-        C_D_inv = 1 / (C_D * alpha)  # Invert diagonal
-        center = np.linalg.multi_dot([D_delta.T * C_D_inv, D_delta])
-        center.flat[:: center.shape[0] + 1] += 1.0
-        UT_D = D_delta.T * C_D_inv
-        inverted = np.diag(C_D_inv) - np.linalg.multi_dot(
-            [UT_D.T, sp.linalg.inv(center), UT_D]
-        )
-        return np.linalg.multi_dot(  # type: ignore
-            [X, D_delta.T / np.sqrt(N_e - 1), inverted, (D - Y)]
-        )
+    C_D_inv = 1 / (C_D * alpha)  # Invert diagonal
+    center = np.linalg.multi_dot([D_delta.T * C_D_inv, D_delta])
+    center.flat[:: center.shape[0] + 1] += 1.0
+    UT_D = D_delta.T * C_D_inv
+    inverted = np.diag(C_D_inv) - np.linalg.multi_dot(
+        [UT_D.T, sp.linalg.inv(center), UT_D]
+    )
+    return np.linalg.multi_dot(  # type: ignore
+        [X, D_delta.T / np.sqrt(N_e - 1), inverted, (D - Y)]
+    )
 
 
 def inversion_subspace(

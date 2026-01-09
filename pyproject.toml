@@ -111,6 +111,7 @@ select = [
     "PLW",
     "PYI",
     "Q",
+    "RET",
     "RSE",
     "SLOT",
     "TC",
