@@ -58,7 +58,8 @@ doc = [
     "jinja2",
     "m2r2>=0.3.3",
     "myst_nb",
-    "lxml_html_clean"
+    "lxml_html_clean",
+    "psutil"
 ]
 dev = [
     "pytest",
