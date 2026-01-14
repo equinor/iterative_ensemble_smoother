@@ -18,7 +18,7 @@ from iterative_ensemble_smoother.experimental import (
 )
 
 
-@pytest.fixture()
+@pytest.fixture
 def linear_problem(request):
     # Seed the problem using indirect parametrization:
     # https://docs.pytest.org/en/latest/example/parametrize.html#indirect-parametrization
@@ -42,7 +42,7 @@ def linear_problem(request):
     # Initial ensemble and covariance
     X = rng.normal(size=(num_parameters, num_ensemble))
     covariance = rng.triangular(0.1, 1, 1, size=num_observations)
-    yield X, g, observations, covariance, rng
+    return X, g, observations, covariance, rng
 
 
 class TestAdaptiveESMDA:
@@ -433,7 +433,7 @@ class TestAdaptiveESMDA:
 
             X_i = X_i1
 
-    @pytest.fixture()
+    @pytest.fixture
     def large_linear_problem(self):
         """
         Creates a problem large enough to realistically benchmark parallelization.
@@ -455,7 +455,7 @@ class TestAdaptiveESMDA:
 
         X = rng.normal(size=(num_parameters, num_ensemble))
         covariance = rng.triangular(0.1, 1, 1, size=num_observations)
-        yield X, g, observations, covariance
+        return X, g, observations, covariance
 
     def test_parallelization_runtime_comparison(self, large_linear_problem):
         """

@@ -619,7 +619,7 @@ class TestSIESTheory:
 
 
 @pytest.mark.parametrize(
-    "ensemble_size,num_params,linear",
+    ("ensemble_size", "num_params", "linear"),
     [
         pytest.param(100, 3, True, id="No projection because linear model"),
         pytest.param(
