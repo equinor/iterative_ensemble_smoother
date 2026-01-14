@@ -704,10 +704,10 @@ def assert_tests_for_distance_based_localization(
 
 
 def calculate_rho_1d(
-    N_m: int, obs_index: int, localization_radius: float
+    N_m: int, obs_index: int, localization_radius: float, xinc: float = 1.0
 ) -> npt.NDArray[np.float64]:
-    model_grid = np.arange(N_m)
-    distances = np.abs(model_grid - obs_index)
+    model_grid = np.arange(N_m) * xinc
+    distances = np.abs(model_grid - obs_index * xinc)
     # Ordinary definition of range,
     # rho is approximately 0.05 at localization_radius
     return np.exp(-3.0 * (distances / localization_radius) ** 2).reshape(-1, 1)
@@ -741,6 +741,79 @@ def calculate_rho_3d(
     # Ordinary definition of range,
     # rho is approximately 0.05 at localization_radius
     return np.exp(-3.0 * (distances / localization_radius) ** 2).reshape(-1, 1)
+
+
+def draw_1D_field(
+    mean: float,
+    stdev: float,
+    xinc: float,
+    corr_func_name: str,
+    corr_range: float,
+    nparam: int,
+    nreal: int,
+    rng,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    # Draw prior ensemble of 1D field with nparam. Ensemble size is nreal
+    # Returns prior ensemble drawn and covariance matrix
+
+    variance = stdev**2
+
+    # Generate distance matrix
+    x_coords = (np.arange(nparam) + 0.5) * xinc
+    distances = np.abs(x_coords[:, None] - x_coords[None, :]) / corr_range
+
+    # Compute covariance matrix based on correlation function
+    if corr_func_name == "exponential":
+        cov_matrix = variance * np.exp(-3.0 * distances)
+    elif corr_func_name == "gaussian":
+        cov_matrix = variance * np.exp(-3.0 * distances**2)
+    else:
+        raise ValueError("Unsupported correlation function")
+
+    # Create mean array
+    mean_values = np.full((nparam,), mean, dtype=np.float64)
+
+    # Generate random fields with multivariate normal distribution
+    fields = rng.multivariate_normal(mean_values, cov_matrix, size=nreal).T
+    return fields, cov_matrix
+
+
+def generate_alpha_vector(nalpha):
+    """Generate alpha vector with length nalpha
+    where sum of the inverse of alpha is 1.
+    """
+    # Define alpha[k] = [2**(m-1) + 2**(m-2) + ... + 2**(0)] / 2**(k)
+    # such that alpha[k] = (2**m -1)/(2**k)
+    # Then sum (1/alpha[k]) for k=0,1,2,..m-1  is 1.0
+    # The alpha values are reduced with a factor 1/2 for each iteration
+    # Special case: m = 3 gives alpha_vector = [7, 3.5, 1.75]
+    return (2**nalpha - 1) / 2 ** np.arange(nalpha)
+
+
+def predicted_mean_field_values(
+    obs_vector: npt.NDArray[np.float64],
+    obs_index_vector: npt.NDArray[np.int32],
+    field_cov_matrix: npt.NDArray[np.float64],
+) -> npt.NDArray[np.float64]:
+    """Calculates simple kriging estimate of expected value. This is used
+    to check that DL-ESMDA and ordinary ESMDA are close to the kriging estimate
+    when number of realizations becomes large.
+    """
+    # Extract the observed covariance matrix
+    # (corresponding to the response covariance matrix)
+    # Here simple kriging with 0 observation error is used, and
+    # response is equal to the simulated field values in
+    # position of the observations.
+    obs_cov_matrix = field_cov_matrix[np.ix_(obs_index_vector, obs_index_vector)]
+
+    # Compute the inverse covariance matrix
+    inv_cov_matrix = np.linalg.inv(obs_cov_matrix)
+
+    # Extract the covariance matrix between the observations and the full field
+    field_obs_cov = field_cov_matrix[obs_index_vector, :]
+
+    # Predicted mean values (broadcast calculation for all parameters at once)
+    return field_obs_cov.T @ inv_cov_matrix @ obs_vector
 
 
 @pytest.mark.parametrize("seed", list(range(9)))
@@ -898,8 +971,10 @@ def test_distance_based_on_1D_case_multiple_data_assimilation(seed):
     N_m = 100  # Number of model parameters (grid points)
     N_e = 50  # Ensemble size
     j_obs = 50  # Index of the single observation
-
-    alpha_vector = np.array([7.0, 3.5, 1.75])
+    nalpha = (
+        3  # number of different alpha values. They satisfy that sum(1/alpha[i]  = 1
+    )
+    alpha_vector = generate_alpha_vector(nalpha)
     inverse_alpha_vector = 1.0 / alpha_vector
 
     # Consistency requirement for alpha
@@ -913,9 +988,9 @@ def test_distance_based_on_1D_case_multiple_data_assimilation(seed):
 
     C_D = np.array([obs_error_var])
 
-    for iter_ in range(len(alpha_vector)):
-        alpha_i = np.array([alpha_vector[iter_]])
-        if iter_ == 0:
+    for iteration in range(len(alpha_vector)):
+        alpha_i = np.array([alpha_vector[iteration]])
+        if iteration == 0:
             # Draw prior
             rng = np.random.default_rng(seed)
             X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))
@@ -953,6 +1028,374 @@ def test_distance_based_on_1D_case_multiple_data_assimilation(seed):
             rho_min=1e-5,
             atol=1e-2,
         )
+
+
+@pytest.mark.parametrize("seed", list(range(9)))
+def test_distance_based_on_1D_case_multiple_data_assimilate_batch(seed):
+    """
+    This test is almost equal to the one above, but here the function
+    assimilate and assimilate_batch are compared to check they give
+    same result. The purpose of assimilate_batch is to avoid
+    re-calculating steps that is not necessary when running a loop
+    over batches of parameters
+    """
+    N_m = 100  # Number of model parameters (grid points)
+    N_e = 50  # Ensemble size
+    j_obs = 50  # Index of the single observation
+    nalpha = 10  # Number of different sets of alpha values
+    number_of_alpha_values = np.arange(1, nalpha, 1, dtype=np.int32)
+    for m in number_of_alpha_values:
+        alpha_vector = generate_alpha_vector(m)
+
+        obs_error_var = 0.01  # Variance of observation error
+
+        true_parameters = np.zeros(N_m)
+
+        true_observations = np.array([1.0])
+
+        C_D = np.array([obs_error_var])
+
+        for iteration in range(len(alpha_vector)):
+            alpha_i = np.array([alpha_vector[iteration]])
+            if iteration == 0:
+                # Draw prior
+                rng = np.random.default_rng(seed)
+                X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))
+                X_previous = X_prior.copy()
+                X_previous_global = X_prior.copy()
+                X_posterior = X_prior
+                X_posterior_global = X_prior
+            else:
+                X_previous = X_posterior
+                X_previous_global = X_posterior_global
+            # Predict observations `Y` using the identity model `g(x) = x`
+            # We only observe the state at `j_obs`.
+            Y = X_previous[[j_obs], :]
+
+            # Using a simple Gaussian decay for rho
+            localization_radius = 20.0
+            rho = calculate_rho_1d(N_m, j_obs, localization_radius)
+
+            # Use same seed for both instances of DistanceESMDA
+            esmda_distance = DistanceESMDA(
+                covariance=C_D, observations=true_observations, alpha=alpha_i, seed=seed
+            )
+            X_posterior_1 = esmda_distance.assimilate_batch(
+                X_batch=X_previous, Y=Y, rho_batch=rho
+            )
+
+            esmda_distance = DistanceESMDA(
+                covariance=C_D, observations=true_observations, alpha=alpha_i, seed=seed
+            )
+            X_posterior_2 = esmda_distance.assimilate(X=X_previous, Y=Y, rho=rho)
+
+            diff_X = X_posterior_2 - X_posterior_1
+            max_diff = np.max(np.abs(diff_X))
+            # Check that the results are equal
+            assert max_diff < 1e-9, (
+                "The function assimilate and assimilate_batch give different results"
+            )
+
+            esmda = ESMDA(
+                covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
+            )
+
+            X_posterior_global = esmda.assimilate(X=X_previous_global, Y=Y)
+            assert_tests_for_distance_based_localization(
+                X_prior,
+                j_obs,
+                rho,
+                true_parameters,
+                X_posterior_1,
+                X_posterior_global,
+                rho_min=1e-5,
+                atol=1e-2,
+            )
+
+
+@pytest.mark.parametrize("seed", list(range(9)))
+def test_distance_based_on_1D_case_with_rho_equal_one(seed):
+    N_m = 100  # Number of model parameters (grid points)
+    N_e = 50  # Ensemble size
+    j_obs = 50  # Index of the single observation
+
+    # Run the test over 9 different sets of alpha.
+    nalpha = 10
+    number_of_alpha_values = np.arange(1, nalpha, 1, dtype=np.int32)
+    for m in number_of_alpha_values:
+        alpha_vector = generate_alpha_vector(m)
+        inverse_alpha_vector = 1.0 / alpha_vector
+
+        # Consistency requirement for alpha
+        # Sum of 1/alpha_vector[i] must be 1
+        assert abs(inverse_alpha_vector.sum() - 1.0) < 1e-7
+
+        obs_error_var = 0.01  # Variance of observation error
+        true_observations = np.array([1.0])
+        C_D = np.array([obs_error_var])
+        for iteration in range(len(alpha_vector)):
+            alpha_i = np.array([alpha_vector[iteration]])
+            if iteration == 0:
+                # Draw prior
+                rng = np.random.default_rng(seed)
+                X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))
+                X_previous = X_prior.copy()
+                X_previous_global = X_prior.copy()
+                X_posterior = X_prior
+                X_posterior_global = X_prior
+            else:
+                X_previous = X_posterior
+                X_previous_global = X_posterior_global
+            # Predict observations `Y` using the identity model `g(x) = x`
+            # We only observe the state at `j_obs`.
+            Y = X_previous[[j_obs], :]
+
+            # Set rho to 1 (no localization)
+            rho = np.ones((N_m, 1), dtype=np.float64)
+            # Must use same seed for both DistanceESMDA and ESMDA initialization
+            # to be able to compare
+            esmda_distance = DistanceESMDA(
+                covariance=C_D, observations=true_observations, alpha=alpha_i, seed=seed
+            )
+            X_posterior = esmda_distance.assimilate(X=X_previous, Y=Y, rho=rho)
+
+            esmda = ESMDA(
+                covariance=C_D, observations=true_observations, alpha=alpha_i, seed=seed
+            )
+            X_posterior_global = esmda.assimilate(X=X_previous_global, Y=Y)
+
+            diff_X = X_posterior - X_posterior_global
+            max_diff = np.max(np.abs(diff_X))
+            # Check that the results are equal
+            assert max_diff < 1e-8, (
+                "DistanceESMDA and ESMDA differs when using rho=1."
+                f"Difference is: {max_diff}"
+            )
+
+
+@pytest.mark.parametrize(
+    (
+        "nparam",
+        "nreal",
+        "xinc",
+        "corr_func_name",
+        "relative_corr_range",
+        "relative_localization_radius",
+        "obs_err_std",
+        "tolerance",
+        "seed",
+        "use_localization",
+    ),
+    [
+        (
+            2000,
+            100,
+            50.0,
+            "exponential",
+            0.05,
+            2.5,
+            0.001,
+            0.17,
+            13579,
+            True,
+        ),
+        (
+            2000,
+            500,
+            50.0,
+            "exponential",
+            0.05,
+            2.5,
+            0.001,
+            0.11,
+            987657,
+            True,
+        ),
+        (
+            2000,
+            40000,
+            50.0,
+            "exponential",
+            0.05,
+            2.5,
+            0.001,
+            0.05,
+            82872857,
+            True,
+        ),
+        (
+            2000,
+            100,
+            50.0,
+            "exponential",
+            0.05,
+            2.5,
+            0.001,
+            0.17,
+            13579,
+            False,
+        ),
+        (
+            2000,
+            500,
+            50.0,
+            "exponential",
+            0.05,
+            2.5,
+            0.001,
+            0.11,
+            987657,
+            False,
+        ),
+        (
+            2000,
+            40000,
+            50.0,
+            "exponential",
+            0.05,
+            2.5,
+            0.001,
+            0.05,
+            82872857,
+            False,
+        ),
+    ],
+)
+def test_distance_based_localization_on_1D_corr_field(
+    nparam: int,
+    nreal: int,
+    xinc: float,
+    corr_func_name: str,
+    relative_corr_range: float,
+    relative_localization_radius: float,
+    obs_err_std: float,
+    tolerance: float,
+    seed: int,
+    use_localization: bool,
+) -> None:
+    # This test will check that Distance based ESMDA of the posterior mean
+    # converge to a value close to the theoretical limit for an experiment
+    # where observation errors are small and there are no trends in the
+    # prior gaussian field. The theorietical limit when using ESMDA
+    # should be exactly the same as the simple kriging estimate,
+    # but the theoretical limit when using Distancebased localization
+    # will depend on the ratio between the spatial correlation length
+    # of the prior field and the localization range.
+    # The expected result for distance based localization with ESMDA
+    # when number of realizations approach a very large number
+    # will correspond to gaussian field with a prior with shorter
+    # correlation length than what is specified due to the downscaling
+    # of the effect of the observations with distance. (Reduced value
+    # of Kalman Gain matrix elements)
+
+    # Prior field mean and stdev
+    mean = 0.0
+    stdev = 1.0
+
+    corr_range = relative_corr_range * nparam * xinc
+    obs_vector = np.array([5.0, -5.0, 4.0, 5.0], dtype=np.float64)
+    obs_index_vector = np.array(
+        [
+            int(nparam / 10),
+            int(3 * nparam / 10),
+            int(6 * nparam / 10),
+            int(9 * nparam / 10),
+        ],
+        dtype=np.int32,
+    )
+    nobs = obs_index_vector.shape[0]
+    alpha = np.array([1.0])
+    obs_error_var = obs_err_std**2  # Variance of observation error
+    C_D = np.array([obs_error_var] * nobs)
+
+    # Draw prior ensemble with specified spatial correlation function
+    rng = np.random.default_rng(seed)
+    X_prior, field_cov_matrix = draw_1D_field(
+        mean, stdev, xinc, corr_func_name, corr_range, nparam, nreal, rng
+    )
+
+    # Calculate theoretical posterior mean
+    # assuming prior mean equal 0.
+    # Assume forward model is identity  X = g(X)
+    # Use simple kriging estimate for theoretical posterior mean
+    mean_predicted_field = predicted_mean_field_values(
+        obs_vector, obs_index_vector, field_cov_matrix
+    )
+
+    # Predict observations `Y` using the identity model `g(x) = x`
+    Y = X_prior[obs_index_vector, :]
+
+    # Using a simple Gaussian decay for rho.
+    localization_radius = relative_localization_radius * corr_range
+
+    rho_matrix = np.zeros((nparam, nobs), dtype=np.float64)
+    if use_localization:
+        for i in range(nobs):
+            rho = calculate_rho_1d(
+                nparam,
+                obs_index_vector[i],
+                localization_radius,
+                xinc=xinc,
+            )
+            rho_matrix[:, i] = rho[:, 0]
+    else:
+        rho_matrix[:, :] = 1.0
+
+    esmda_distance = DistanceESMDA(
+        covariance=C_D, observations=obs_vector, alpha=alpha, seed=seed
+    )
+    X_posterior = esmda_distance.assimilate(X=X_prior, Y=Y, rho=rho_matrix)
+
+    esmda = ESMDA(covariance=C_D, observations=obs_vector, alpha=alpha, seed=seed)
+    X_posterior_global = esmda.assimilate(X=X_prior, Y=Y)
+
+    # Mean and stdev of ensemble of posterior field
+    X_post_mean = X_posterior.mean(axis=1)
+    X_post_mean_global = X_posterior_global.mean(axis=1)
+
+    # Difference with theoretical mean based on simple kriging is calculated.
+    # Note that ESMDA in this test should approach the kriging estimate
+    # which is the theoretical limit of the posterior mean when nreal -> infinity
+    # For DL-ESMDA only when localization range is much larger than the spatial
+    # correlation length one can expect the posterior mean approaches the
+    # simple kriging estimate in this test. But DL-ESMDA will be closer to
+    # the simple kriging estimate for practical purposes where nreal is not large.
+    # The tolerance specified in this test is specified such that the estimated
+    # standard deviation of the differences between DL-ESMDA and simple kriging
+    # estimate is less than the tolerances. Note that when nreal increases, the
+    # tolerances can be reduced, but will never approach 0 as long as
+    # localization range is finite. However, for ESMDA, the tolerance
+    # could in theory approach 0 when nreal approach infinity
+    X_diff_local_sk = X_post_mean - mean_predicted_field
+    X_diff_global_sk = X_post_mean_global - mean_predicted_field
+    X_diff_local_abs = np.abs(X_diff_local_sk)
+    X_diff_global_abs = np.abs(X_diff_global_sk)
+    est_std_diff_global = X_diff_global_abs.std()
+    est_std_diff_local = X_diff_local_abs.std()
+    X_local_diff = np.max(X_diff_local_abs)
+    X_global_diff = np.max(X_diff_global_abs)
+
+    print(f"Number of real: {nreal}")
+    print(f"Max difference using DL ESMDA : {X_local_diff}")
+    print(f"Max difference using ordinary ESMDA: {X_global_diff}")
+    print(
+        "Estimated std of difference between DL and simple kriging: "
+        f"{est_std_diff_local}"
+    )
+    print(
+        "Estimated std of difference between Global and simple kriging: "
+        f"{est_std_diff_global}"
+    )
+    if use_localization:
+        assert est_std_diff_local <= tolerance, (
+            "Estimated std of difference between DL "
+            f"and simple kriging estimate is {est_std_diff_local} "
+            f"is above specified tolerance {tolerance}"
+        )
+    else:
+        # In this case both ESMDA and DL-ESMDA should give the same result
+        # since there is no localization (rho=1 for every element in rho)
+        assert abs(est_std_diff_global - est_std_diff_local) < 1e-7
 
 
 if __name__ == "__main__":
