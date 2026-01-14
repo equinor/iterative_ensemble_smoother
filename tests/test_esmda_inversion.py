@@ -177,7 +177,7 @@ class TestEsmdaInversion:
         EXACT_INVERSIONS + APPROX_INVERSIONS,
     )
     @pytest.mark.parametrize(
-        "num_outputs,num_emsemble",
+        ("num_outputs", "num_emsemble"),
         [(10, 11), (10, 20), (10, 100), (100, 101), (100, 200), (100, 500)],
     )
     def test_that_all_inversions_all_equal_with_many_ensemble_members(
@@ -314,7 +314,11 @@ class TestEsmdaInversion:
             assert np.allclose(arg, arg_copy)
 
 
-def test_timing(num_outputs=100, num_inputs=50, ensemble_members=25):
+def test_timing():
+    num_outputs = 100
+    num_inputs = 50
+    ensemble_members = 25
+
     E = np.random.randn(num_outputs, num_outputs)
     C_D = E.T @ E
     C_D = np.diag(np.exp(np.random.randn(num_outputs)))  # Diagonal covariance matrix
