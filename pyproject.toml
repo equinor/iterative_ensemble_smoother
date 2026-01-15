@@ -17,7 +17,7 @@ classifiers=[
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
-dependencies = ["numpy", "scipy", "joblib"]
+dependencies = ["numpy", "scipy", "joblib", "psutil"]
 dynamic=["version"] # setuptools_scm extracts Python package versions from git
 
 authors = [
@@ -58,8 +58,7 @@ doc = [
     "jinja2",
     "m2r2>=0.3.3",
     "myst_nb",
-    "lxml_html_clean",
-    "psutil"
+    "lxml_html_clean"
 ]
 dev = [
     "pytest",
