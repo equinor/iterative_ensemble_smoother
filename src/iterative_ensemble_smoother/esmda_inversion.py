@@ -101,6 +101,8 @@ def normalize_alpha(alpha: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
     >>> float(np.sum(1/normalize_alpha(alpha)))
     1.0
     """
+    # return alpha
+
     factor = np.sum(1 / alpha)
     rescaled: npt.NDArray[np.double] = alpha * factor
     return rescaled
@@ -185,6 +187,24 @@ def inversion_exact_naive(
     C_MD = empirical_cross_covariance(X, Y)
     C_DD = empirical_cross_covariance(Y, Y)
     C_D = np.diag(C_D) if C_D.ndim == 1 else C_D
+    
+    print("============================================")
+    
+    print("C_MD ~= X @ Y.T", C_MD)
+    print("X", X)
+    print("Y", Y.T)
+    
+    
+    
+    
+    print("C_DD", C_DD)
+    print("C_D", C_D)
+    print("(D - Y)", (D - Y))
+    print("C_DD + alpha * C_D", C_DD + alpha * C_D)
+    print("sp.linalg.inv(C_DD + alpha * C_D)", sp.linalg.inv(C_DD + alpha * C_D))
+    
+    print("full term", np.mean(C_MD @ sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y), axis=1))
+    
     return C_MD @ sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)  # type: ignore
 
 

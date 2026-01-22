@@ -213,6 +213,7 @@ def plot_esmda(forward_model, iterations=2, seed=42, title=None, covar_scale=0.0
     X = 1 + 0.3 * rng.normal(size=(2, realizations))
     observations = np.zeros(1)
     covariance = np.diag([1]) * covar_scale
+    
     esmda = ESMDA(
         covariance, observations, alpha=iterations, seed=rng, inversion="exact"
     )
@@ -316,14 +317,11 @@ fig, axes = plot_esmda(forward_model, iterations=1, seed=42, title="A non-linear
 fig, axes = plot_esmda(forward_model, iterations=2, seed=42, title="A non-linear model")
 
 fig, axes = plot_esmda(
-    forward_model, iterations=5, seed=42, title="A non-linear model", covar_scale=1e-8
+    forward_model, iterations=5, seed=42, title="A non-linear model", covar_scale=0.0000001
 )
 
 for ax in axes:
     ax.plot([-1, 1], [1, -1], color="black")
-
-
-1 / 0
 
 
 def forward_model(x):

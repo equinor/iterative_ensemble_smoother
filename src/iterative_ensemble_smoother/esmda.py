@@ -34,6 +34,7 @@ from iterative_ensemble_smoother.esmda_inversion import (
     inversion_exact_cholesky,
     inversion_subspace,
     normalize_alpha,
+    inversion_exact_naive,
 )
 from iterative_ensemble_smoother.utils import sample_mvnormal
 
@@ -168,7 +169,7 @@ class ESMDA(BaseESMDA):
     # Available inversion methods. The inversion methods all compute
     # C_MD @ (C_DD + alpha * C_D)^(-1)  @ (D - Y)
     _inversion_methods = {
-        "exact": inversion_exact_cholesky,
+        "exact": inversion_exact_naive,
         "subspace": inversion_subspace,
     }
 
