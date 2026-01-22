@@ -3,6 +3,7 @@ Contains (publicly available, but not officially supported) experimental
 features of iterative_ensemble_smoother
 """
 
+import logging
 import numbers
 import os
 import warnings
@@ -21,6 +22,8 @@ from iterative_ensemble_smoother.esmda_inversion import (
     empirical_cross_covariance,
     singular_values_to_keep,
 )
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
@@ -466,7 +469,9 @@ def memory_usage_decorator(enabled=True):
 
                 # Memory usage before the function call
                 mem_before = process.memory_info().rss / 1024 / 1024  # Convert to MB
-                print(f"Memory before calling '{func.__name__}': {mem_before:.2f} MB")
+                logger.debug(
+                    f"Memory before calling '{func.__name__}': {mem_before:.2f} MB"
+                )
 
             # Call the target function
             result = func(*args, **kwargs)
@@ -474,7 +479,9 @@ def memory_usage_decorator(enabled=True):
             if enabled:
                 # Memory usage after the function call
                 mem_after = process.memory_info().rss / 1024 / 1024  # Convert to MB
-                print(f"Memory after calling '{func.__name__}': {mem_after:.2f} MB")
+                logger.debug(
+                    f"Memory after calling '{func.__name__}': {mem_after:.2f} MB"
+                )
 
             return result
 
