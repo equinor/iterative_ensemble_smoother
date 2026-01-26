@@ -251,7 +251,7 @@ class ESMDA(BaseESMDA):
         D : np.ndarray or None
             A 2D array of shape (num_observations, ensemble_size) with perturbed
             observations. If not provided (None), D will be created using the
-            `observations` argument passed to the initializer.
+            `covariance` and `observations` arguments passed to the initializer.
 
         Returns
         -------
