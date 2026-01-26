@@ -248,6 +248,10 @@ class ESMDA(BaseESMDA):
             How large a fraction of the singular values to keep in the inversion
             routine. Must be a float in the range (0, 1]. A lower number means
             a more approximate answer and a slightly faster computation.
+        D : np.ndarray or None
+            A 2D array of shape (num_observations, ensemble_size) with perturbed
+            observations. If not provided (None), D will be created using the 
+            `observations` argument passed to the initializer.
 
         Returns
         -------
