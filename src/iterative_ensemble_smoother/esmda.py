@@ -224,7 +224,7 @@ class ESMDA(BaseESMDA):
         *,
         overwrite: bool = False,
         truncation: float = 1.0,
-        D: npt.NDArray[np.double] = None,
+        D: Union[npt.NDArray[np.double], None] = None,
     ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble X_posterior.
 
@@ -250,7 +250,7 @@ class ESMDA(BaseESMDA):
             a more approximate answer and a slightly faster computation.
         D : np.ndarray or None
             A 2D array of shape (num_observations, ensemble_size) with perturbed
-            observations. If not provided (None), D will be created using the 
+            observations. If not provided (None), D will be created using the
             `observations` argument passed to the initializer.
 
         Returns
