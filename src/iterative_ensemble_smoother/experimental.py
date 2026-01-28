@@ -3,6 +3,7 @@ Contains (publicly available, but not officially supported) experimental
 features of iterative_ensemble_smoother
 """
 
+import logging
 import numbers
 import warnings
 from typing import Callable, List, Optional, Sequence, Tuple, TypeVar, Union
@@ -18,8 +19,16 @@ from iterative_ensemble_smoother.esmda_inversion import (
     empirical_cross_covariance,
     singular_values_to_keep,
 )
+from iterative_ensemble_smoother.utils import (
+    calc_max_number_of_layers_per_batch_for_distance_localization,
+    memory_usage_decorator,
+)
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION = True
 
 
 class AdaptiveESMDA(BaseESMDA):
@@ -80,10 +89,7 @@ class AdaptiveESMDA(BaseESMDA):
         # Compute cov(Y, Y) if it was not passed to the function.
         # Pre-computation might be faster, since covariance is commutative with
         # respect to indexing, ie, cov(Y[mask, :], YY[mask, :]) = cov(Y, Y)[mask, mask]
-        if cov_YY is None:
-            C_DD = empirical_cross_covariance(Y, Y)
-        else:
-            C_DD = cov_YY
+        C_DD = empirical_cross_covariance(Y, Y) if cov_YY is None else cov_YY
 
         assert C_DD.shape[0] == C_DD.shape[1]
         assert C_DD.shape[0] == Y.shape[0]
@@ -453,12 +459,35 @@ def ensemble_smoother_update_step_row_scaling(
 
 
 class DistanceESMDA(ESMDA):
+    def __init__(
+        self,
+        covariance: npt.NDArray[np.float64],
+        observations: npt.NDArray[np.float64],
+        alpha: Union[int, npt.NDArray[np.float64]] = 5,
+        seed: Union[np.random._generator.Generator, int, None] = None,
+    ) -> None:
+        """
+        Initialize instance.
+        """
+        # Initialize instance
+        super().__init__(
+            covariance=covariance, observations=observations, alpha=alpha, seed=seed
+        )
+
+        # Ensure self.X3 is initialized to None
+        # Is set in prepare_assimilation and used in assimilate_batch
+        # Is not used when using assimilate
+        self.X3: npt.NDArray[np.float64] = None
+
+    @memory_usage_decorator(
+        enabled=ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION
+    )
     def assimilate(
         self,
         *,
-        X: npt.NDArray[np.double],
-        Y: npt.NDArray[np.double],
-        rho: npt.NDArray[np.double],
+        X: npt.NDArray[np.float64],
+        Y: npt.NDArray[np.float64],
+        rho: npt.NDArray[np.float64],
         truncation: float = 0.99,
     ):
         """
@@ -572,9 +601,9 @@ class DistanceESMDA(ESMDA):
 
     def prepare_assimilation(
         self,
-        Y: npt.NDArray[np.double],
+        Y: npt.NDArray[np.float64],
         truncation: float = 0.99,
-        D: npt.NDArray[np.double] = None,
+        D: npt.NDArray[np.float64] = None,
     ):
         """
         The part of the algorithm that does not depend on the field parameters,
@@ -603,7 +632,9 @@ class DistanceESMDA(ESMDA):
                between observation errors.
 
         Results:
-            Updated internal matrices.
+            Updated internal matrices such that assimilate_batch function
+            can be used without having to re-calculate all steps not involving
+            the field parameters, but only the observations.
 
         """
 
@@ -675,20 +706,21 @@ class DistanceESMDA(ESMDA):
 
         # Observations with added perturbations
         if D is None:
-            print("Calculate C_D inside class DistanceESMDA")
             self.D = self.perturb_observations(ensemble_size=N_e, alpha=self.alpha)
         else:
-            print("Assign D inside class DistanceESMDA")
             assert self.C_D.shape[0] == D.shape[0]
             self.D = D
         return
 
+    @memory_usage_decorator(
+        enabled=ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION
+    )
     def assimilate_batch(
         self,
         *,
-        X_batch: npt.NDArray[np.double],
-        Y: npt.NDArray[np.double],
-        rho_batch: npt.NDArray[np.double],
+        X_batch: npt.NDArray[np.float64],
+        Y: npt.NDArray[np.float64],
+        rho_batch: npt.NDArray[np.float64],
         D: npt.NDArray[np.float64] = None,
         truncation: float = 0.99,
     ):
@@ -707,8 +739,11 @@ class DistanceESMDA(ESMDA):
             X: Parameter matrix shape=(nparameters, nrealizations)
             Y: Response matrix with predictions of observations,
                shape=(nobservations, nrealizations)
-            rho: Localization matrix with scaling factors,
+            rho_batch: Localization matrix with scaling factors,
                  shape= (nparameters, nobservations)
+            D: Perturbed observations, shape=(nobservations,nrealizations)
+               Optional, default is to simulate the perturbations internally
+               within this class
 
         Results:
             Posterior (updated) matrix with parameters,
@@ -718,6 +753,8 @@ class DistanceESMDA(ESMDA):
         """
         if self.X3 is None:
             # Need to run preparation step
+            assert Y.shape[0] == self.observations.shape[0]
+            assert Y.shape[1] == X_batch.shape[1]
             self.prepare_assimilation(Y=Y, truncation=truncation, D=D)
 
         # Subtract the mean of every parameter, see Eqn (B.4)
@@ -734,6 +771,309 @@ class DistanceESMDA(ESMDA):
 
         # See Eqn (B.26)
         return X_batch + X4
+
+    @memory_usage_decorator(
+        enabled=ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION
+    )
+    def update_params_1D(
+        self,
+        X_prior: npt.NDArray[np.float64],
+        Y: npt.NDArray[np.float64],
+        rho_1D: npt.NDArray[np.float64],
+    ) -> npt.NDArray[np.float64]:
+        """
+        Calculate posterior update with distance-based ESMDA for one 1D parameter
+        The RHO matrix is specified as input.
+        Result is posterior parameter matrix
+
+        Args:
+            X_prior: Matrix with prior realizations of all field parameters,
+                    shape=(nparameters, nrealizations)
+            Y: Matrix with response values for each observations for each realization,
+                    shape=(nobservations, nrealizations)
+            rho_1D: RHO matrix elements for a 1D grid with size nx,
+                    shape=(nx,nobservations). If None is input, rho is set to 1
+                    for every matrix element and there will be no localization.
+        Results:
+            X_post: Posterior ensemble of field parameters,
+            shape=(nx, nrealizations)
+        """
+        if Y is None or Y.shape[0] == 0:
+            # No observation, no update
+            return X_prior
+
+        nobs = Y.shape[0]
+        assert self.observations.shape[0] == nobs
+
+        # Get dimensions from rho matrix
+        nx, _ = rho_1D.shape
+        assert nx == X_prior.shape[0]
+        assert nobs == rho_1D.shape[1]
+        nreal = X_prior.shape[1]
+        assert Y.shape[1] == nreal
+
+        return self.assimilate(X=X_prior, Y=Y, rho=rho_1D)
+
+    @memory_usage_decorator(
+        enabled=ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION
+    )
+    def update_params_2D(
+        self,
+        X_prior: npt.NDArray[np.float64],
+        Y: npt.NDArray[np.float64],
+        rho_2D: npt.NDArray[np.float64],
+    ) -> npt.NDArray[np.float64]:
+        """
+        Calculate posterior update with distance-based ESMDA for one 2D parameter
+        The RHO matrix is specified as input. Result is posterior parameter matrix.
+        Number of parameters for the field is nx*ny,
+        dimensions of the rho_2D in addition to number of observations.
+        Args:
+            X_prior: Matrix with prior realizations of all field parameters,
+                    shape=(nparameters, nrealizations)
+            Y: Matrix with response values for each observations for each realization,
+                    shape=(nobservations, nrealizations)
+            rho_2D: RHO matrix elements for a 2D grid with size (nx,,ny)
+                    shape=(nx,ny, nobservations). If None is input, rho is set to 1
+                    for every matrix element and there will be no localization.
+                    nx and ny are the dimensions of the 2D field.
+        Results:
+            X_post: Posterior ensemble of field parameters,
+                    shape=(nparameters, nrealizations)
+        """
+        # No update if no observations or responses
+        if Y is None or Y.shape[0] == 0:
+            # No update of the field parameters
+            # Check if it necessary to make a copy or can we only return X_prior?
+            return X_prior.copy()
+
+        nx, ny, nobs = rho_2D.shape
+        nparam = nx * ny
+        nreal = X_prior.shape[1]
+        assert X_prior.shape[0] == nparam, (
+            f"Mismatch between X_prior dimension {X_prior.shape[0]} and nparam {nparam}"
+        )
+
+        assert nobs == Y.shape[0], (
+            "Mismatch between Y matrix dimension for number of observation and rho_2D"
+        )
+        assert Y.shape[1] == nreal, (
+            f"Mismatch between X_prior dimension {Y.shape[1]} and nreal {nreal}"
+        )
+        assert self.observations.shape[0] == nobs
+
+        rho = rho_2D.reshape(nparam, nobs)
+        return self.assimilate_batch(X_batch=X_prior, Y=Y, rho_batch=rho)
+
+    @memory_usage_decorator(
+        enabled=ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION
+    )
+    def update_params_3D(
+        self,
+        X_prior: npt.NDArray[np.float64],
+        Y: npt.NDArray[np.float64],
+        rho_2D_slice: npt.NDArray[np.float64],
+        nz: int,
+        min_nbatch: int = 1,
+        no_update: bool = False,
+    ) -> npt.NDArray[np.float64]:
+        """
+        Calculate posterior update with distance-based ESMDA for one 3D parameter.
+        The RHO for one layer of the 3D field parameter is input.
+        This is copied to all other layers of RHO in each batch of grid parameter
+        layers since only lateral distance is used when calculating distances.
+        Result is posterior parameter matrices of field parameters for one field.
+        Number of parameters is nx*ny*nz where nx, ny is dimension of the rho_2D_slice
+        in addition to number of observations.
+
+        Args:
+            X_prior: Matrix with prior realizations of all field parameters,
+                    shape=(nparameters, nrealizations)
+            Y: Matrix with response values for each observations for each realization,
+                    shape=(nobservations, nrealizations)
+            rho_2D_slice: RHO matrix elements for one layer (slice) of a 3D grid
+                    with size (nx, ny), shape=(nx,ny,nobservations). If this variable
+                    is None, then rho is set to 1 for all elements which means
+                    that no localization is used.
+            nz:     Number of grid layers for the 3D field parameter.
+            min_nbatch: Minimum number of batches the field parameter is split into.
+                    Default is 1. Usually number of batches will be calculated based
+                    on available memory and the size of the field parameters,
+                    number of observations and realizations. The actual number of
+                    batches will be max(min_nbatch, min_number_of_batches_required).
+            no_update: Is set to True only when testing the batch loop.
+                    Should be False to get any update.
+
+        Results:
+            X_post: Posterior ensemble of field parameters,
+            shape=(nx*ny*nz, nrealizations)
+        """
+        # No update if no observations or responses
+        if Y is None or Y.shape[0] == 0:
+            # No update of the field parameters
+            # Check if it is it necessary to return a copy here?
+            return X_prior.copy()
+
+        nx, ny, nobs = rho_2D_slice.shape
+
+        nparam_per_layer = nx * ny
+        nparam = nparam_per_layer * nz
+        nreal = X_prior.shape[1]
+        assert X_prior.shape[0] == nparam, (
+            f"Mismatch between X_prior dimension {X_prior.shape[0]} and nparam {nparam}"
+        )
+        assert nobs == Y.shape[0], (
+            f"Mismatch between number of observations in Rho_2D {nobs} and in Y matrix"
+        )
+        assert Y.shape[1] == nreal, (
+            f"Mismatch between X_prior dimension {Y.shape[1]} and nreal {nreal}"
+        )
+
+        X_prior_3D = X_prior.reshape(nx, ny, nz, nreal)
+
+        # Check memory constraints and calculate how many grid layers of
+        # field parameters is possible to update on one batch
+        max_nlayers_per_batch = (
+            calc_max_number_of_layers_per_batch_for_distance_localization(
+                nx, ny, nz, nobs, nreal, bytes_per_float=8
+            )
+        )  # Use float64
+        nlayer_per_batch = min(max_nlayers_per_batch, nz)
+        nbatch = int(nz / nlayer_per_batch)
+
+        # Number of batches is defined by available memory and wanted number of batches
+        # Usually one should have as few batches as possible but sufficient to
+        # be able to update a batch with the memory available.
+        # It is possible to explicit require more batches than the minimum
+        # number required by the memory constraint. Main use case for this
+        # is probably only for unit testing to avoid having unit tests running
+        # slow due to very big size of the field, the number of observations and
+        # and number of realizations.
+        nbatch = max(min_nbatch, nbatch)
+        nlayer_per_batch = int(nz / nbatch)
+        if nbatch * nlayer_per_batch == nz:
+            logger.debug(f"Number of batches used: {nbatch}")
+        else:
+            logger.debug(f"Number of batches used: {nbatch + 1}")
+
+        nparam_in_batch = (
+            nparam_per_layer * nlayer_per_batch
+        )  # For full sized batch of layers
+
+        nlayer_last_batch = nz - nbatch * nlayer_per_batch
+
+        # Initialize the X_post_3D
+        X_post_3D = X_prior_3D.copy()
+        for batch_number in range(nbatch):
+            start_layer_number = batch_number * nlayer_per_batch
+            end_layer_number = start_layer_number + nlayer_per_batch
+
+            X_batch = X_prior_3D[:, :, start_layer_number:end_layer_number, :].reshape(
+                (nparam_in_batch, nreal)
+            )
+
+            # Copy rho calculated from one layer of 3D parameter into all layers for
+            # current batch of layers.
+            # Size of rho batch: (nx,ny,nlayer_per_batch,nobs)
+            rho_3D_batch = np.zeros((nx, ny, nlayer_per_batch, nobs), dtype=np.float64)
+            rho_3D_batch[:, :, :, :] = rho_2D_slice[:, :, np.newaxis, :]
+            rho_batch = rho_3D_batch.reshape((nparam_in_batch, nobs))
+
+            if no_update:
+                # Only used for test purpose
+                X_post_batch = X_batch
+            else:
+                logger.debug(f"Assimilate batch number {batch_number}")
+                X_post_batch = self.assimilate_batch(
+                    X_batch=X_batch, Y=Y, rho_batch=rho_batch
+                )
+            X_post_3D[:, :, start_layer_number:end_layer_number, :] = (
+                X_post_batch.reshape(nx, ny, nlayer_per_batch, nreal)
+            )
+
+        if nlayer_last_batch > 0:
+            batch_number = nbatch
+            start_layer_number = batch_number * nlayer_per_batch
+            end_layer_number = start_layer_number + nlayer_last_batch
+            nparam_in_last_batch = nparam_per_layer * nlayer_last_batch
+
+            X_batch = X_prior_3D[:, :, start_layer_number:end_layer_number, :].reshape(
+                (nparam_in_last_batch, nreal)
+            )
+
+            rho_3D_batch = np.zeros((nx, ny, nlayer_last_batch, nobs), dtype=np.float64)
+            # Copy rho calculated from one layer of 3D parameter into all layers for
+            # current batch of layers
+            rho_3D_batch[:, :, :, :] = rho_2D_slice[:, :, np.newaxis, :]
+            rho_batch = rho_3D_batch.reshape((nparam_in_last_batch, nobs))
+            if no_update:
+                # Only used for test purpose
+                X_post_batch = X_batch
+            else:
+                logger.debug(f"Assimilate batch number {batch_number}")
+
+                X_post_batch = self.assimilate_batch(
+                    X_batch=X_batch, Y=Y, rho_batch=rho_batch
+                )
+            X_post_3D[:, :, start_layer_number:end_layer_number, :] = (
+                X_post_batch.reshape(nx, ny, nlayer_last_batch, nreal)
+            )
+
+        return X_post_3D.reshape(nparam, nreal)
+
+    def update_params(
+        self,
+        X_prior: npt.NDArray[np.float64],
+        Y: npt.NDArray[np.float64],
+        rho_input: npt.NDArray[np.float64],
+        nz: int = 1,
+        min_nbatch: int = 1,
+        no_update: bool = False,
+    ) -> npt.NDArray[np.float64]:
+        """
+        Calculate posterior update with distance-based ESMDA.
+        Depending on the shape of rho_input it will update an 1D , 2D or 3D field.
+        Dimension of the ensemble X_prior is either (nx), (nx,ny) or (nx,ny,nz)
+        and rho_input define nx and ny while nz is number of layers in the grid
+        for the field parameter in 3D.
+
+        Args:
+            X_prior: Matrix with prior realizations of all field parameters,
+                    shape=(nparameters, nrealizations)
+            Y: Matrix with response values for each observations for each realization,
+                    shape=(nobservations, nrealizations)
+            rho_input: RHO matrix elements.
+                    If RHO_input has shape= (nx,nobs),
+                    X_prior is an ensemble of 1D fields
+                    If RHO_input has shape= (nx, ny, nobs),
+                    X_prior is an ensemble of 2D fields.
+                    If Rho_input has shape=(nx,ny,nobs) and nz > 1,
+                    X_prior is an ensemble of 3D fields with size (nx, ny, nz).
+            nz:     Number of grid layers for the 3D field parameter.
+            min_nbatch: Minimum number of batches the field parameter is split into.
+                    Default is 1. Usually number of batches will be calculated based
+                    on available memory and the size of the field parameters,
+                    number of observations and realizations. The actual number of
+                    batches will be max(min_nbatch, min_number_of_batches_required).
+            no_update: Is set to True only when testing the batch loop.
+                    Should be False to get any update.
+
+        Results:
+            X_post: Posterior ensemble of field parameters,
+            shape=(nx*ny*nz, nrealizations)
+        """
+        if rho_input.ndim == 1:
+            return self.update_params_1D(X_prior=X_prior, Y=Y, rho_1D=rho_input)
+        if rho_input.ndim == 2 and nz == 1:
+            return self.update_params_2D(X_prior=X_prior, Y=Y, rho_2D=rho_input)
+        return self.update_params_3D(
+            X_prior=X_prior,
+            Y=Y,
+            rho_2D_slice=rho_input,
+            nz=nz,
+            min_nbatch=min_nbatch,
+            no_update=no_update,
+        )
 
 
 if __name__ == "__main__":

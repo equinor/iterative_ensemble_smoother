@@ -101,8 +101,6 @@ def normalize_alpha(alpha: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
     >>> float(np.sum(1/normalize_alpha(alpha)))
     1.0
     """
-    # return alpha
-
     factor = np.sum(1 / alpha)
     rescaled: npt.NDArray[np.double] = alpha * factor
     return rescaled
@@ -187,24 +185,6 @@ def inversion_exact_naive(
     C_MD = empirical_cross_covariance(X, Y)
     C_DD = empirical_cross_covariance(Y, Y)
     C_D = np.diag(C_D) if C_D.ndim == 1 else C_D
-    
-    print("============================================")
-    
-    print("C_MD ~= X @ Y.T", C_MD)
-    print("X", X)
-    print("Y", Y.T)
-    
-    
-    
-    
-    print("C_DD", C_DD)
-    print("C_D", C_D)
-    print("(D - Y)", (D - Y))
-    print("C_DD + alpha * C_D", C_DD + alpha * C_D)
-    print("sp.linalg.inv(C_DD + alpha * C_D)", sp.linalg.inv(C_DD + alpha * C_D))
-    
-    print("full term", np.mean(C_MD @ sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y), axis=1))
-    
     return C_MD @ sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)  # type: ignore
 
 
@@ -412,17 +392,16 @@ def inversion_exact_subspace_woodbury(
 
     # A diagonal covariance matrix was given as a 1D array.
     # Same computation as above, but exploit the diagonal structure
-    else:
-        C_D_inv = 1 / (C_D * alpha)  # Invert diagonal
-        center = np.linalg.multi_dot([D_delta.T * C_D_inv, D_delta])
-        center.flat[:: center.shape[0] + 1] += 1.0
-        UT_D = D_delta.T * C_D_inv
-        inverted = np.diag(C_D_inv) - np.linalg.multi_dot(
-            [UT_D.T, sp.linalg.inv(center), UT_D]
-        )
-        return np.linalg.multi_dot(  # type: ignore
-            [X, D_delta.T / np.sqrt(N_e - 1), inverted, (D - Y)]
-        )
+    C_D_inv = 1 / (C_D * alpha)  # Invert diagonal
+    center = np.linalg.multi_dot([D_delta.T * C_D_inv, D_delta])
+    center.flat[:: center.shape[0] + 1] += 1.0
+    UT_D = D_delta.T * C_D_inv
+    inverted = np.diag(C_D_inv) - np.linalg.multi_dot(
+        [UT_D.T, sp.linalg.inv(center), UT_D]
+    )
+    return np.linalg.multi_dot(  # type: ignore
+        [X, D_delta.T / np.sqrt(N_e - 1), inverted, (D - Y)]
+    )
 
 
 def inversion_subspace(

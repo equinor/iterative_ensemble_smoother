@@ -34,7 +34,6 @@ from iterative_ensemble_smoother.esmda_inversion import (
     inversion_exact_cholesky,
     inversion_subspace,
     normalize_alpha,
-    inversion_exact_naive,
 )
 from iterative_ensemble_smoother.utils import sample_mvnormal
 
@@ -86,7 +85,8 @@ class BaseESMDA(ABC):
             raise TypeError("Argument `covariance` must be 1D or 2D array")
 
         self.C_D = covariance
-        assert isinstance(self.C_D, np.ndarray) and self.C_D.ndim in (1, 2)
+        assert isinstance(self.C_D, np.ndarray)
+        assert self.C_D.ndim in (1, 2)
 
     def perturb_observations(
         self, *, ensemble_size: int, alpha: float
@@ -169,7 +169,7 @@ class ESMDA(BaseESMDA):
     # Available inversion methods. The inversion methods all compute
     # C_MD @ (C_DD + alpha * C_D)^(-1)  @ (D - Y)
     _inversion_methods = {
-        "exact": inversion_exact_naive,
+        "exact": inversion_exact_cholesky,
         "subspace": inversion_subspace,
     }
 
@@ -196,7 +196,7 @@ class ESMDA(BaseESMDA):
                 "Argument `inversion` must be a string in "
                 f"{tuple(self._inversion_methods.keys())}, but got {inversion}"
             )
-        if inversion not in self._inversion_methods.keys():
+        if inversion not in self._inversion_methods:
             raise ValueError(
                 "Argument `inversion` must be a string in "
                 f"{tuple(self._inversion_methods.keys())}, but got {inversion}"
