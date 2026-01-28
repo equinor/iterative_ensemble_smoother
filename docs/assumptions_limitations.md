@@ -1,15 +1,18 @@
 # Assumptions and limitations
 
 Data assimilation algorithms like ES (Ensemble Smoother) and ESMDA (Ensemble Smoother with Multiple Data Assimilation) are used in complicated domains such as atmospheric physics and petroleum reservoirs.
-This might lead some to believe that they are very complex and make few assumptions.
-The exact opposite is true: they are very simple and impose extremely restrictive assumptions.
-This does not mean that they are not useful, not that assumptions have to be met before they can be used in practise.
-However, it does mean that practitioners should know how they work and what the drawbacks are.
+This might lead you to believe that they are very complex and sophisticated algorithms that can deal with a wide variety of problems.
+However, in a sense the exact opposite is true: they are very simple and impose extremely restrictive assumptions.
+They are still useful, and in practice assumptions do not need to be met to use the algorithm.
+Still, practitioners should know how these algorithms work have an an intuition for how they fail.
+
+As a reminder, the problem that ESMDA solves is this: given a prior over model parameters and observed outcomes, adjust the prior in the direction of the observed outcomes.
+This is a bit like optimization ("which inputs would produce these outputs?"), but ESMDA aims to capture uncertainty and mix the prior with the observations to obtain a posterior.
 
 ## Lesson 1: The algorithms are simple because the models are complex
 
-Given a prior over model parameters that we want to update with observed data to obtain a posterior, MCMC (Markov Chain Monte Carlo) is almost always the preferred method.
-However, in reservoir models we use algorithms like ES and ESMDA, not MCMC.
+In most statistical applications, we combine priors with observed data using MCMC (Markov Chain Monte Carlo).
+This is the state of the art, but reservoir models we use algorithms like ES and ESMDA, not MCMC.
 How come?
 
 The reason is that since the models are complex (slow to evaluate and black-box), the method must remain simple for the overall inference to remain tractable:
@@ -17,26 +20,34 @@ The reason is that since the models are complex (slow to evaluate and black-box)
 - Most statistical models are fast to compute, a reservoir simulator is slow
 - Most statistical models are differentiable, while a reservoir simulator is not (it is considered a "black-box")
 
-Algorithms like ES an ESMDA are simple in the sense that they are derived assuming a Gauss-Linear model.
-Both of the assumptions (1) linearity of the model $`f`$ and (2) Gaussian noise are untrue.
-More on that later.
+Algorithms like ES an ESMDA are simple in the sense that their theoretical foundation rests on an assumption that is never met in reality: a Gauss-Linear model.
+Both of the assumptions (1) linearity of the model $`f`$ and (2) Gaussian noise are wildly untrue.
+
+
+The figure below shows the Gauss-linear case, where the ESMDA solution corresponds to the theoretical solution.
+
+![](linear_model_obs_noise.png)
+
+In this example, there are two inputs into the model $`f`$ and one output.
+Here several inputs could produce the output (black line).
+Depending on the observation noise, ES (one iteration of ESMDA) moves the prior towards the parameter configuration that explains the observed values.
 
 ## Lesson 2: Few samples lead to uncertain results
 
-In most of statistics it's common to draw 1000 or even 10,000 samples from the posterior distribution.
-In reservoir models each function evaluation is expensive, so we have to make do with far fewer samples.
+In most statistical models it's common to draw 1000 or even 10,000 samples (realizations) from the posterior distribution.
+In reservoir models each function evaluation (running the simulation) is expensive, so we have to make do with far fewer samples.
 
 This can be an issue even in small, simple problems.
 Suppose $`A`$ and $`B`$ are two uniform variables.
-What is the expected value of their product $`\mathbb{E}[AB]`$ ?
+What is the expected value of their product, i.e., $`\mathbb{E}[AB]`$ ?
 
-The answer is 1/4, but if we use 25 samples (realizations) to estimate this quantity we'll get 0.266 on the first try.
+The answer is 1/4, but if we use 25 samples to estimate this quantity we get 0.266 on the first try.
 Pretty good.
-Another seed produces 0.200 as the result.
+However, the next seed in the random number generator produces 0.200 as the result.
 A third seed 0.239, a fourth seed 0.226.
 
 With less than 25 samples the results are generally even worse.
-In fact, the error (standard deviation) decreases asymptotically like $`1/\sqrt{n}`$, where $`n`$ is the number of samples.
+In fact, the uncertainty (standard deviation) decreases asymptotically like $`1/\sqrt{n}`$, where $`n`$ is the number of samples.
 The asymptotic result holds for _any_ quantity that you wish to estimate, but the constant differs depending on exactly what quantity you estimate.
 In the book Statistical Rethinking (section 9.5.1) McElreath writes:
 
@@ -52,22 +63,62 @@ Each done is one simulation study using $`n`$ samples.
 
 ## Lesson 3: Marginal distributions may hide a lot of information
 
+Summary statistics like the expected value (mean) hide information in the distribution by collapsing all the samples to a single value.
+One remedy is to plot and inspect the samples, using for instance a histogram.
+This solves the case with one variable.
+
+If you have several variables, then a correlation matrix can similarily collapse the multivariate samplse to a single matrix.
+However, this also hides a lot of information, because as [Anscombe's quartet](https://en.wikipedia.org/wiki/Anscombe%27s_quartet) and the [Datasaurus](https://www.research.autodesk.com/app/uploads/2023/03/same-stats-different-graphs.pdf_rec2hRjLLGgM7Cn2T.pdf) shows us, there are many ways to produce a correlation number.
+
+The figure below shows three data set with identical marginals (therefore also identical summary statistics:mean, standard deviation, etc.).
+
 ![](identical_marginals.png)
 
+Plotting only reveals relationships in one dimension and two dimensions.
+In high dimensions it's impossible to visually study the relationships between variables.
 
-## Lesson 3: Data assimilation will one-shot linear models
+## Lesson 4: ESMDA tends to deal with non-linearities better than ES
 
-The figure below shows a linear model $`f(x_1, x_2) = x_1 + x_2`$, where $`x_1`$ and $`x_2`$ are input parameters.
-Our prior belief is a normal distribution around the point $`(x_1, x_2) = (1, 1)`$ and the scalar observation is $`y = f(x_1, x_2) = 0`$.
-ES and ESMDA answer the question "_How can our prior belief be reconsiled with the observation?_".
+Above we saw that ES and ESMDA are derived from the Gauss-linear case.
+The idea behind ESMDA is that several iterations can help deal with non-linearities.
 
-The answer depends on the noise associated with the observation $`y = 0`$.
-With high noise, the answer moves the prior distribution "half-way" toward the line $`y = f(x_1, x_2) = 0`$.
-With low noise, the answer moves the prior distribution all the way toward the line $`y = f(x_1, x_2) = 0`$, but retains uncertainty along that line.
+Here is a weakly non-linear problem is two dimensions.
+The first iteration takes us part-way to the posterior (black line), and the second iteration takes us closer.
 
-![](linear_model_obs_noise.png)
+![](non_linear_model_two_iters.png)
 
-Either way, with Gaussian noise and a linear model $`f`$ the answer is correct -- this is the _only_ model where the answer is correct.
+The first iteration above takes us half-way because when we linearize a quadratic function, the linear approximation is a lower bound (the function is convex).
+With a concave function, such as a square-root, the opposite phenomenom occurs: ESMDA overshoots it the first iteration and corrects in the second.
+
+![](non_linear_model_overshoot.png)
+
+## Lesson 5: The update direction is determined by gradient and covariance
+
+In all examples above, ESMDA behaves a bit like optimization because it follows the gradient.
+However, if we were solving an optimization we would not use ESMDA: optimization routines are better and would produce better results - sampling a 2D function hundreds of times to optimize it should not be needed.
+
+However, ESMDA is also influenced by the covariance in the current ensemble members (the samples).
+This is shown in the figure below, where the update does not go to the origin (which is the point on the line closest to the prior mean).
+This is in line with the theoretical posterior distribution, which as we have pointed out several times corresponds to ESMDA in the Gauss-linear case.
+
+![](linear_model_ellipse_prior.png)
+
+## Lesson 6: The updates can oscillate, and more iterations is not always better
+
+Even on the simplest of problems that are non-linear, ESMDA can produce embarresingly bad posteriors.
+After one iteration the sphere contracts to an ellipse, which influences the update direction.
+This produces oscillations that lead to posterior estimates that are worse (in the expected value) than what we began with.
+By tweaking parameters it's possible to produce strong oscillations, even in two dimensions with very many samples.
+Adding observation noise can help mitigate this effect by regularizing the updates, but at the cost of using a model we might not believe in.
+
+![](quadratic_model.png)
+
+## Lesson 7: 
+
+In high dimensions with few samples, almost every random sample is ellipse-like.
+
+
+![](quadratic_model_coverage.png)
 
 
 
@@ -76,23 +127,16 @@ Either way, with Gaussian noise and a linear model $`f`$ the answer is correct -
 
 
 
------------------
 
 
 
 
 
-A reservoir model
 
-Here the models are typically fast to compute, differentiable and not wildly non-linear.
-It's not uncommon to draw 1000 or even 10,000 samples from the posterior distribution, and while there are pitfalls with MCMC the guarantee is that those samples do reflect the posterior.
 
-A reservoir model is not fast to compute, it is not differentiable and is is more non-linear than most statistical models.
-This changes the approach: MCMC is no longer viable since the models take so long to evaluate.
-Instead algorithmms like ES and ESMDA must be used.
 
-ES and ESMDA:
 
-- Assume that 
+
+
 
 
