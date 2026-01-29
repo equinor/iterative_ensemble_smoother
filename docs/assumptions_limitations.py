@@ -164,9 +164,17 @@ fig.tight_layout()
 plt.savefig("linear_model_obs_noise.png", dpi=200)
 plt.show()
 
+
 # =================================================
-def plot_esmda(forward_model, iterations=2, seed=42, title=None, covar_scale=0.001,
-               realizations=99, cov=None):
+def plot_esmda(
+    forward_model,
+    iterations=2,
+    seed=42,
+    title=None,
+    covar_scale=0.001,
+    realizations=99,
+    cov=None,
+):
     """
     Plot ESMDA iterations for a 2D parameter space.
     """
@@ -211,10 +219,10 @@ def plot_esmda(forward_model, iterations=2, seed=42, title=None, covar_scale=0.0
     if cov is None:
         cov = np.eye(2) * 0.3
     X = rng.multivariate_normal([1, 1], cov=cov, size=realizations).T
-    
+
     observations = np.zeros(1)
     covariance = np.diag([1]) * covar_scale
-    
+
     esmda = ESMDA(
         covariance, observations, alpha=iterations, seed=rng, inversion="exact"
     )
@@ -259,10 +267,6 @@ def plot_esmda(forward_model, iterations=2, seed=42, title=None, covar_scale=0.0
     return fig, axes
 
 
-
-
-
-
 def forward_model(x):
     return np.sum(x, keepdims=True)
 
@@ -275,18 +279,17 @@ fig, axes = plot_esmda(
     iterations=2,
     seed=42,
     title="A linear model: $f(x_1, x_2) = x_1 + x_2$",
-    realizations=250, cov=[[0.5, 0], [0, 0.1]],
-    covar_scale=0.01
+    realizations=250,
+    cov=[[0.5, 0], [0, 0.1]],
+    covar_scale=0.01,
 )
 plt.savefig("linear_model_ellipse_prior.png", dpi=200)
 plt.show()
 
 
-
-
-
 def forward_model(x):
     return np.abs(np.sum(x, keepdims=True)) ** 2 + x[0] * 5
+
 
 # If the model is non-linear, two iterations of ESMDA
 # will ensure that it converges, while one is not enough.
@@ -302,7 +305,6 @@ plt.savefig("non_linear_model_two_iters.png", dpi=200)
 plt.show()
 
 
-
 def forward_model(x):
     summed = np.sum(x, keepdims=True)
     return np.abs(summed) ** 0.5 * np.sign(np.sum(x)) + x[0]
@@ -315,24 +317,27 @@ fig, axes = plot_esmda(
     title=r"A non-linear model: $f(x_1, x_2) = \operatorname{sign}(x_1 + x_2)\sqrt{| x_1 + x_2 |} + x_1$",
     realizations=250,
     covar_scale=0.001,
-    cov=[[0.2, 0], [0, 0.2]]
+    cov=[[0.2, 0], [0, 0.2]],
 )
 plt.savefig("non_linear_model_overshoot.png", dpi=200)
 plt.show()
 
 
-
 def forward_model(x):
     return (np.sum(x, keepdims=True) - 0) ** 2 - 0.001
 
-fig, axes = plot_esmda(forward_model, iterations=2, seed=42, 
-                       title="A linear-quadratic model: $f(x_1, x_2) = (x_1 + x_2)^2$",
-                       realizations=250, cov=[[0.3, 0], [0, 0.3]], covar_scale=0.001)
+
+fig, axes = plot_esmda(
+    forward_model,
+    iterations=2,
+    seed=42,
+    title="A linear-quadratic model: $f(x_1, x_2) = (x_1 + x_2)^2$",
+    realizations=250,
+    cov=[[0.3, 0], [0, 0.3]],
+    covar_scale=0.001,
+)
 plt.savefig("linear_quadratic_model.png", dpi=200)
 plt.show()
-
-
-
 
 
 def forward_model(x):
@@ -343,10 +348,14 @@ def forward_model(x):
 # find the minimum. However, ESMDA struggles. It moves slowly
 # due to the non-linearity, and as the ensemble adapts to the shape
 # it tends to become unstable and oscillates.
-fig, axes = plot_esmda(forward_model, iterations=3, 
-                       seed=42, title="A quadratic model: $f(x_1, x_2) = (x_1 + 0.5)^2 + (x_2-1)^2$",
-                       covar_scale=0.01,
-                       realizations=500)
+fig, axes = plot_esmda(
+    forward_model,
+    iterations=3,
+    seed=42,
+    title="A quadratic model: $f(x_1, x_2) = (x_1 + 0.5)^2 + (x_2-1)^2$",
+    covar_scale=0.01,
+    realizations=500,
+)
 plt.savefig("quadratic_model.png", dpi=200)
 plt.show()
 
@@ -359,61 +368,113 @@ def forward_model(x):
 # find the minimum. However, ESMDA struggles. It moves slowly
 # due to the non-linearity, and as the ensemble adapts to the shape
 # it tends to become unstable and oscillates.
-fig, axes = plot_esmda(forward_model, iterations=3, 
-                       seed=42, title="A quadratic model: $f(x_1, x_2) = x_1^2 + x_2^2$",
-                       covar_scale=0.01,
-                       realizations=500)
+fig, axes = plot_esmda(
+    forward_model,
+    iterations=3,
+    seed=42,
+    title="A quadratic model: $f(x_1, x_2) = x_1^2 + x_2^2$",
+    covar_scale=0.01,
+    realizations=500,
+)
 plt.savefig("quadratic_model_coverage.png", dpi=200)
 plt.show()
 
+
+def forward_model(x):
+    return np.sum((x - np.array([0.5, 0.5])) ** 2, keepdims=True) - 0.001
+
+
+# On a simple quadratic, an optimization algorithm would immediately
+# find the minimum. However, ESMDA struggles. It moves slowly
+# due to the non-linearity, and as the ensemble adapts to the shape
+# it tends to become unstable and oscillates.
+fig, axes = plot_esmda(
+    forward_model,
+    iterations=3,
+    seed=42,
+    title="A quadratic model: $f(x_1, x_2) = (x_1-0.5)^2 + (x_2-0.5)^2$",
+    covar_scale=0.01,
+    realizations=500,
+)
+plt.savefig("quadratic_model_high_coverage.png", dpi=200)
+plt.show()
+
+
 # =================================================
-def moved_in_right_direction(realizations, iterations, seed):
-    
+def moved_in_right_direction(realizations, iterations, seed, linear=True):
     # Create a high-dimensional problem
     dimensions = 100
-    
-    def forward_model(x):
-        return np.sum(x**2, keepdims=True)
-    
+
+    if linear:
+
+        def forward_model(x):
+            return np.sum(x, keepdims=True)  # + 1e-3 * np.sum(x**2, keepdims=True)
+    else:
+
+        def forward_model(x):
+            return np.sum(x**2, keepdims=True)
+
     # Vectorized version of forward model
     def F(X):
         return np.array([forward_model(x_i) for x_i in X.T]).T
-    
+
     covariance = np.ones(1) * 0.01
     observations = np.ones(1) * 0
-    
+
     esmda = ESMDA(covariance, observations, alpha=iterations, seed=seed)
-    
-    X_prior = 0.5 + 0.3 * rng.random(size=(dimensions, realizations))
-    
-    
+
+    X_prior = 1 + 0.3 * rng.random(size=(dimensions, realizations))
+    assert np.all(np.mean(X_prior, axis=1) > 0)
+
+    true_posterior = np.mean(X_prior, axis=1) * 0
+
     X = X_prior.copy()
     for _ in range(esmda.num_assimilations()):
         X = esmda.assimilate(X, F(X))
-        
 
-    num_moved = np.sum(np.mean(X, axis=1) < np.mean(X_prior, axis=1))
-    distance = np.linalg.norm(np.mean(X, axis=1))
-    return num_moved, distance / np.linalg.norm(np.mean(X_prior, axis=1))
+    prior_mean = np.mean(X_prior, axis=1)
+    posterior_mean = np.mean(X, axis=1)
 
+    # import matplotlib.pyplot as plt
+
+    # plt.scatter(prior_mean, posterior_mean)
+    # plt.show()
+
+    perc_moved = np.mean(np.abs(posterior_mean) < np.abs(prior_mean))
+    relative_dist = np.linalg.norm(posterior_mean - true_posterior) / np.linalg.norm(
+        prior_mean - true_posterior
+    )
+    return perc_moved, relative_dist
+
+
+import pandas as pd
+
+rows = []
 
 seeds = iter(range(9999))
 for realizations in [10, 25, 50, 100, 200, 500, 1000]:
-    
     results = []
     results_dist = []
-    for experiment in range(100):
-        num_moved, dist = moved_in_right_direction(realizations, iterations=1, 
-                                                seed=next(seeds))
-        results.append(num_moved)
+    for experiment in range(1000):
+        perc_moved, dist = moved_in_right_direction(
+            realizations, iterations=3, seed=next(seeds), linear=False
+        )
+        results.append(perc_moved)
         results_dist.append(dist)
-        
+
         # print(realizations, experiment, dist)
-        
-    print(f"Realizations: {realizations} Avg moved: {np.mean(results)} Avt dist: {np.mean(results_dist):.6f}")
+
+    print(
+        f"Realizations: {realizations} Avg moved: {np.mean(results)} Avt dist: {np.mean(results_dist):.6f}"
+    )
+
+    rows.append(
+        {
+            "realizations": realizations,
+            "percent_moved_in_correct_direction": np.mean(results),
+            "posterior_distance_over_prior_distance": np.mean(results_dist),
+        }
+    )
 
 
-
-
-
-
+print(pd.DataFrame(rows).round(2).to_markdown(index=False))
