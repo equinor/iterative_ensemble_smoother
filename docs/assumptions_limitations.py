@@ -29,9 +29,10 @@ for samples in range(1, 51):
 x = np.linspace(1, 51, num=2**10)
 sigma = np.sqrt(7 / 144)  # Var[A*B] = E[A] * E[B] - E[A*B]
 
-plt.plot(x, 0.25 + sigma / np.sqrt(x), color=COLORS[0], lw=2, alpha=0.8)
+plt.plot(x, 0.25 + sigma / np.sqrt(x), color=COLORS[0], lw=2, alpha=0.8, label="E[AB] $\pm \, \sigma/\sqrt{n}$")
 plt.plot(x, 0.25 - sigma / np.sqrt(x), color=COLORS[0], lw=2, alpha=0.8)
 
+plt.legend()
 plt.xlabel("Number of samples $n$")
 plt.ylabel("E[AB] : Expected value\nof product of uniforms")
 plt.grid(True, ls="--", alpha=0.4)
@@ -131,11 +132,11 @@ observations = np.zeros(1)
 
 for i, covariance_factor in enumerate([0.1, 0.01, 0.001]):
     ax = next(axes)
-    ax.set_title(f"Covariance = {covariance_factor}")
+    ax.set_title(f"Obs. noise = {covariance_factor}")
     covariance = np.diag([1]) * covariance_factor
 
     # All contours in gray with labels
-    cs = ax.contour(X1, X2, Z, levels=10, cmap="Greys", alpha=0.7, vmin=-20, vmax=4)
+    cs = ax.contour(X1, X2, Z, levels=10, colors="k", alpha=0.7, vmin=-20, vmax=4)
     if i == 0:
         ax.clabel(cs, inline=True, fontsize=8, fmt="%.1f")
 
@@ -148,6 +149,8 @@ for i, covariance_factor in enumerate([0.1, 0.01, 0.001]):
 
     ax.set_xlim([-1, 2])
     ax.set_ylim([-1, 2])
+    ax.set_xlabel("$x_1$")
+    ax.set_ylabel("$x_2$")
     ax.grid(True, ls="--", alpha=0.5)
 
     esmda = ESMDA(covariance, observations, alpha=1, seed=rng)
@@ -174,6 +177,7 @@ def plot_esmda(
     covar_scale=0.001,
     realizations=99,
     cov=None,
+    plot_limits=(-1, 2)
 ):
     """
     Plot ESMDA iterations for a 2D parameter space.
@@ -185,8 +189,8 @@ def plot_esmda(
         return np.array([forward_model(x_i) for x_i in X.T]).T
 
     # Set up grid for contours
-    x1 = np.linspace(-1, 2, 100)
-    x2 = np.linspace(-1, 2, 100)
+    x1 = np.linspace(*plot_limits, 100)
+    x2 = np.linspace(*plot_limits, 100)
     X1, X2 = np.meshgrid(x1, x2)
 
     # Evaluate forward_model on the grid
@@ -238,12 +242,14 @@ def plot_esmda(
     for i in range(esmda.num_assimilations() + 1):
         ax = next(axes_iter)
         ax.set_title(texts[i])
-        ax.set_xlim([-1, 2])
-        ax.set_ylim([-1, 2])
+        ax.set_xlim(plot_limits)
+        ax.set_ylim(plot_limits)
+        ax.set_xlabel("$x_1$")
+        ax.set_ylabel("$x_2$")
         ax.grid(True, ls="--", alpha=0.5)
 
         # All contours in gray with labels
-        cs = ax.contour(X1, X2, Z, levels=10, cmap="Greys", alpha=0.7, vmin=-20, vmax=4)
+        cs = ax.contour(X1, X2, Z, levels=10, colors="black", alpha=0.7, vmin=np.min(Z), vmax=np.max(Z))
         if i == 0:
             ax.clabel(cs, inline=True, fontsize=8, fmt="%.1f")
 
@@ -399,6 +405,29 @@ fig, axes = plot_esmda(
 plt.savefig("quadratic_model_high_coverage.png", dpi=200)
 plt.show()
 
+# =================================================
+
+def forward_model(x):
+    x = np.array([x[0] - 2, x[1] - 1])
+    return np.array([np.log1p(sp.optimize.rosen(x))])
+
+
+# On a simple quadratic, an optimization algorithm would immediately
+# find the minimum. However, ESMDA struggles. It moves slowly
+# due to the non-linearity, and as the ensemble adapts to the shape
+# it tends to become unstable and oscillates.
+fig, axes = plot_esmda(
+    forward_model,
+    iterations=3,
+    seed=42,
+    title="The rosenbrock function",
+    covar_scale=0.01,
+    realizations=500,
+    plot_limits=(-4, 4)
+)
+plt.savefig("rosenbrock.png", dpi=200)
+plt.show()
+
 
 # =================================================
 def moved_in_right_direction(realizations, iterations, seed, linear=True):
@@ -457,7 +486,7 @@ for realizations in [10, 25, 50, 100, 200, 500, 1000]:
     results_dist = []
     for experiment in range(1000):
         perc_moved, dist = moved_in_right_direction(
-            realizations, iterations=3, seed=next(seeds), linear=False
+            realizations, iterations=1, seed=next(seeds), linear=True
         )
         results.append(perc_moved)
         results_dist.append(dist)
