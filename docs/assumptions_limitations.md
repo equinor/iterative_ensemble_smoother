@@ -1,26 +1,26 @@
 # Assumptions and limitations
 
-This document highlights some inherit limitations when working with ESMA by studying low-dimensional examples that can be visualized.
+This document highlights some inherit limitations when working with ESMDA by studying low-dimensional examples that can be visualized.
 The goal is to give an intuition for how ESMDA works, and perhaps more importantly: showcase some of its limitations.
 
-Data assimilation algorithms like ES (Ensemble Smoother) and ESMDA (Ensemble Smoother with Multiple Data Assimilation) are used in complicated domains such as atmospheric physics and petroleum reservoirs.
-This might lead you to believe that they are complex, sophisticated algorithms that work well on a wide variety of problems.
+Data assimilation algorithms like ES (Ensemble Smoother) and ESMDA (Ensemble Smoother with Multiple Data Assimilation) are used in complicated domains such as atmospheric physics and petroleum reservoir modeling.
+This might lead some to believe that they are complex, sophisticated algorithms that work well on a wide variety of problems.
 The opposite is true: they are in many ways quite simple and they impose restrictive assumptions.
 Although the assumptions used to derive ES and ESMDA are never met in practice, the algorithms are still useful.
 
 As a reminder, the problem that ESMDA solves is this: given a prior over model parameters as well as observed outcomes, adjust the prior in the direction of the observed outcomes.
-In other words, the goal is to approximate the posterior distribution, given a prior as described by sampled realizations and and observation.
+In other words, the goal is to approximate the posterior distribution, given a prior as described by sampled realizations and an observation.
 
 ## The algorithms are simple because the models are complex
 
 MCMC (Markov Chain Monte Carlo) is used in most statistical applications where the goal is to sample a posterior distribution.
-This is state of the art, but in geology we use ES and ESMDA, not MCMC.
+This is state of the art, but in petroleum reservoir modeling we use ES and ESMDA, not MCMC.
 How come?
 
-The reason is that since the models are complex (slow to evaluate, black-box, with many parameters), the method must remain simple for the overall inference to have any chance of success:
+The reason is that since the models are complex (slow to evaluate, black-box, many parameters), the method must remain simple for the overall inference to have any chance of success:
 
 - Most statistical models are fast to evaluate, a reservoir simulator is slow
-- Most statistical models are differentiable, while a reservoir simulator is not (it is considered "black-box")
+- Most statistical models are differentiable, while a reservoir simulator is not (it is considered black-box)
 
 Algorithms like ES an ESMDA are simple in the sense that their theoretical foundation rests on an assumption that is never met in reality: a Gauss-Linear model.
 Both of the assumptions (1) linearity of the model $`f`$ and (2) Gaussian noise are unmet in practice.
@@ -29,9 +29,9 @@ The figure below shows the Gauss-linear case, where the ESMDA solution correspon
 
 ![](linear_model_obs_noise.png)
 
-In this example, two inputs (parameters) go into the model $`f`$ and there is one output.
-Several inputs could produce the observed value (black line).
-ES (one iteration of ESMDA) moves the prior toward the parameter configuration that explains the observed values.
+In this example, two inputs (parameters) go into the model $`f(x_1, x_2) = x_1 + x_2`$ and there is one output.
+Several inputs could produce the observed value $`f(x_1, x_2) = 0`$ (black line).
+ES (one iteration of ESMDA) moves the prior toward the parameter configuration that explains the observed value $`0`$.
 The size of the movement depends on the observation noise, which is an algorithm parameter.
 In the rest of this document we'll set the observation noise to a low number.
 
@@ -44,10 +44,10 @@ In reservoir models each function evaluation (running the simulator) is expensiv
 
 This can be an issue even in small, simple problems:
 Suppose $`A`$ and $`B`$ are two uniform variables with distribution $`U(0, 1)`$.
-Supopse we want to compute the expected value of their product, i.e., $`\mathbb{E}[AB]`$ ?
+Suppose we want to compute the expected value of their product, i.e., $`\mathbb{E}[AB]`$.
 
 The theoretical answer is 1/4. 
-We can compute a Monte Carlo answer by drawsing 25 samples frome each distribution, multiplying them together, and computing the mean value.
+We can compute a Monte Carlo answer by drawing 25 samples from each distribution, multiplying them together, and computing the mean value.
 If we do this with 25 samples, we get 0.266 on the first try.
 That's a pretty good approximation!
 However, if we re-seed the random number generator and try again we get 0.200 as the result.
@@ -55,7 +55,7 @@ A third seed produces 0.239, a fourth seed 0.226, etc.
 
 With less than 25 samples the results are even worse.
 In fact, the uncertainty (standard deviation) decreases asymptotically like $`1/\sqrt{n}`$, where $`n`$ is the number of samples.
-The asymptotic result holds for _any_ quantity that you wish to estimate, but the constant differs depending on exactly what quantity you estimate.
+The asymptotic result holds for _any_ quantity that we wish to estimate, but the constant differs depending on exactly what quantity we estimate.
 In the book Statistical Rethinking (section 9.5.1), McElreath writes:
 
 > If all you want are posterior means, it doesn't take many samples at all to get very good estimates.
@@ -64,7 +64,7 @@ In the book Statistical Rethinking (section 9.5.1), McElreath writes:
 
 McElreath says a few hundred will do, and in most books and papers at least a thousand samples are used.
 The figure below shows the estimation of $`\mathbb{E}[AB]`$ as a function of the number of samples.
-Each done is one simulation study using $`n`$ samples.
+Each dot is one simulation study using $`n`$ samples.
 
 ![](sample_estimation_sqrt.png)
 
@@ -73,16 +73,15 @@ The lesson is that whether we compute simple quantities such as $`\mathbb{E}[AB]
 ### Marginal distributions hide high-dimensional information
 
 Summary statistics like the expected value summarize information by collapsing many samples to a single value.
-One remedy is to plot and inspect all samples with a histogram.
+To inspect the distribution, we can plot all the samples with a histogram.
 
 However, histograms do not tell us anything about high dimensional phenomena such as correlations or other structure.
-The figure below shows three data set with identical marginals (therefore also identical summary statistics: mean, standard deviation, etc.).
+The figure below shows three data set with identical marginals (therefore also identical summary statistics: mean, standard deviation, etc.), but very different joint distributions.
 
 ![](identical_marginals.png)
 
-Plotting only reveals relationships in one dimension and two dimensions.
-In high dimensions it is hard to study the relationships between variables.
-This means that high-dimensional relationships can be hard to understand when looking at variables one-at-a-time, or even two-at-a-time.
+Plotting only reveals relationships in one or two dimensions.
+High-dimensional relationships can be hard to understand when looking at variables one-at-a-time, or even two-at-a-time.
 
 ## The ensemble smoother
 
@@ -98,12 +97,16 @@ What is the true, analytical posterior in this case?
 The samples are drawn from a 2D gaussian, and this defines the prior distribution.
 The observations are defined by the black line $`f(x_1, x_2)=0`$, and we assign very low noise to these samples.
 The posterior is therefore the 2D gaussian evaluated on the black line.
-This is the region of parameter space that corresponds both with the prior and with the observations.
+This is the region of parameter space that aligns both with the prior and with the observations.
 Imagine walking over a mountain (the 2D gaussian) on a path (the black line), and at each step measuring the height (probability density): the height as a function of the coordinates $`(x_1, x_2)`$ gives the probability density at each point.
 
 ![](non_linear_model_two_iters.png)
 
 The first iteration above only takes us part-way because when we linearize a quadratic function, the linear approximation is a lower bound (the function is convex).
+This phenomenon is shown in the figure below:
+
+![](linear_quadratic_model.png)
+
 With a concave function, such as a square-root, the opposite phenomenom occurs: ESMDA overshoots it the first iteration and corrects in the second.
 
 ![](non_linear_model_overshoot.png)
@@ -117,11 +120,11 @@ More on this in the next section.
 ### The update direction is determined by gradient, covariance and more
 
 In all examples above, ESMDA behaves a bit like a typical optimization algorithm (e.g. steepest descent) because the updates follow the gradient.
-However, ESMDA is not exactly an optimization algorithm in the traditional sense: it's goal is to move the samples toward the posterior while capturing the uncertainty, not determine the single point where $`f(x_1, x_2)=0`$.
+However, ESMDA is not exactly an optimization algorithm in the traditional sense: its goal is to move the samples toward the posterior while capturing the uncertainty, not determine a single point where $`f(x_1, x_2)=0`$.
 
 ESMDA uses gradients implicitly, but it is also influenced by the covariance in the current ensemble members (the samples).
 This is shown in the figure below, where the update does not go to the origin (which is the point on the line closest to the prior mean).
-This result matches the theoretical posterior distribution (this problem is Gauss-linear and ESMDA solves it correctly).
+The posterior computed by ESMDA matches the theoretical posterior distribution, since the problem is Gauss-linear.
 
 ![](linear_model_ellipse_prior.png)
 
@@ -133,11 +136,11 @@ In the quadratic example below, the theoretical posterior is a point mass at the
 Observe that after one iteration the spherical samples contract to an ellipse, which influences the update direction in the next iteration.
 This produces oscillations that lead to posterior estimates that are worse (in expected value) for some parameters compared to what we began with.
 By tweaking parameters it's possible to produce strong oscillations, even in two dimensions with very many samples.
-Adding observation noise can help mitigate this effect by regularizing the updates, but at the cost of using a model we might not believe in.
+Increasing observation noise can help mitigate this effect by regularizing the updates, but at the cost of using a model we might not believe in.
 
 ![](quadratic_model.png)
 
-In short, even with hundreds of samples on a 2D problem that is a simple quadratic, running ESMDA can be worse than not running it.
+In short, even with hundreds of samples on a 2D problem that is quadratic, running ESMDA can be worse than not running it.
 
 ### In high dimensions, everything is worse
 
@@ -161,7 +164,7 @@ In high dimensions, we cannot visualize ESMDA any longer.
 To set the stage, we create a 100-dimensional linear problem:
 
 ```math
-f(\boldsymbol{x}) = sum_{i=1}^{100} x_i
+f(\boldsymbol{x}) = \sum_{i=1}^{100} x_i
 ```
 
 The analytical prior distribution is 
@@ -176,16 +179,17 @@ Now, when we sample $`x_i \sim N(\mu=1, \sigma=0.3)`$, the mean of the samples m
 For instance, one particular sample of 10 realizations gives `[1.09, 0.69, 1.23, 1.28, 0.41, 0.61, 1.04, 0.91, 0.99, 0.74]`, and the sampled mean is `0.899`, which is around 10% away from the analytical mean of `1`.
 This leads to some error (but can be remedied in part by quasi monte carlo sampling such as latin hypercube sampling).
 
-Furthermore, the correlation of the samples might not correspond to the analytical correlation of the distribution.
+Furthermore, the correlations of the samples might not correspond to the analytical correlation of the distribution.
 This phenomena is called spurious correlations.
-For instance, if we draw 100 samples from a 100D gaussian, a the median absolute correlation is `0.07` or so.
+For instance, if we draw 100 samples from a 100D gaussian, the median absolute correlation is `0.07` or so.
 The largest correlation is `0.38`.
+This is due to random chance in sampling.
 
 Below we run 1000 experiments for each number of realizations and report two results:
 
 - `percent_moved_in_correct_direction`: How many of the parameters $`x_i`$ have means that improve after running ESMDA?
   In other words, what is the probability that $`\mathbb{E}[x_i^{posterior}]`$ is closer to $`0`$ than $`\mathbb{E}[x_i^{prior}]`$? A higher number is better.
-- `posterior_distance_over_prior_distance`: The prior distribution has a 100D mean value $`(\mathbb{E}[x_1^{prior}], \mathbb{E}[x_2^{prior}], \mathbb{E}[x_23{prior}], \ldots)`$ and a distance from the origin (true posterior) $`(1, 1, 1, \ldots)`$ that we can compute. Similarily the posterior mean has a distance from the origin. What is the ratio of these distances? A lower number is better, and a number less than one means that posterior distance is closer to the true posterior than the prior distance was.
+- `posterior_distance_over_prior_distance`: The prior distribution has a 100D mean value $`(\mathbb{E}[x_1^{prior}], \mathbb{E}[x_2^{prior}], \mathbb{E}[x_3^{prior}], \ldots)`$ and a distance from the origin (true posterior) $`(0, 0, 0, \ldots)`$ that we can compute. Similarily the posterior mean has a distance from the origin. What is the ratio of these distances? A lower number is better, and a number less than one means that posterior distance is closer to the true posterior than the prior distance was.
 
 Since it is possible to improve individual variables while worsening the total distance, we report both metrics.
 
