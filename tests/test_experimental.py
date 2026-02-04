@@ -1967,6 +1967,72 @@ def test_update_params_3D(
     snapshot.assert_match(str(X_post_stdev_3D) + "\n", "X_post_stdev_3D.txt")
 
 
+@pytest.mark.parametrize(
+    "num_ensemble",
+    [10, 100, 1000],
+)
+def test_that_distance_esmda_alpha_as_integer_and_array_returns_same_result(
+    num_ensemble,
+):
+    """Test that DistanceESMDA gives same results when alpha is an integer
+    vs when it's an array of ones with the same length.
+
+    This test mirrors test_that_alpha_as_integer_and_array_returns_same_result
+    from test_esmda.py but for DistanceESMDA.
+    """
+    seed = num_ensemble
+    rng = np.random.default_rng(seed)
+
+    num_outputs = 2
+    num_inputs = 10
+
+    def g(x):
+        """Transform a single ensemble member."""
+        return np.array([np.sin(x[0] / 2), x[1]]) + 5
+
+    def G(X):
+        """Transform all ensemble members."""
+        if X.ndim == 1:
+            return g(X)
+        return np.array([g(X[:, i]) for i in range(X.shape[1])]).T
+
+    # Prior is N(0, 1)
+    X_prior = rng.normal(size=(num_inputs, num_ensemble))
+
+    # Measurement errors
+    covariance = np.eye(num_outputs)
+
+    # The true inputs and observations, a result of running with N(1, 1)
+    X_true = rng.normal(size=(num_inputs,)) + 1
+    observations = G(X_true)
+
+    # Create a simple localization matrix rho (num_inputs x num_outputs)
+    # Use a simple distance-based decay
+    localization_radius = 5.0
+    rho = np.zeros((num_inputs, num_outputs))
+    for i in range(num_inputs):
+        for j in range(num_outputs):
+            distance = abs(i - j)
+            rho[i, j] = np.exp(-0.5 * (distance / localization_radius) ** 2)
+
+    # Create DistanceESMDA instance from an integer `alpha` and run it
+    esmda_integer = DistanceESMDA(covariance, observations, alpha=5, seed=seed)
+    X_i_int = np.copy(X_prior)
+    for _ in range(esmda_integer.num_assimilations()):
+        Y_i = G(X_i_int)
+        X_i_int = esmda_integer.assimilate(X=X_i_int, Y=Y_i, rho=rho)
+
+    # Create another DistanceESMDA instance from a vector `alpha` and run it
+    esmda_array = DistanceESMDA(covariance, observations, alpha=np.ones(5), seed=seed)
+    X_i_array = np.copy(X_prior)
+    for _ in range(esmda_array.num_assimilations()):
+        Y_i = G(X_i_array)
+        X_i_array = esmda_array.assimilate(X=X_i_array, Y=Y_i, rho=rho)
+
+    # Exactly the same result with equal seeds
+    assert np.allclose(X_i_int, X_i_array)
+
+
 if __name__ == "__main__":
     pytest.main(
         args=[
