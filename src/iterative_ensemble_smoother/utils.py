@@ -176,18 +176,26 @@ def calc_max_number_of_layers_per_batch_for_distance_localization(
         on the platform and it is supposed to be used to monitor actual
         memory usage in a cross platform fashion.
 
-    Args:
-        nx: grid size in I-direction (local x-axis direction)
-        ny: grid size in J-direction (local y-axis direction)
-        nz: grid size in K-direction (number of layers)
-        num_obs: Number of observations
-        nreal: Number of realizations
-        bytes_per_float: Is 4 or 8
+    Parameters
+    ----------
+    nx : int
+        Grid size in I-direction (local x-axis direction).
+    ny : int
+        Grid size in J-direction (local y-axis direction).
+    nz : int
+        Grid size in K-direction (number of layers).
+    num_obs : int
+        Number of observations.
+    nreal : int
+        Number of realizations.
+    bytes_per_float : int, optional
+        Number of bytes per float (4 or 8). Default is 8.
 
-    Returns:
+    Returns
+    -------
+    int
         Max number of layers that can be updated in one batch to
         avoid memory problems.
-
     """
 
     memory_safety_factor = 0.8
@@ -251,15 +259,21 @@ def transform_positions_to_local_field_coordinates(
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """Calculates coordinate transformation from global to local coordinates.
 
-    Args:
-        coordys_origin: (x,y) coordinate of local coordinate
-        origin in global coordinates.
-        coordsys_rotation_angle: Angle for how much the local x-axis is rotated
-        anti-clockwise relative to the global x-axis in degrees.
-        utmx: vector of x-coordinates in global coordinates.
-        utmy: vector of y-coordinates in global coordinates.
+    Parameters
+    ----------
+    coordsys_origin : tuple of float
+        (x, y) coordinate of local coordinate origin in global coordinates.
+    coordsys_rotation_angle : float
+        Angle for how much the local x-axis is rotated anti-clockwise
+        relative to the global x-axis in degrees.
+    utmx : np.ndarray
+        Vector of x-coordinates in global coordinates.
+    utmy : np.ndarray
+        Vector of y-coordinates in global coordinates.
 
-    Returns:
+    Returns
+    -------
+    tuple of np.ndarray
         First vector is local x-coordinates and second vector is local y-coordinates.
     """
     # Translate
@@ -283,12 +297,17 @@ def transform_local_ellipse_angle_to_local_coords(
 ) -> npt.NDArray[np.float64]:
     """Calculate angles relative to local coordinate system.
 
-    Args:
-        coordsys_rotation_angle: Local coordinate systems rotation angle
-        relative to the global coordinate system.
-        ellipse_anisotropy_angle: Vector of input angles in global coordinates.
+    Parameters
+    ----------
+    coordsys_rotation_angle : float
+        Local coordinate systems rotation angle relative to the global
+        coordinate system.
+    ellipse_anisotropy_angle : np.ndarray
+        Vector of input angles in global coordinates.
 
-    Returns:
+    Returns
+    -------
+    np.ndarray
         Vector of output angles relative to the local coordinate system.
     """
     # Both angles measured anti-clock from global coordinate systems x-axis in degrees
@@ -298,16 +317,21 @@ def transform_local_ellipse_angle_to_local_coords(
 def localization_scaling_function(
     distances: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
-    """Calculate scaling factor to be used as values in
-    RHO matrix in distance-based localization.
-    The scaling function implements the commonly
-    used function published by Gaspari and Cohn.
-    For input normalized distance >= 2, the value will be 0.
+    """Calculate scaling factor to be used as values in RHO matrix.
 
-    Args:
-        distances: Vector of values for normalized distances.
+    Calculate scaling factor to be used as values in RHO matrix in distance-based
+    localization. The scaling function implements the commonly used function
+    published by Gaspari and Cohn. For input normalized distance >= 2,
+    the value will be 0.
 
-    Returns:
+    Parameters
+    ----------
+    distances : np.ndarray
+        Vector of values for normalized distances.
+
+    Returns
+    -------
+    np.ndarray
         Values of scaling factors for each value of input distance.
     """
     # "gaspari-cohn"
@@ -373,19 +397,32 @@ def calc_rho_for_2d_grid_layer(
     calculated for the combination ((i,j), n) and this covers
     one grid layer in ertbox grid or a 2D surface grid.
 
-    Args:
-        nx: Number of grid cells in x-direction of local coordinate system.
-        ny: Number of grid cells in y-direction of local coordinate system.
-        xinc: Grid cell size in x-direction.
-        yinc: Grid cell size in y-direction.
-        obs_xpos: Observations x coordinates in local coordinates
-        obs_ypos: Observatiopns y coordinates in local coordinates
-        obs_main_range: Localization ellipse first range
-        obs_perp_range: Localization ellipse second range
-        obs_anisotropy_angle: Localization ellipse orientation relative
-        to local coordinate system in degrees
+    Parameters
+    ----------
+    nx : int
+        Number of grid cells in x-direction of local coordinate system.
+    ny : int
+        Number of grid cells in y-direction of local coordinate system.
+    xinc : float
+        Grid cell size in x-direction.
+    yinc : float
+        Grid cell size in y-direction.
+    obs_xpos : np.ndarray
+        Observations x coordinates in local coordinates.
+    obs_ypos : np.ndarray
+        Observations y coordinates in local coordinates.
+    obs_main_range : np.ndarray
+        Localization ellipse first range.
+    obs_perp_range : np.ndarray
+        Localization ellipse second range.
+    obs_anisotropy_angle : np.ndarray
+        Localization ellipse orientation relative to local coordinate system in degrees.
+    right_handed_grid_indexing : bool, optional
+        Whether to use right-handed grid indexing. Default is True.
 
-    Returns:
+    Returns
+    -------
+    np.ndarray
         Rho matrix values for one layer of the 3D ertbox grid or for a 2D surface grid.
     """
     # Center points of each grid cell in field parameter grid
