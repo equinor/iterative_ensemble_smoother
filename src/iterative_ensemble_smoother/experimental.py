@@ -466,8 +466,18 @@ class DistanceESMDA(ESMDA):
         alpha: Union[int, npt.NDArray[np.float64]] = 5,
         seed: Union[np.random._generator.Generator, int, None] = None,
     ) -> None:
-        """
-        Initialize instance.
+        """Initialize DistanceESMDA instance.
+
+        Parameters
+        ----------
+        covariance : np.ndarray
+            Covariance matrix of the observations.
+        observations : np.ndarray
+            Array of observations.
+        alpha : int or np.ndarray, optional
+            Covariance inflation factor(s). Default is 5.
+        seed : np.random.Generator or int or None, optional
+            Random seed for reproducibility. Default is None.
         """
         # Initialize instance
         super().__init__(
@@ -490,35 +500,40 @@ class DistanceESMDA(ESMDA):
         rho: npt.NDArray[np.float64],
         truncation: float = 0.99,
     ):
-        """
+        """Calculate Ensemble Smoother update with distance-based localization.
+
         Implementation of algorithm described in Appendix B of Emerick's publication.
         Reference: Emerick, Journal of Petroleum Science and Engineering 136(3):219-239
                    DOI:10.1016/j.petrol.2016.01.029  (2016)
 
-        Calculate Ensemble Smoother update with distance-based localization using the
-        RHO matrix to define the scaling/tapering function for reduction of observations
-        influence on field parameters. This function implements all steps in
-        the algorithm.
+        Uses the RHO matrix to define the scaling/tapering function for reduction of
+        observations influence on field parameters. This function implements all steps
+        in the algorithm.
 
         Typical workflow:
           Create object of DistanceESMDA
           Loop over batches of field parameter values from a field parameter:
             Run 'assimilate' for each batch of field parameter values
 
-        Args:
-            X: Parameter matrix shape=(nparameters, nrealizations)
-            Y: Response matrix with predictions of observations,
-               shape=(nobservations, nrealizations)
-            rho: Localization matrix with scaling factors,
-                 shape= (nparameters, nobservations)
-            truncation: Define threshold for how many singular values
-                 to include from SVD
+        Parameters
+        ----------
+        X : np.ndarray
+            Parameter matrix of shape (nparameters, nrealizations).
+        Y : np.ndarray
+            Response matrix with predictions of observations,
+            shape (nobservations, nrealizations).
+        rho : np.ndarray
+            Localization matrix with scaling factors,
+            shape (nparameters, nobservations).
+        truncation : float, optional
+            Threshold for how many singular values to include from SVD.
+            Default is 0.99.
 
-        Results:
+        Returns
+        -------
+        np.ndarray
             Posterior (updated) matrix with parameters,
-            shape=(nparameters, nrealizations)
-
-
+            shape (nparameters, nrealizations).
         """
 
         N_n, N_e = Y.shape
@@ -621,21 +636,19 @@ class DistanceESMDA(ESMDA):
           Loop over batches of field parameter values from a field parameter:
             Run 'assimilate_batch' for each batch of field parameter values
 
-
-        Args:
-            Y: Response matrix with predictions of observations,
-               shape=(nobservations, nrealizations)
-            D: Matrix of perturbed observations.
-               The shape is (nobservations, nrealizations).
-               Note that if D is None, the perturbed observations are drawn
-               inside this function using assumption of independence
-               between observation errors.
-
-        Results:
-            Updated internal matrices such that assimilate_batch function
-            can be used without having to re-calculate all steps not involving
-            the field parameters, but only the observations.
-
+        Parameters
+        ----------
+        Y : np.ndarray
+            Response matrix with predictions of observations,
+            shape (nobservations, nrealizations).
+        truncation : float, optional
+            Threshold for how many singular values to include from SVD.
+            Default is 0.99.
+        D : np.ndarray or None, optional
+            Matrix of perturbed observations, shape (nobservations, nrealizations).
+            If None, the perturbed observations are drawn inside this function
+            using assumption of independence between observation errors.
+            Default is None.
         """
 
         N_n, N_e = Y.shape
@@ -724,7 +737,8 @@ class DistanceESMDA(ESMDA):
         D: npt.NDArray[np.float64] = None,
         truncation: float = 0.99,
     ):
-        """
+        """Calculate Ensemble Smoother update for a batch of parameters.
+
         Implementation of algorithm described in Appendix B of Emerick's publication.
         Reference: Emerick, Journal of Petroleum Science and Engineering 136(3):219-239
                    DOI:10.1016/j.petrol.2016.01.029  (2016)
@@ -733,23 +747,30 @@ class DistanceESMDA(ESMDA):
         RHO matrix to define the scaling/tapering function for reduction of observations
         influence on field parameters. This function implements the update steps
         of the field parameters and requires that the initial steps in the algorithm
-        is already run by using the function 'prepare_assimilation'
+        is already run by using the function 'prepare_assimilation'.
 
-        Args:
-            X: Parameter matrix shape=(nparameters, nrealizations)
-            Y: Response matrix with predictions of observations,
-               shape=(nobservations, nrealizations)
-            rho_batch: Localization matrix with scaling factors,
-                 shape= (nparameters, nobservations)
-            D: Perturbed observations, shape=(nobservations,nrealizations)
-               Optional, default is to simulate the perturbations internally
-               within this class
+        Parameters
+        ----------
+        X_batch : np.ndarray
+            Parameter matrix of shape (nparameters, nrealizations).
+        Y : np.ndarray
+            Response matrix with predictions of observations,
+            shape (nobservations, nrealizations).
+        rho_batch : np.ndarray
+            Localization matrix with scaling factors,
+            shape (nparameters, nobservations).
+        D : np.ndarray or None, optional
+            Perturbed observations, shape (nobservations, nrealizations).
+            If None, perturbations are simulated internally. Default is None.
+        truncation : float, optional
+            Threshold for how many singular values to include from SVD.
+            Default is 0.99.
 
-        Results:
+        Returns
+        -------
+        np.ndarray
             Posterior (updated) matrix with parameters,
-            shape=(nparameters, nrealizations)
-
-
+            shape (nparameters, nrealizations).
         """
         if self.X3 is None:
             # Need to run preparation step
@@ -781,22 +802,28 @@ class DistanceESMDA(ESMDA):
         Y: npt.NDArray[np.float64],
         rho_1D: npt.NDArray[np.float64],
     ) -> npt.NDArray[np.float64]:
-        """
-        Calculate posterior update with distance-based ESMDA for one 1D parameter
-        The RHO matrix is specified as input.
-        Result is posterior parameter matrix
+        """Calculate posterior update with distance-based ESMDA for one 1D parameter.
 
-        Args:
-            X_prior: Matrix with prior realizations of all field parameters,
-                    shape=(nparameters, nrealizations)
-            Y: Matrix with response values for each observations for each realization,
-                    shape=(nobservations, nrealizations)
-            rho_1D: RHO matrix elements for a 1D grid with size nx,
-                    shape=(nx,nobservations). If None is input, rho is set to 1
-                    for every matrix element and there will be no localization.
-        Results:
-            X_post: Posterior ensemble of field parameters,
-            shape=(nx, nrealizations)
+        The RHO matrix is specified as input.
+
+        Parameters
+        ----------
+        X_prior : np.ndarray
+            Matrix with prior realizations of all field parameters,
+            shape (nparameters, nrealizations).
+        Y : np.ndarray
+            Matrix with response values for each observation for each realization,
+            shape (nobservations, nrealizations).
+        rho_1D : np.ndarray
+            RHO matrix elements for a 1D grid with size nx,
+            shape (nx, nobservations). If None is input, rho is set to 1
+            for every matrix element and there will be no localization.
+
+        Returns
+        -------
+        np.ndarray
+            Posterior ensemble of field parameters,
+            shape (nx, nrealizations).
         """
         if Y is None or Y.shape[0] == 0:
             # No observation, no update
@@ -823,23 +850,30 @@ class DistanceESMDA(ESMDA):
         Y: npt.NDArray[np.float64],
         rho_2D: npt.NDArray[np.float64],
     ) -> npt.NDArray[np.float64]:
-        """
-        Calculate posterior update with distance-based ESMDA for one 2D parameter
-        The RHO matrix is specified as input. Result is posterior parameter matrix.
-        Number of parameters for the field is nx*ny,
-        dimensions of the rho_2D in addition to number of observations.
-        Args:
-            X_prior: Matrix with prior realizations of all field parameters,
-                    shape=(nparameters, nrealizations)
-            Y: Matrix with response values for each observations for each realization,
-                    shape=(nobservations, nrealizations)
-            rho_2D: RHO matrix elements for a 2D grid with size (nx,,ny)
-                    shape=(nx,ny, nobservations). If None is input, rho is set to 1
-                    for every matrix element and there will be no localization.
-                    nx and ny are the dimensions of the 2D field.
-        Results:
-            X_post: Posterior ensemble of field parameters,
-                    shape=(nparameters, nrealizations)
+        """Calculate posterior update with distance-based ESMDA for one 2D parameter.
+
+        The RHO matrix is specified as input. Number of parameters for the field
+        is nx*ny, dimensions of the rho_2D in addition to number of observations.
+
+        Parameters
+        ----------
+        X_prior : np.ndarray
+            Matrix with prior realizations of all field parameters,
+            shape (nparameters, nrealizations).
+        Y : np.ndarray
+            Matrix with response values for each observation for each realization,
+            shape (nobservations, nrealizations).
+        rho_2D : np.ndarray
+            RHO matrix elements for a 2D grid with size (nx, ny),
+            shape (nx, ny, nobservations). If None is input, rho is set to 1
+            for every matrix element and there will be no localization.
+            nx and ny are the dimensions of the 2D field.
+
+        Returns
+        -------
+        np.ndarray
+            Posterior ensemble of field parameters,
+            shape (nparameters, nrealizations).
         """
         # No update if no observations or responses
         if Y is None or Y.shape[0] == 0:
@@ -876,34 +910,41 @@ class DistanceESMDA(ESMDA):
         nz: int,
         min_nbatch: int = 1,
     ) -> npt.NDArray[np.float64]:
-        """
-        Calculate posterior update with distance-based ESMDA for one 3D parameter.
+        """Calculate posterior update with distance-based ESMDA for one 3D parameter.
+
         The RHO for one layer of the 3D field parameter is input.
         This is copied to all other layers of RHO in each batch of grid parameter
         layers since only lateral distance is used when calculating distances.
-        Result is posterior parameter matrices of field parameters for one field.
         Number of parameters is nx*ny*nz where nx, ny is dimension of the rho_2D_slice
         in addition to number of observations.
 
-        Args:
-            X_prior: Matrix with prior realizations of all field parameters,
-                    shape=(nparameters, nrealizations)
-            Y: Matrix with response values for each observations for each realization,
-                    shape=(nobservations, nrealizations)
-            rho_2D_slice: RHO matrix elements for one layer (slice) of a 3D grid
-                    with size (nx, ny), shape=(nx,ny,nobservations). If this variable
-                    is None, then rho is set to 1 for all elements which means
-                    that no localization is used.
-            nz:     Number of grid layers for the 3D field parameter.
-            min_nbatch: Minimum number of batches the field parameter is split into.
-                    Default is 1. Usually number of batches will be calculated based
-                    on available memory and the size of the field parameters,
-                    number of observations and realizations. The actual number of
-                    batches will be max(min_nbatch, min_number_of_batches_required).
+        Parameters
+        ----------
+        X_prior : np.ndarray
+            Matrix with prior realizations of all field parameters,
+            shape (nparameters, nrealizations).
+        Y : np.ndarray
+            Matrix with response values for each observation for each realization,
+            shape (nobservations, nrealizations).
+        rho_2D_slice : np.ndarray
+            RHO matrix elements for one layer (slice) of a 3D grid
+            with size (nx, ny), shape (nx, ny, nobservations). If this variable
+            is None, then rho is set to 1 for all elements which means
+            that no localization is used.
+        nz : int, optional
+            Number of grid layers for the 3D field parameter. Default is 1.
+        min_nbatch : int, optional
+            Minimum number of batches the field parameter is split into.
+            Default is 1. Usually number of batches will be calculated based
+            on available memory and the size of the field parameters,
+            number of observations and realizations. The actual number of
+            batches will be max(min_nbatch, min_number_of_batches_required).
 
-        Results:
-            X_post: Posterior ensemble of field parameters,
-            shape=(nx*ny*nz, nrealizations)
+        Returns
+        -------
+        np.ndarray
+            Posterior ensemble of field parameters,
+            shape (nx*ny*nz, nrealizations).
         """
         # No update if no observations or responses
         if Y is None or Y.shape[0] == 0:
@@ -1036,35 +1077,41 @@ class DistanceESMDA(ESMDA):
         nz: int = 1,
         min_nbatch: int = 1,
     ) -> npt.NDArray[np.float64]:
-        """
-        Calculate posterior update with distance-based ESMDA.
-        Depending on the shape of rho_input it will update an 1D , 2D or 3D field.
-        Dimension of the ensemble X_prior is either (nx), (nx,ny) or (nx,ny,nz)
-        and rho_input define nx and ny while nz is number of layers in the grid
+        """Calculate posterior update with distance-based ESMDA.
+
+        Depending on the shape of rho_input it will update a 1D, 2D or 3D field.
+        Dimension of the ensemble X_prior is either (nx), (nx, ny) or (nx, ny, nz)
+        and rho_input defines nx and ny while nz is number of layers in the grid
         for the field parameter in 3D.
 
-        Args:
-            X_prior: Matrix with prior realizations of all field parameters,
-                    shape=(nparameters, nrealizations)
-            Y: Matrix with response values for each observations for each realization,
-                    shape=(nobservations, nrealizations)
-            rho_input: RHO matrix elements.
-                    If RHO_input has shape= (nx,nobs),
-                    X_prior is an ensemble of 1D fields
-                    If RHO_input has shape= (nx, ny, nobs),
-                    X_prior is an ensemble of 2D fields.
-                    If Rho_input has shape=(nx,ny,nobs) and nz > 1,
-                    X_prior is an ensemble of 3D fields with size (nx, ny, nz).
-            nz:     Number of grid layers for the 3D field parameter.
-            min_nbatch: Minimum number of batches the field parameter is split into.
-                    Default is 1. Usually number of batches will be calculated based
-                    on available memory and the size of the field parameters,
-                    number of observations and realizations. The actual number of
-                    batches will be max(min_nbatch, min_number_of_batches_required).
+        Parameters
+        ----------
+        X_prior : np.ndarray
+            Matrix with prior realizations of all field parameters,
+            shape (nparameters, nrealizations).
+        Y : np.ndarray
+            Matrix with response values for each observation for each realization,
+            shape (nobservations, nrealizations).
+        rho_input : np.ndarray
+            RHO matrix elements.
+            If rho_input has shape (nx, nobs), X_prior is an ensemble of 1D fields.
+            If rho_input has shape (nx, ny, nobs), X_prior is an ensemble of 2D fields.
+            If rho_input has shape (nx, ny, nobs) and nz > 1,
+            X_prior is an ensemble of 3D fields with size (nx, ny, nz).
+        nz : int, optional
+            Number of grid layers for the 3D field parameter. Default is 1.
+        min_nbatch : int, optional
+            Minimum number of batches the field parameter is split into.
+            Default is 1. Usually number of batches will be calculated based
+            on available memory and the size of the field parameters,
+            number of observations and realizations. The actual number of
+            batches will be max(min_nbatch, min_number_of_batches_required).
 
-        Results:
-            X_post: Posterior ensemble of field parameters,
-            shape=(nx*ny*nz, nrealizations)
+        Returns
+        -------
+        np.ndarray
+            Posterior ensemble of field parameters,
+            shape (nx*ny*nz, nrealizations).
         """
         if rho_input.ndim == 1:
             return self.update_params_1D(X_prior=X_prior, Y=Y, rho_1D=rho_input)
