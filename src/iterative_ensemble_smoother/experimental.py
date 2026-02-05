@@ -552,23 +552,24 @@ class DistanceESMDA(ESMDA):
             # it represents a diagonal matrix.
             # In this special case,
             # S_inv * C_D * S_inv simplifies to the identity matrix.
-            C_hat_D = np.identity(N_n)
+            U_r_w_inv = U_r / w_r
+            # See Eqn (B.13)
+            R = (
+                self.alpha
+                * (N_e - 1)
+                * np.linalg.multi_dot([U_r_w_inv.T, U_r_w_inv])
+            )
         else:  # C_D is a 2D matrix
-            # This scales each ROW i of self.C_D by the scalar S_inv_diag[i].
-            # This is numerically identical to the matrix multiplication S⁻¹ @ C_D
-            C_hat_D_temp = S_inv_diag[:, np.newaxis] * self.C_D
-
-            # This scales each COLUMN j of C_hat_D_temp by the scalar S_inv_diag[j].
-            # This is numerically identical to the matrix multiplication (result) @ S⁻¹
-            C_hat_D = C_hat_D_temp * S_inv_diag
-
-        U_r_w_inv = U_r / w_r
-        # See Eqn (B.13)
-        R = (
-            self.alpha
-            * (N_e - 1)
-            * np.linalg.multi_dot([U_r_w_inv.T, C_hat_D, U_r_w_inv])
-        )
+            # This scales each row and column of self.C_D by the vectir S_inv_diag.
+            # This is numerically identical to the matrix multiplication S^-1 @ C_D
+            C_hat_D = S_inv_diag[:, np.newaxis] * self.C_D * S_inv_diag
+            U_r_w_inv = U_r / w_r
+            # See Eqn (B.13)
+            R = (
+                self.alpha
+                * (N_e - 1)
+                * np.linalg.multi_dot([U_r_w_inv.T, C_hat_D, U_r_w_inv])
+            )
 
         # See Eqn (B.14)
         H_r, Z_r = sp.linalg.eigh(R, driver="evr", overwrite_a=True)
@@ -666,23 +667,25 @@ class DistanceESMDA(ESMDA):
             # it represents a diagonal matrix.
             # In this special case,
             # S_inv * C_D * S_inv simplifies to the identity matrix.
-            C_hat_D = np.identity(N_n)
+            U_r_w_inv = U_r / w_r
+            # See Eqn (B.13)
+            R = (
+                self.alpha
+                * (N_e - 1)
+                * np.linalg.multi_dot([U_r_w_inv.T, U_r_w_inv])
+            )
         else:  # C_D is a 2D matrix
-            # This scales each ROW i of self.C_D by the scalar S_inv_diag[i].
+            # This scales each row and column of self.C_D by the vectir S_inv_diag.
             # This is numerically identical to the matrix multiplication S⁻¹ @ C_D
-            C_hat_D_temp = S_inv_diag[:, np.newaxis] * self.C_D
+            C_hat_D = S_inv_diag[:, np.newaxis] * self.C_D * S_inv_diag
 
-            # This scales each COLUMN j of C_hat_D_temp by the scalar S_inv_diag[j].
-            # This is numerically identical to the matrix multiplication (result) @ S⁻¹
-            C_hat_D = C_hat_D_temp * S_inv_diag
-
-        U_r_w_inv = U_r / w_r
-        # See Eqn (B.13)
-        R = (
-            self.alpha
-            * (N_e - 1)
-            * np.linalg.multi_dot([U_r_w_inv.T, C_hat_D, U_r_w_inv])
-        )
+            U_r_w_inv = U_r / w_r
+            # See Eqn (B.13)
+            R = (
+                self.alpha
+                * (N_e - 1)
+                * np.linalg.multi_dot([U_r_w_inv.T, C_hat_D, U_r_w_inv])
+            )
 
         # See Eqn (B.14)
         H_r, Z_r = sp.linalg.eigh(R, driver="evr", overwrite_a=True)
