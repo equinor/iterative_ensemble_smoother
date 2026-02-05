@@ -1521,17 +1521,9 @@ def test_calc_max_number_of_layers_per_batch_for_distance_localization(
             100,
             1,
         ),
-        # (
-        #     412,
-        #     714,
-        #     51,
-        #     1500,
-        #     100,
-        #     1,
-        # ),
     ],
 )
-def test_batch_handling_for_update_params_3D(
+def test_that_batch_handling_for_update_params_3D_does_not_change_values_when_rho_matrix_is_zero(  # noqa: E501
     nx: int,
     ny: int,
     nz: int,
@@ -1541,9 +1533,7 @@ def test_batch_handling_for_update_params_3D(
 ):
     # This test function checks only the batch split part of the
     # member function 'update_params_3D' of the class DistanceESMDA
-    # The prior ensemble will only be copied, there is no update
-    # The purpose is to check that the field parameter values come
-    # in correct order (no index error)
+    # The prior ensemble will only be copied if the rho matrix is zero
 
     nparam = nx * ny * nz
     # Define a prior ensemble where each field parameter value for each realization
@@ -1553,6 +1543,8 @@ def test_batch_handling_for_update_params_3D(
     observations = np.zeros(nobs, dtype=np.float64)
     obs_var_vector = np.zeros(nobs, dtype=np.float64)
     Y = np.zeros((nobs, nreal), dtype=np.float64)
+
+    # Set the rho matrix to zero matrix
     rho_2D = np.zeros((nx, ny, nobs), dtype=np.float64)
 
     # Initialize Distance based localization object using the mock version
@@ -1570,7 +1562,6 @@ def test_batch_handling_for_update_params_3D(
         rho_2D,
         nz,
         min_nbatch=min_nbatch,
-        no_update=True,
     )
 
     # Check that X_prior = X_post

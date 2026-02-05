@@ -875,7 +875,6 @@ class DistanceESMDA(ESMDA):
         rho_2D_slice: npt.NDArray[np.float64],
         nz: int,
         min_nbatch: int = 1,
-        no_update: bool = False,
     ) -> npt.NDArray[np.float64]:
         """
         Calculate posterior update with distance-based ESMDA for one 3D parameter.
@@ -901,8 +900,6 @@ class DistanceESMDA(ESMDA):
                     on available memory and the size of the field parameters,
                     number of observations and realizations. The actual number of
                     batches will be max(min_nbatch, min_number_of_batches_required).
-            no_update: Is set to True only when testing the batch loop.
-                    Should be False to get any update.
 
         Results:
             X_post: Posterior ensemble of field parameters,
@@ -972,24 +969,29 @@ class DistanceESMDA(ESMDA):
                 (nparam_in_batch, nreal)
             )
 
-            # Copy rho calculated from one layer of 3D parameter into all layers for
-            # current batch of layers.
-            # Size of rho batch: (nx,ny,nlayer_per_batch,nobs)
-            rho_3D_batch = np.zeros((nx, ny, nlayer_per_batch, nobs), dtype=np.float64)
-            rho_3D_batch[:, :, :, :] = rho_2D_slice[:, :, np.newaxis, :]
-            rho_batch = rho_3D_batch.reshape((nparam_in_batch, nobs))
+            if np.count_nonzero(rho_2D_slice) != 0:
+                # Copy rho calculated from one layer of 3D parameter into all layers for
+                # current batch of layers.
+                # Size of rho batch: (nx,ny,nlayer_per_batch,nobs)
+                rho_3D_batch = np.zeros(
+                    (nx, ny, nlayer_per_batch, nobs), dtype=np.float64
+                )
+                rho_3D_batch[:, :, :, :] = rho_2D_slice[:, :, np.newaxis, :]
+                rho_batch = rho_3D_batch.reshape((nparam_in_batch, nobs))
 
-            if no_update:
-                # Only used for test purpose
-                X_post_batch = X_batch
-            else:
                 logger.debug(f"Assimilate batch number {batch_number}")
                 X_post_batch = self.assimilate_batch(
                     X_batch=X_batch, Y=Y, rho_batch=rho_batch
                 )
-            X_post_3D[:, :, start_layer_number:end_layer_number, :] = (
-                X_post_batch.reshape(nx, ny, nlayer_per_batch, nreal)
-            )
+
+                X_post_3D[:, :, start_layer_number:end_layer_number, :] = (
+                    X_post_batch.reshape(nx, ny, nlayer_per_batch, nreal)
+                )
+            else:
+                X_post_batch = X_batch
+                logger.debug(
+                    f"Skip assimilate for batch number {batch_number} since rho is zero"
+                )
 
         if nlayer_last_batch > 0:
             batch_number = nbatch
@@ -1001,23 +1003,28 @@ class DistanceESMDA(ESMDA):
                 (nparam_in_last_batch, nreal)
             )
 
-            rho_3D_batch = np.zeros((nx, ny, nlayer_last_batch, nobs), dtype=np.float64)
-            # Copy rho calculated from one layer of 3D parameter into all layers for
-            # current batch of layers
-            rho_3D_batch[:, :, :, :] = rho_2D_slice[:, :, np.newaxis, :]
-            rho_batch = rho_3D_batch.reshape((nparam_in_last_batch, nobs))
-            if no_update:
-                # Only used for test purpose
-                X_post_batch = X_batch
-            else:
-                logger.debug(f"Assimilate batch number {batch_number}")
+            if np.count_nonzero(rho_2D_slice) != 0:
+                rho_3D_batch = np.zeros(
+                    (nx, ny, nlayer_last_batch, nobs), dtype=np.float64
+                )
+                # Copy rho calculated from one layer of 3D parameter into all layers for
+                # current batch of layers
+                rho_3D_batch[:, :, :, :] = rho_2D_slice[:, :, np.newaxis, :]
+                rho_batch = rho_3D_batch.reshape((nparam_in_last_batch, nobs))
 
+                logger.debug(f"Assimilate batch number {batch_number}")
                 X_post_batch = self.assimilate_batch(
                     X_batch=X_batch, Y=Y, rho_batch=rho_batch
                 )
-            X_post_3D[:, :, start_layer_number:end_layer_number, :] = (
-                X_post_batch.reshape(nx, ny, nlayer_last_batch, nreal)
-            )
+
+                X_post_3D[:, :, start_layer_number:end_layer_number, :] = (
+                    X_post_batch.reshape(nx, ny, nlayer_last_batch, nreal)
+                )
+            else:
+                X_post_batch = X_batch
+                logger.debug(
+                    f"Skip assimilate for batch number {batch_number} since rho is zero"
+                )
 
         return X_post_3D.reshape(nparam, nreal)
 
@@ -1028,7 +1035,6 @@ class DistanceESMDA(ESMDA):
         rho_input: npt.NDArray[np.float64],
         nz: int = 1,
         min_nbatch: int = 1,
-        no_update: bool = False,
     ) -> npt.NDArray[np.float64]:
         """
         Calculate posterior update with distance-based ESMDA.
@@ -1055,8 +1061,6 @@ class DistanceESMDA(ESMDA):
                     on available memory and the size of the field parameters,
                     number of observations and realizations. The actual number of
                     batches will be max(min_nbatch, min_number_of_batches_required).
-            no_update: Is set to True only when testing the batch loop.
-                    Should be False to get any update.
 
         Results:
             X_post: Posterior ensemble of field parameters,
@@ -1072,7 +1076,6 @@ class DistanceESMDA(ESMDA):
             rho_2D_slice=rho_input,
             nz=nz,
             min_nbatch=min_nbatch,
-            no_update=no_update,
         )
 
 
