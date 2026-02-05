@@ -7,6 +7,7 @@ Data assimilation algorithms like ES (Ensemble Smoother) and ESMDA (Ensemble Smo
 This might lead some to believe that they are complex, sophisticated algorithms that work well on a wide variety of problems.
 The opposite is true: they are in many ways quite simple and they impose restrictive assumptions.
 Although the assumptions used to derive ES and ESMDA are never met in practice, the algorithms are still useful.
+ES is identical to one iteration of ESMDA.
 
 As a reminder, the problem that ESMDA solves is this: given a prior over model parameters as well as observed outcomes, adjust the prior in the direction of the observed outcomes.
 In other words, the goal is to approximate the posterior distribution, given a prior as described by sampled realizations and an observation.
@@ -72,7 +73,7 @@ The lesson is that whether we compute simple quantities such as $`\mathbb{E}[AB]
 
 ### Marginal distributions hide high-dimensional information
 
-Summary statistics like the expected value summarize information by collapsing many samples to a single value.
+Summary statistics, like the expected value, summarize information by collapsing many samples to a single value.
 To inspect the distribution, we can plot all the samples with a histogram.
 
 However, histograms do not tell us anything about high dimensional phenomena such as correlations or other structure.
@@ -143,6 +144,7 @@ Increasing observation noise can help mitigate this effect by regularizing the u
 ![](quadratic_model.png)
 
 In short, even with hundreds of samples on a 2D problem that is quadratic, running ESMDA can be worse than not running it.
+Before we ran ESMDA, the prior mean of $`x_2`$ was correct, but after running ESMDA the posterior mean of $`x_2`$ has shifted off in a direction that neither aligns with the prior not the observation.
 
 ### In high dimensions, everything is worse
 
@@ -158,7 +160,6 @@ In high dimensions, when the ratio of samples to dimensions is low, everything b
 - Estimating the gradient, which ESMDA implicitly does when it computes cross-covariance, becomes harder.
 
 Both of these are due to _spurious correlations_, which we will discuss below.
-In addition to this, more parameters means more chance that some of the samples from the prior distributions do not match the theoretical distributions.
 
 #### A high-dimensional, linear problem
 
@@ -179,7 +180,7 @@ The true posterior mean is therefore zero in every parameter.
 
 Now, when we sample $`x_i \sim N(\mu=1, \sigma=0.3)`$, the mean of the samples might not correspond to the analytical mean of the distribution.
 For instance, one particular sample of 10 realizations gives `[1.09, 0.69, 1.23, 1.28, 0.41, 0.61, 1.04, 0.91, 0.99, 0.74]`, and the sampled mean is `0.899`, which is around 10% away from the analytical mean of `1`.
-This particular type of error can be remediet in part by quasi Monte Carlo sampling such as Latin Hypercube Sampling.
+This particular type of error can be remedied in part by quasi Monte Carlo sampling such as Latin Hypercube Sampling.
 
 Furthermore, the correlations of the samples might not correspond to the analytical correlation of the distribution.
 This phenomena is called spurious correlations.
@@ -191,11 +192,10 @@ Below we run 1000 experiments for each number of realizations and report two res
 
 - `percent_moved_in_correct_direction`: How many of the parameters $`x_i`$ have means that improve after running ESMDA?
   In other words, what is the probability that $`\mathbb{E}[x_i^{posterior}]`$ is closer to $`0`$ than $`\mathbb{E}[x_i^{prior}]`$? A higher number is better.
-- `posterior_distance_over_prior_distance`: The prior distribution has a 100D mean value $`(\mathbb{E}[x_1^{prior}], \mathbb{E}[x_2^{prior}], \mathbb{E}[x_3^{prior}], \ldots)`$ and a distance from the origin (true posterior) $`(0, 0, 0, \ldots)`$ that we can compute. Similarily the posterior mean has a distance from the origin. What is the ratio of these distances? A lower number is better, and a number less than one means that posterior distance is closer to the true posterior than the prior distance was.
+- `posterior_distance_over_prior_distance`: The prior distribution has a 100D mean value $`(\mathbb{E}[x_1^{prior}], \mathbb{E}[x_2^{prior}], \mathbb{E}[x_3^{prior}], \ldots)`$ and a certain distance from the origin (true posterior) $`(0, 0, 0, \ldots)`$ that we can compute. Similarily, the posterior mean that ESMDA computes has a distance from the origin. What is the ratio of these distances? A lower number is better, and a number less than one means that posterior distance is closer to the true posterior than the prior distance was.
 
 Since it is possible to improve individual variables while worsening the total distance, we report both metrics.
-
-For instance:
+An example of this phenomenon is:
 ```text
 true_posterior = array([0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
 prior          = array([1., 1., 1., 1., 1., 1., 1., 1., 1., 1.])
