@@ -577,24 +577,24 @@ class DistanceESMDA(ESMDA):
         _X = (S_inv_diag[:, np.newaxis] * U_r) * (1 / w_r) @ Z_r
 
         # See Eqn (B.19)
-        L = np.diag(1.0 / (1.0 + H_r))
+        L = np.array(1.0 / (1.0 + H_r))
 
-        # See Eqn (B.20)
-        X1 = L @ _X.T
+        # See Eqn (B.20) through (B.24)
+        # X1 = L @ _X.T
         # See Eqn (B.21)
-        X2 = D_delta.T @ _X
+        # X2 = D_delta.T @ _X
         # See Eqn (B.22)
-        X3 = X2 @ X1
+        # X3 = X2 @ X1
 
         # See Eqn (B.23)
-        K_i = M_delta @ X3
+        # K_i = M_delta @ X3
 
         # See Eqn (B.24)
-        K_rho_i = rho * K_i
+        # K_rho_i = rho * K_i
 
         D = self.perturb_observations(ensemble_size=N_e, alpha=self.alpha)
         # See Eqn (B.25)
-        X4 = K_rho_i @ (D - Y)
+        X4 = rho * np.linalg.multi_dot([M_delta, D_delta.T, _X * L, _X.T, (D - Y)])
 
         # See Eqn (B.26)
         return X + X4
