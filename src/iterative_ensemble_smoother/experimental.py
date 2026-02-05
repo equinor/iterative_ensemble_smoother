@@ -554,11 +554,7 @@ class DistanceESMDA(ESMDA):
             # S_inv * C_D * S_inv simplifies to the identity matrix.
             U_r_w_inv = U_r / w_r
             # See Eqn (B.13)
-            R = (
-                self.alpha
-                * (N_e - 1)
-                * np.linalg.multi_dot([U_r_w_inv.T, U_r_w_inv])
-            )
+            R = self.alpha * (N_e - 1) * np.linalg.multi_dot([U_r_w_inv.T, U_r_w_inv])
         else:  # C_D is a 2D matrix
             # This scales each row and column of self.C_D by the vectir S_inv_diag.
             # This is numerically identical to the matrix multiplication S^-1 @ C_D
@@ -669,11 +665,7 @@ class DistanceESMDA(ESMDA):
             # S_inv * C_D * S_inv simplifies to the identity matrix.
             U_r_w_inv = U_r / w_r
             # See Eqn (B.13)
-            R = (
-                self.alpha
-                * (N_e - 1)
-                * np.linalg.multi_dot([U_r_w_inv.T, U_r_w_inv])
-            )
+            R = self.alpha * (N_e - 1) * np.linalg.multi_dot([U_r_w_inv.T, U_r_w_inv])
         else:  # C_D is a 2D matrix
             # This scales each row and column of self.C_D by the vectir S_inv_diag.
             # This is numerically identical to the matrix multiplication S⁻¹ @ C_D
