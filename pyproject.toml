@@ -10,13 +10,12 @@ classifiers=[
     "Development Status :: 1 - Planning",
     "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Programming Language :: Python",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
-dependencies = ["numpy", "scipy", "joblib"]
+dependencies = ["numpy", "scipy", "joblib", "psutil"]
 dynamic=["version"] # setuptools_scm extracts Python package versions from git
 
 authors = [
@@ -70,9 +69,9 @@ dev = [
     "mypy",
     "pandas",
     "p_tqdm",
-    "pylint"
+    "pylint",
+    "gaussianfft; python_version < '3.13'",
 ]
-
 # setuptools_scm also writes the version to a file so that one can use the
 # __version__ attribute from the package
 [tool.setuptools_scm]
@@ -89,18 +88,47 @@ line-length = 88
 
 [tool.ruff.lint]
 select = [
-    # Pyflakes
-    "F",
-    # Pycodestyle
+    "A",
+    "AIR",
+    "ASYNC",
+    "BLE",
+    "DJ",
     "E",
+    "EXE",
+    "F",
+    "FA",
+    "FAST",
+    "FLY",
+    "FURB",
+    "G",
+    "I",
+    "ICN",
+    "INT",
+    "ISC",
+    "LOG",
+    "PD",
+    "PERF",
+    "PIE",
+    "PLC",
+    "PLE",
+    "PLW",
+    "PT",
+    "PTH",
+    "PYI",
+    "Q",
+    "RET",
+    "RSE",
+    "SIM",
+    "SLOT",
+    "T",
+    "TC",
+    "TID",
     "W",
-    # isort
-    "I"
+    "YTT",
 ]
-
-# Allow autofix for all enabled rules (when `--fix`) is provided.
-fixable = ["A", "B", "C", "D", "E", "F", "I"]
-unfixable = []
+ignore = [
+    "G004",  # Logging statement uses f-string
+]
 
 # Exclude a variety of commonly ignored directories.
 exclude = [
@@ -128,6 +156,10 @@ exclude = [
 
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["T"]
+"docs/**" = ["T"]
 
 [tool.ruff.lint.mccabe]
 # Unlike Flake8, default to a complexity level of 10.

@@ -165,7 +165,7 @@ class TestSIESObjective:
                 else:
                     msg = (
                         "Terminating. No improvement"
-                        + f"after {BACKTRACK_ITERATIONS} iterations."
+                        f"after {BACKTRACK_ITERATIONS} iterations."
                     )
                     print(msg)
                     return X_i
@@ -202,7 +202,7 @@ class TestSIESNumerics:
         # Exact inversion does not work
         with pytest.raises(
             np.linalg.LinAlgError,
-            match="Matrix is singular.",
+            match=r"(Matrix is singular|A singular matrix detected)",
         ):
             smoother.sies_iteration(responses, step_length=1.0)
 
@@ -214,7 +214,10 @@ class TestSIESNumerics:
             inversion="direct",
         )
 
-        with pytest.warns(sp.linalg.LinAlgWarning, match="Ill-conditioned matrix"):
+        with pytest.warns(
+            sp.linalg.LinAlgWarning,
+            match="(Ill-conditioned matrix|ill-conditioned matrix)",
+        ):
             smoother.sies_iteration(responses, step_length=1.0)
 
         # ============ SUBSPACE PROJECTED ===============
@@ -616,7 +619,7 @@ class TestSIESTheory:
 
 
 @pytest.mark.parametrize(
-    "ensemble_size,num_params,linear",
+    ("ensemble_size", "num_params", "linear"),
     [
         pytest.param(100, 3, True, id="No projection because linear model"),
         pytest.param(

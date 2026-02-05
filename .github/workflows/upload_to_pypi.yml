@@ -21,7 +21,7 @@ jobs:
       - name: Build sdist
         run: pipx run build --wheel
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: built-wheel-${{ matrix.os }}
           path: dist/*.whl
@@ -38,7 +38,7 @@ jobs:
       - name: Build sdist
         run: pipx run build --sdist
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: built-sdist-${{ matrix.os }}
           path: dist/*.tar.gz
@@ -51,7 +51,7 @@ jobs:
     environment: release
     if: github.event_name == 'release' && github.event.action == 'published'
     steps:
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v7
         with:
           # unpacks default artifact into dist/
           # if `name: artifact` is omitted, the action will create extra parent dir
