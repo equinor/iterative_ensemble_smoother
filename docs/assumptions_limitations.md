@@ -53,7 +53,7 @@ That's a pretty good approximation!
 However, if we re-seed the random number generator and try again we get 0.200 as the result.
 A third seed produces 0.239, a fourth seed 0.226, etc.
 
-With less than 25 samples the results are even worse.
+With fewer than 25 samples the results are even worse.
 In fact, the uncertainty (standard deviation) decreases asymptotically like $`1/\sqrt{n}`$, where $`n`$ is the number of samples.
 The asymptotic result holds for _any_ quantity that we wish to estimate, but the constant differs depending on exactly what quantity we estimate.
 In the book Statistical Rethinking (section 9.5.1), McElreath writes:
@@ -76,7 +76,7 @@ Summary statistics like the expected value summarize information by collapsing m
 To inspect the distribution, we can plot all the samples with a histogram.
 
 However, histograms do not tell us anything about high dimensional phenomena such as correlations or other structure.
-The figure below shows three data set with identical marginals (therefore also identical summary statistics: mean, standard deviation, etc.), but very different joint distributions.
+The figure below shows three data sets with identical marginals (therefore also identical summary statistics: mean, standard deviation, etc.), but very different joint distributions.
 
 ![](identical_marginals.png)
 
@@ -114,8 +114,7 @@ With a concave function, such as a square-root, the opposite phenomenom occurs: 
 In the figure above we observe that the posterior we obtain does not match the analytical answer exactly (again imagine walking on the path).
 The analytical answer is the intersection between the black line and the gaussian represented by the samples.
 ESMDA places samples too high up on the line (too far in the $`x_2`$-direction), while the true posterior has more probability mass around the bendy part of the black line.
-ESMDA has a propensity to move along the major covariance axes in each iteration, so in the second iteration it prefers to move up.
-More on this in the next section.
+In the section section, we explain why this happens.
 
 ### The update direction is determined by gradient, covariance and more
 
@@ -123,10 +122,13 @@ In all examples above, ESMDA behaves a bit like a typical optimization algorithm
 However, ESMDA is not exactly an optimization algorithm in the traditional sense: its goal is to move the samples toward the posterior while capturing the uncertainty, not determine a single point where $`f(x_1, x_2)=0`$.
 
 ESMDA uses gradients implicitly, but it is also influenced by the covariance in the current ensemble members (the samples).
-This is shown in the figure below, where the update does not go to the origin (which is the point on the line closest to the prior mean).
-The posterior computed by ESMDA matches the theoretical posterior distribution, since the problem is Gauss-linear.
+The algorithm has a propensity to move along the major covariance axes in each iteration.
+This is shown in the figure below, where the update does not go to the origin (which is what you might expect, since it iis the point on the line closest to the prior mean).
 
 ![](linear_model_ellipse_prior.png)
+
+To summarize: the posterior computed by ESMDA in Gauss-linear example in the figure above is correct and matches the analytical answer.
+But the propensity to move along the major covariance axes in each iteration can also lead to behavoir that causes the final answer to not match the analytical answer, like it did in the non-linear example in the previous section.
 
 ### Updates can oscillate, and more iterations is not always better
 
@@ -155,7 +157,7 @@ In high dimensions, when the ratio of samples to dimensions is low, everything b
 - The samples are likely ellipse-like (randomly correlated) in some direction, because there are so many directions. This means ESMDA favors updates in those random directions.
 - Estimating the gradient, which ESMDA implicitly does when it computes cross-covariance, becomes harder.
 
-Both of these is due to _spurious correlations_, which we will discuss below.
+Both of these are due to _spurious correlations_, which we will discuss below.
 In addition to this, more parameters means more chance that some of the samples from the prior distributions do not match the theoretical distributions.
 
 #### A high-dimensional, linear problem
@@ -177,7 +179,7 @@ The true posterior mean is therefore zero in every parameter.
 
 Now, when we sample $`x_i \sim N(\mu=1, \sigma=0.3)`$, the mean of the samples might not correspond to the analytical mean of the distribution.
 For instance, one particular sample of 10 realizations gives `[1.09, 0.69, 1.23, 1.28, 0.41, 0.61, 1.04, 0.91, 0.99, 0.74]`, and the sampled mean is `0.899`, which is around 10% away from the analytical mean of `1`.
-This leads to some error (but can be remedied in part by quasi monte carlo sampling such as latin hypercube sampling).
+This particular type of error can be remediet in part by quasi Monte Carlo sampling such as Latin Hypercube Sampling.
 
 Furthermore, the correlations of the samples might not correspond to the analytical correlation of the distribution.
 This phenomena is called spurious correlations.
