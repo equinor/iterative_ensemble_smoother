@@ -21,14 +21,11 @@ from iterative_ensemble_smoother.esmda_inversion import (
 )
 from iterative_ensemble_smoother.utils import (
     calc_max_number_of_layers_per_batch_for_distance_localization,
-    memory_usage_decorator,
 )
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
-
-ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION = True
 
 
 class AdaptiveESMDA(BaseESMDA):
@@ -489,9 +486,6 @@ class DistanceESMDA(ESMDA):
         # Is not used when using assimilate
         self.X3: npt.NDArray[np.float64] = None
 
-    @memory_usage_decorator(
-        enabled=ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION
-    )
     def assimilate(
         self,
         *,
@@ -725,9 +719,6 @@ class DistanceESMDA(ESMDA):
             self.D = D
         return
 
-    @memory_usage_decorator(
-        enabled=ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION
-    )
     def assimilate_batch(
         self,
         *,
@@ -793,9 +784,6 @@ class DistanceESMDA(ESMDA):
         # See Eqn (B.26)
         return X_batch + X4
 
-    @memory_usage_decorator(
-        enabled=ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION
-    )
     def update_params_2D(
         self,
         X_prior: npt.NDArray[np.float64],
@@ -858,9 +846,6 @@ class DistanceESMDA(ESMDA):
         rho = rho_2D.reshape(nparam, nobs)
         return self.assimilate_batch(X_batch=X_prior, Y=Y, rho_batch=rho)
 
-    @memory_usage_decorator(
-        enabled=ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION
-    )
     def update_params_3D(
         self,
         X_prior: npt.NDArray[np.float64],

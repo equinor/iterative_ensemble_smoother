@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 import logging
-import os
-import time
-from functools import wraps
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING
 
 import numpy as np
 import psutil
@@ -110,42 +107,6 @@ def sample_mvnormal(
 
     # A 1D diagonal of a covariance matrix was passed
     return C_dd_cholesky.reshape(-1, 1) * z
-
-
-def memory_usage_decorator(
-    enabled: bool = True,
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        @wraps(func)
-        def wrapper(*args, **kwargs) -> Any:  # type: ignore
-            if enabled:
-                # Get process ID of the current Python process
-                process = psutil.Process(os.getpid())
-
-                start_time = time.perf_counter()
-
-                # Memory usage before the function call
-                mem_before = process.memory_info().rss / 1024 / 1024  # Convert to MB
-                logger.debug(
-                    f"\nMemory before calling '{func.__name__}': {mem_before:.2f} MB"
-                )
-
-            # Call the target function
-            result = func(*args, **kwargs)
-
-            if enabled:
-                mem_after = process.memory_info().rss / 1024 / 1024  # Convert to MB
-                end_time = time.perf_counter()
-                # Memory usage after the function call
-                logger.debug(
-                    f"Memory after calling '{func.__name__}': {mem_after:.2f} MB"
-                )
-                logger.debug(f"Run time used: {(end_time - start_time):.4f} seconds")
-            return result
-
-        return wrapper
-
-    return decorator
 
 
 def calc_max_number_of_layers_per_batch_for_distance_localization(
