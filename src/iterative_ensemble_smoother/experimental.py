@@ -1058,6 +1058,8 @@ class DistanceESMDA(ESMDA):
             shape (nobservations, nrealizations).
         rho_input : np.ndarray
             RHO matrix elements.
+            If rho_input has shape (nparam, nobs) and nz == 1,
+            it is treated as a flat (1D) field and reshaped to (nparam, 1, nobs).
             If rho_input has shape (nx, ny, nobs) and nz == 1,
             X_prior is an ensemble of 2D fields.
             If rho_input has shape (nx, ny, nobs) and nz > 1,
@@ -1077,6 +1079,11 @@ class DistanceESMDA(ESMDA):
             Posterior ensemble of field parameters,
             shape (nx*ny*nz, nrealizations).
         """
+        if rho_input.ndim == 2 and nz == 1:
+            # Treat as flat field: reshape (nparam, nobs) to (nparam, 1, nobs)
+            return self.update_params_2D(
+                X_prior=X_prior, Y=Y, rho_2D=rho_input[:, np.newaxis, :]
+            )
         if rho_input.ndim == 3 and nz == 1:
             return self.update_params_2D(X_prior=X_prior, Y=Y, rho_2D=rho_input)
         return self.update_params_3D(
