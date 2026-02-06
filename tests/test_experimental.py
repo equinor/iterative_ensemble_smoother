@@ -1815,7 +1815,6 @@ def test_update_params_3D(
     # Z coordinate is not used when calculating RHO matrix, but is used here
     # to define observation values.
     right_handed_grid_indexing = True  # Default is True
-    write_obs = False
     xinc = 50.0
     yinc = 50.0
     zinc = 1.0
@@ -1868,15 +1867,6 @@ def test_update_params_3D(
     obs_perp_range = np.zeros(nobs, dtype=np.float64)
     obs_perp_range[:] = typical_field_size * rel_localization_range
     obs_anisotropy_angle = np.zeros(nobs, dtype=np.float64)
-
-    if write_obs:
-        print("Observations:")
-        for i in range(nobs):
-            print(
-                f"({obs_xpos[i]}, {obs_ypos[i]}, {obs_zpos[i]})  "
-                f"Value: {observations[i]}  Error: {obs_err_std}  "
-                f"Range: {obs_main_range[i]}"
-            )
 
     # Calculate rho_for one layer
     rho_2D = calc_rho_for_2d_grid_layer(
