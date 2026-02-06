@@ -796,54 +796,6 @@ class DistanceESMDA(ESMDA):
     @memory_usage_decorator(
         enabled=ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION
     )
-    def update_params_1D(
-        self,
-        X_prior: npt.NDArray[np.float64],
-        Y: npt.NDArray[np.float64],
-        rho_1D: npt.NDArray[np.float64],
-    ) -> npt.NDArray[np.float64]:
-        """Calculate posterior update with distance-based ESMDA for one 1D parameter.
-
-        The RHO matrix is specified as input.
-
-        Parameters
-        ----------
-        X_prior : np.ndarray
-            Matrix with prior realizations of all field parameters,
-            shape (nparameters, nrealizations).
-        Y : np.ndarray
-            Matrix with response values for each observation for each realization,
-            shape (nobservations, nrealizations).
-        rho_1D : np.ndarray
-            RHO matrix elements for a 1D grid with size nx,
-            shape (nx, nobservations). If None is input, rho is set to 1
-            for every matrix element and there will be no localization.
-
-        Returns
-        -------
-        np.ndarray
-            Posterior ensemble of field parameters,
-            shape (nx, nrealizations).
-        """
-        if Y is None or Y.shape[0] == 0:
-            # No observation, no update
-            return X_prior
-
-        nobs = Y.shape[0]
-        assert self.observations.shape[0] == nobs
-
-        # Get dimensions from rho matrix
-        nx, _ = rho_1D.shape
-        assert nx == X_prior.shape[0]
-        assert nobs == rho_1D.shape[1]
-        nreal = X_prior.shape[1]
-        assert Y.shape[1] == nreal
-
-        return self.assimilate(X=X_prior, Y=Y, rho=rho_1D)
-
-    @memory_usage_decorator(
-        enabled=ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION
-    )
     def update_params_2D(
         self,
         X_prior: npt.NDArray[np.float64],
@@ -864,10 +816,13 @@ class DistanceESMDA(ESMDA):
             Matrix with response values for each observation for each realization,
             shape (nobservations, nrealizations).
         rho_2D : np.ndarray
-            RHO matrix elements for a 2D grid with size (nx, ny),
-            shape (nx, ny, nobservations). If None is input, rho is set to 1
-            for every matrix element and there will be no localization.
-            nx and ny are the dimensions of the 2D field.
+            Localization matrix for distance-based correlation tapering.
+            Shape (nx, ny, nobservations), where nx and ny are the
+            dimensions of the 2D grid. Each element specifies the
+            localization factor between a grid cell and an observation,
+            with values in [0, 1]. A value of 1 indicates full correlation
+            (no localization), while 0 indicates the parameter and
+            observation are independent.
 
         Returns
         -------
@@ -931,10 +886,15 @@ class DistanceESMDA(ESMDA):
             Matrix with response values for each observation for each realization,
             shape (nobservations, nrealizations).
         rho_2D_slice : np.ndarray
-            RHO matrix elements for one layer (slice) of a 3D grid
-            with size (nx, ny), shape (nx, ny, nobservations). If this variable
-            is None, then rho is set to 1 for all elements which means
-            that no localization is used.
+            Localization matrix for distance-based correlation tapering
+            for one horizontal layer (slice) of a 3D grid. Shape
+            (nx, ny, nobservations), where nx and ny are the lateral
+            dimensions of the grid. This same localization is applied to
+            all vertical layers. Each element specifies the localization
+            factor between a grid cell and an observation, with values
+            in [0, 1]. A value of 1 indicates full correlation (no
+            localization), while 0 indicates the parameter and observation
+            are independent.
         nz : int, optional
             Number of grid layers for the 3D field parameter. Default is 1.
         min_nbatch : int, optional
@@ -1098,8 +1058,8 @@ class DistanceESMDA(ESMDA):
             shape (nobservations, nrealizations).
         rho_input : np.ndarray
             RHO matrix elements.
-            If rho_input has shape (nx, nobs), X_prior is an ensemble of 1D fields.
-            If rho_input has shape (nx, ny, nobs), X_prior is an ensemble of 2D fields.
+            If rho_input has shape (nx, ny, nobs) and nz == 1,
+            X_prior is an ensemble of 2D fields.
             If rho_input has shape (nx, ny, nobs) and nz > 1,
             X_prior is an ensemble of 3D fields with size (nx, ny, nz).
         nz : int, optional
@@ -1117,9 +1077,7 @@ class DistanceESMDA(ESMDA):
             Posterior ensemble of field parameters,
             shape (nx*ny*nz, nrealizations).
         """
-        if rho_input.ndim == 1:
-            return self.update_params_1D(X_prior=X_prior, Y=Y, rho_1D=rho_input)
-        if rho_input.ndim == 2 and nz == 1:
+        if rho_input.ndim == 3 and nz == 1:
             return self.update_params_2D(X_prior=X_prior, Y=Y, rho_2D=rho_input)
         return self.update_params_3D(
             X_prior=X_prior,
