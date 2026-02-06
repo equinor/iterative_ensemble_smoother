@@ -798,7 +798,7 @@ class DistanceESMDA(ESMDA):
     )
     def update_params_2D(
         self,
-        X_prior: npt.NDArray[np.float64],
+        X: npt.NDArray[np.float64],
         Y: npt.NDArray[np.float64],
         rho_2D: npt.NDArray[np.float64],
     ) -> npt.NDArray[np.float64]:
@@ -809,7 +809,7 @@ class DistanceESMDA(ESMDA):
 
         Parameters
         ----------
-        X_prior : np.ndarray
+        X : np.ndarray
             Matrix with prior realizations of all field parameters,
             shape (nparameters, nrealizations).
         Y : np.ndarray
@@ -833,37 +833,37 @@ class DistanceESMDA(ESMDA):
         # No update if no observations or responses
         if Y is None or Y.shape[0] == 0:
             # No update of the field parameters
-            # Check if it necessary to make a copy or can we only return X_prior?
-            return X_prior.copy()
+            # Check if it necessary to make a copy or can we only return X?
+            return X.copy()
 
         nx, ny, nobs = rho_2D.shape
         nparam = nx * ny
-        nreal = X_prior.shape[1]
-        assert X_prior.shape[0] == nparam, (
-            f"Mismatch between X_prior dimension {X_prior.shape[0]} and nparam {nparam}"
+        nreal = X.shape[1]
+        assert X.shape[0] == nparam, (
+            f"Mismatch between X dimension {X.shape[0]} and nparam {nparam}"
         )
 
         assert nobs == Y.shape[0], (
             "Mismatch between Y matrix dimension for number of observation and rho_2D"
         )
         assert Y.shape[1] == nreal, (
-            f"Mismatch between X_prior dimension {Y.shape[1]} and nreal {nreal}"
+            f"Mismatch between X dimension {Y.shape[1]} and nreal {nreal}"
         )
         assert self.observations.shape[0] == nobs
 
         # Skip assimilation if rho is all zeros (no localization effect)
         if np.count_nonzero(rho_2D) == 0:
-            return X_prior.copy()
+            return X.copy()
 
         rho = rho_2D.reshape(nparam, nobs)
-        return self.assimilate_batch(X_batch=X_prior, Y=Y, rho_batch=rho)
+        return self.assimilate_batch(X_batch=X, Y=Y, rho_batch=rho)
 
     @memory_usage_decorator(
         enabled=ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION
     )
     def update_params_3D(
         self,
-        X_prior: npt.NDArray[np.float64],
+        X: npt.NDArray[np.float64],
         Y: npt.NDArray[np.float64],
         rho_2D_slice: npt.NDArray[np.float64],
         nz: int,
@@ -879,7 +879,7 @@ class DistanceESMDA(ESMDA):
 
         Parameters
         ----------
-        X_prior : np.ndarray
+        X : np.ndarray
             Matrix with prior realizations of all field parameters,
             shape (nparameters, nrealizations).
         Y : np.ndarray
@@ -914,24 +914,24 @@ class DistanceESMDA(ESMDA):
         if Y is None or Y.shape[0] == 0:
             # No update of the field parameters
             # Check if it is it necessary to return a copy here?
-            return X_prior.copy()
+            return X.copy()
 
         nx, ny, nobs = rho_2D_slice.shape
 
         nparam_per_layer = nx * ny
         nparam = nparam_per_layer * nz
-        nreal = X_prior.shape[1]
-        assert X_prior.shape[0] == nparam, (
-            f"Mismatch between X_prior dimension {X_prior.shape[0]} and nparam {nparam}"
+        nreal = X.shape[1]
+        assert X.shape[0] == nparam, (
+            f"Mismatch between X dimension {X.shape[0]} and nparam {nparam}"
         )
         assert nobs == Y.shape[0], (
             f"Mismatch between number of observations in Rho_2D {nobs} and in Y matrix"
         )
         assert Y.shape[1] == nreal, (
-            f"Mismatch between X_prior dimension {Y.shape[1]} and nreal {nreal}"
+            f"Mismatch between X dimension {Y.shape[1]} and nreal {nreal}"
         )
 
-        X_prior_3D = X_prior.reshape(nx, ny, nz, nreal)
+        X_3D = X.reshape(nx, ny, nz, nreal)
 
         # Check memory constraints and calculate how many grid layers of
         # field parameters is possible to update on one batch
@@ -965,12 +965,12 @@ class DistanceESMDA(ESMDA):
         nlayer_last_batch = nz - nbatch * nlayer_per_batch
 
         # Initialize the X_post_3D
-        X_post_3D = X_prior_3D.copy()
+        X_post_3D = X_3D.copy()
         for batch_number in range(nbatch):
             start_layer_number = batch_number * nlayer_per_batch
             end_layer_number = start_layer_number + nlayer_per_batch
 
-            X_batch = X_prior_3D[:, :, start_layer_number:end_layer_number, :].reshape(
+            X_batch = X_3D[:, :, start_layer_number:end_layer_number, :].reshape(
                 (nparam_in_batch, nreal)
             )
 
@@ -1004,7 +1004,7 @@ class DistanceESMDA(ESMDA):
             end_layer_number = start_layer_number + nlayer_last_batch
             nparam_in_last_batch = nparam_per_layer * nlayer_last_batch
 
-            X_batch = X_prior_3D[:, :, start_layer_number:end_layer_number, :].reshape(
+            X_batch = X_3D[:, :, start_layer_number:end_layer_number, :].reshape(
                 (nparam_in_last_batch, nreal)
             )
 
@@ -1035,7 +1035,7 @@ class DistanceESMDA(ESMDA):
 
     def update_params(
         self,
-        X_prior: npt.NDArray[np.float64],
+        X: npt.NDArray[np.float64],
         Y: npt.NDArray[np.float64],
         rho_input: npt.NDArray[np.float64],
         nz: int = 1,
@@ -1043,27 +1043,29 @@ class DistanceESMDA(ESMDA):
     ) -> npt.NDArray[np.float64]:
         """Calculate posterior update with distance-based ESMDA.
 
-        Depending on the shape of rho_input it will update a 1D, 2D or 3D field.
-        Dimension of the ensemble X_prior is either (nx), (nx, ny) or (nx, ny, nz)
-        and rho_input defines nx and ny while nz is number of layers in the grid
-        for the field parameter in 3D.
+        Depending on the shape of rho_input, this method handles updates for
+        parameters representing 1D, 2D, or 3D fields. X is always a 2D matrix
+        of shape (nparameters, nrealizations), where nparameters corresponds to
+        the flattened field (nx for 1D, nx*ny for 2D, nx*ny*nz for 3D).
+        The shape of rho_input and the nz parameter determine how the field
+        is structured.
 
         Parameters
         ----------
-        X_prior : np.ndarray
+        X : np.ndarray
             Matrix with prior realizations of all field parameters,
             shape (nparameters, nrealizations).
         Y : np.ndarray
             Matrix with response values for each observation for each realization,
             shape (nobservations, nrealizations).
         rho_input : np.ndarray
-            RHO matrix elements.
+            RHO matrix elements for localization.
             If rho_input has shape (nparam, nobs) and nz == 1,
             it is treated as a flat (1D) field and reshaped to (nparam, 1, nobs).
             If rho_input has shape (nx, ny, nobs) and nz == 1,
-            X_prior is an ensemble of 2D fields.
+            parameters represent a 2D field with nparameters = nx*ny.
             If rho_input has shape (nx, ny, nobs) and nz > 1,
-            X_prior is an ensemble of 3D fields with size (nx, ny, nz).
+            parameters represent a 3D field with nparameters = nx*ny*nz.
         nz : int, optional
             Number of grid layers for the 3D field parameter. Default is 1.
         min_nbatch : int, optional
@@ -1081,13 +1083,11 @@ class DistanceESMDA(ESMDA):
         """
         if rho_input.ndim == 2 and nz == 1:
             # Treat as flat field: reshape (nparam, nobs) to (nparam, 1, nobs)
-            return self.update_params_2D(
-                X_prior=X_prior, Y=Y, rho_2D=rho_input[:, np.newaxis, :]
-            )
+            return self.update_params_2D(X=X, Y=Y, rho_2D=rho_input[:, np.newaxis, :])
         if rho_input.ndim == 3 and nz == 1:
-            return self.update_params_2D(X_prior=X_prior, Y=Y, rho_2D=rho_input)
+            return self.update_params_2D(X=X, Y=Y, rho_2D=rho_input)
         return self.update_params_3D(
-            X_prior=X_prior,
+            X=X,
             Y=Y,
             rho_2D_slice=rho_input,
             nz=nz,
