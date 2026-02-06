@@ -1824,9 +1824,8 @@ def test_update_params_3D(
     corr_range = max(xlength, ylength) * rel_corr_length
     vert_range = zlength * rel_corr_length
     fraction_of_field_values_with_zero_variance = 0.1
+
     # Draw prior gaussian fields with spatial correlations
-    # X_prior[param_number,real_number] where param_number
-    # is flatten indec for C-index ordered 3D field (nx,ny,nz)
     corr_func_name = "gaussian"
     X_prior = draw_3D_field(
         field_mean,
