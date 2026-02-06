@@ -639,7 +639,7 @@ class TestRowScaling:
 
 
 def assert_tests_for_distance_based_localization(
-    X_prior: npt.NDArray[np.float64],
+    X: npt.NDArray[np.float64],
     obs_index_flatten: int,
     rho: npt.NDArray[np.float64],
     true_parameters: npt.NDArray[np.float64],
@@ -656,16 +656,14 @@ def assert_tests_for_distance_based_localization(
     # --- Assertions for Localized Smoother ---
     # Assert distant parameters are not updated
     assert np.allclose(
-        X_posterior[zero_weight_indices, :], X_prior[zero_weight_indices, :], atol=atol
+        X_posterior[zero_weight_indices, :], X[zero_weight_indices, :], atol=atol
     )
     # Assert parameter at observation IS updated
-    assert not np.allclose(
-        X_posterior[obs_index_flatten, :], X_prior[obs_index_flatten, :]
-    )
+    assert not np.allclose(X_posterior[obs_index_flatten, :], X[obs_index_flatten, :])
 
-    prior_mean = np.mean(X_prior, axis=1)
+    prior_mean = np.mean(X, axis=1)
     posterior_mean = np.mean(X_posterior, axis=1)
-    prior_variance = np.var(X_prior, axis=1)
+    prior_variance = np.var(X, axis=1)
     posterior_variance = np.var(X_posterior, axis=1)
 
     # Assert update is maximal at the observation point
@@ -682,7 +680,7 @@ def assert_tests_for_distance_based_localization(
     # The global update MUST change distant parameters due to spurious correlations.
     assert not np.allclose(
         X_posterior_global[zero_weight_indices, :],
-        X_prior[zero_weight_indices, :],
+        X[zero_weight_indices, :],
     )
 
     # --- Comparison Assertions for Global Smoother ---
@@ -692,7 +690,7 @@ def assert_tests_for_distance_based_localization(
     # Assert distant parameters ARE updated due to spurious correlations
     assert not np.allclose(
         X_posterior_global[zero_weight_indices, :],
-        X_prior[zero_weight_indices, :],
+        X[zero_weight_indices, :],
     )
 
     # Assert AVERAGE variance is reduced everywhere (the sign of ensemble collapse)
