@@ -1814,7 +1814,6 @@ def test_update_params_3D(
     # z[i,j,k] = zinc * (k + 0.5)  k=0,.. nz-1
     # Z coordinate is not used when calculating RHO matrix, but is used here
     # to define observation values.
-    right_handed_grid_indexing = True  # Default is True
     xinc = 50.0
     yinc = 50.0
     zinc = 1.0
@@ -1878,7 +1877,7 @@ def test_update_params_3D(
         obs_main_range,
         obs_perp_range,
         obs_anisotropy_angle,
-        right_handed_grid_indexing=right_handed_grid_indexing,
+        right_handed_grid_indexing=True,
     )
     # Set responses for each observation equal to the X_prior for simplicity
     # (Forward model is identity Y = X in observation points + small random noise)
