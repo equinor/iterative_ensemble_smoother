@@ -1716,7 +1716,6 @@ def draw_random_obs(rng, nobs, nx, ny, nz, obs_err_std):
         "rel_localization_range",
         "case_with_some_zero_variance_field_params",
         "seed",
-        "name",
     ),
     [
         (
@@ -1732,7 +1731,6 @@ def draw_random_obs(rng, nobs, nx, ny, nz, obs_err_std):
             0.2,
             False,
             9984356,
-            "case1",
         ),
         (
             5,
@@ -1747,7 +1745,6 @@ def draw_random_obs(rng, nobs, nx, ny, nz, obs_err_std):
             0.1,
             False,
             123456,
-            "case2",
         ),
         (
             5,
@@ -1762,7 +1759,6 @@ def draw_random_obs(rng, nobs, nx, ny, nz, obs_err_std):
             0.1,
             True,
             8765,
-            "case3",
         ),
         (
             3,
@@ -1777,7 +1773,6 @@ def draw_random_obs(rng, nobs, nx, ny, nz, obs_err_std):
             0.3,
             False,
             9984356,
-            "case4",
         ),
         (
             3,
@@ -1792,7 +1787,6 @@ def draw_random_obs(rng, nobs, nx, ny, nz, obs_err_std):
             0.3,
             True,
             9984356,
-            "case5",
         ),
     ],
 )
@@ -1810,11 +1804,8 @@ def test_update_params_3D(
     rel_localization_range: float,
     case_with_some_zero_variance_field_params: bool,
     seed: int,
-    name: str,
 ):
-    # This test function check 'update_3D_field_with_distance_esmda_unoptimal'
-    #
-    # The field parameter is assumed to belong to a box grid (ertbox grid)
+    # The field parameter is assumed to belong to a box grid
     # with specified nx,ny,nz and grid increments xinc,yinc,zinc
     # The observation position is assumed to be within the same coordinate
     # system as the grid. The grid cell center point coordinates are
