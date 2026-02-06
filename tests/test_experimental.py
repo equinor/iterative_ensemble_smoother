@@ -1716,7 +1716,6 @@ def draw_random_obs(rng, nobs, nx, ny, nz, obs_err_std):
         "rel_localization_range",
         "case_with_some_zero_variance_field_params",
         "seed",
-        "name",
     ),
     [
         (
@@ -1732,7 +1731,6 @@ def draw_random_obs(rng, nobs, nx, ny, nz, obs_err_std):
             0.2,
             False,
             9984356,
-            "case1",
         ),
         (
             5,
@@ -1747,7 +1745,6 @@ def draw_random_obs(rng, nobs, nx, ny, nz, obs_err_std):
             0.1,
             False,
             123456,
-            "case2",
         ),
         (
             5,
@@ -1762,7 +1759,6 @@ def draw_random_obs(rng, nobs, nx, ny, nz, obs_err_std):
             0.1,
             True,
             8765,
-            "case3",
         ),
         (
             3,
@@ -1777,7 +1773,6 @@ def draw_random_obs(rng, nobs, nx, ny, nz, obs_err_std):
             0.3,
             False,
             9984356,
-            "case4",
         ),
         (
             3,
@@ -1792,7 +1787,6 @@ def draw_random_obs(rng, nobs, nx, ny, nz, obs_err_std):
             0.3,
             True,
             9984356,
-            "case5",
         ),
     ],
 )
@@ -1810,11 +1804,8 @@ def test_update_params_3D(
     rel_localization_range: float,
     case_with_some_zero_variance_field_params: bool,
     seed: int,
-    name: str,
 ):
-    # This test function check 'update_3D_field_with_distance_esmda_unoptimal'
-    #
-    # The field parameter is assumed to belong to a box grid (ertbox grid)
+    # The field parameter is assumed to belong to a box grid
     # with specified nx,ny,nz and grid increments xinc,yinc,zinc
     # The observation position is assumed to be within the same coordinate
     # system as the grid. The grid cell center point coordinates are
@@ -1823,8 +1814,6 @@ def test_update_params_3D(
     # z[i,j,k] = zinc * (k + 0.5)  k=0,.. nz-1
     # Z coordinate is not used when calculating RHO matrix, but is used here
     # to define observation values.
-    right_handed_grid_indexing = True  # Default is True
-    write_obs = False
     xinc = 50.0
     yinc = 50.0
     zinc = 1.0
@@ -1834,10 +1823,8 @@ def test_update_params_3D(
     corr_range = max(xlength, ylength) * rel_corr_length
     vert_range = zlength * rel_corr_length
     fraction_of_field_values_with_zero_variance = 0.1
+
     # Draw prior gaussian fields with spatial correlations
-    # X_prior[param_number,real_number] where param_number
-    # is flatten indec for C-index ordered 3D field (nx,ny,nz)
-    corr_func_name = "gaussian"
     X_prior = draw_3D_field(
         field_mean,
         field_std,
@@ -1852,7 +1839,7 @@ def test_update_params_3D(
         corr_range,
         vert_range,
         seed,
-        corr_func_name=corr_func_name,
+        corr_func_name="gaussian",
     )
 
     X_prior_3D = X_prior.reshape((nx, ny, nz, nreal))
@@ -1878,15 +1865,6 @@ def test_update_params_3D(
     obs_perp_range[:] = typical_field_size * rel_localization_range
     obs_anisotropy_angle = np.zeros(nobs, dtype=np.float64)
 
-    if write_obs:
-        print("Observations:")
-        for i in range(nobs):
-            print(
-                f"({obs_xpos[i]}, {obs_ypos[i]}, {obs_zpos[i]})  "
-                f"Value: {observations[i]}  Error: {obs_err_std}  "
-                f"Range: {obs_main_range[i]}"
-            )
-
     # Calculate rho_for one layer
     rho_2D = calc_rho_for_2d_grid_layer(
         nx,
@@ -1898,7 +1876,7 @@ def test_update_params_3D(
         obs_main_range,
         obs_perp_range,
         obs_anisotropy_angle,
-        right_handed_grid_indexing=right_handed_grid_indexing,
+        right_handed_grid_indexing=True,
     )
     # Set responses for each observation equal to the X_prior for simplicity
     # (Forward model is identity Y = X in observation points + small random noise)
