@@ -896,6 +896,10 @@ class DistanceESMDA(ESMDA):
         )
         assert self.observations.shape[0] == nobs
 
+        # Skip assimilation if rho is all zeros (no localization effect)
+        if np.count_nonzero(rho_2D) == 0:
+            return X_prior.copy()
+
         rho = rho_2D.reshape(nparam, nobs)
         return self.assimilate_batch(X_batch=X_prior, Y=Y, rho_batch=rho)
 
