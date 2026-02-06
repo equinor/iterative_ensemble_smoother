@@ -556,7 +556,7 @@ class DistanceESMDA(ESMDA):
             # See Eqn (B.13)
             R = self.alpha * (N_e - 1) * np.linalg.multi_dot([U_r_w_inv.T, U_r_w_inv])
         else:  # C_D is a 2D matrix
-            # This scales each row and column of self.C_D by the vectir S_inv_diag.
+            # This scales each row and column of self.C_D by the vector S_inv_diag.
             # This is numerically identical to the matrix multiplication S^-1 @ C_D
             C_hat_D = S_inv_diag[:, np.newaxis] * self.C_D * S_inv_diag
             U_r_w_inv = U_r / w_r
