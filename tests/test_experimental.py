@@ -1825,7 +1825,6 @@ def test_update_params_3D(
     fraction_of_field_values_with_zero_variance = 0.1
 
     # Draw prior gaussian fields with spatial correlations
-    corr_func_name = "gaussian"
     X_prior = draw_3D_field(
         field_mean,
         field_std,
@@ -1840,7 +1839,7 @@ def test_update_params_3D(
         corr_range,
         vert_range,
         seed,
-        corr_func_name=corr_func_name,
+        corr_func_name="gaussian",
     )
 
     X_prior_3D = X_prior.reshape((nx, ny, nz, nreal))
