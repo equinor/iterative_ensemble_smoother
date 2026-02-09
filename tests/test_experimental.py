@@ -985,50 +985,45 @@ def test_distance_based_on_1D_case_multiple_data_assimilation(seed):
     assert abs(inverse_alpha_vector.sum() - 1.0) < 1e-7
 
     obs_error_var = 0.01  # Variance of observation error
-
     true_parameters = np.zeros(N_m)
-
     true_observations = np.array([1.0])
-
     C_D = np.array([obs_error_var])
 
-    for iteration in range(len(alpha_vector)):
-        alpha_i = np.array([alpha_vector[iteration]])
-        if iteration == 0:
-            # Draw prior
-            rng = np.random.default_rng(seed)
-            X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))
-            X_previous = X_prior.copy()
-            X_previous_global = X_prior.copy()
-            X_posterior = X_prior
-            X_posterior_global = X_prior
-        else:
-            X_previous = X_posterior
-            X_previous_global = X_posterior_global
+    # Create the data assimilation classes
+    rng = np.random.default_rng(seed)
+    esmda = ESMDA(
+        covariance=C_D, observations=true_observations, alpha=alpha_vector, seed=rng
+    )
+    esmda_distance = DistanceESMDA(
+        covariance=C_D, observations=true_observations, alpha=alpha_vector, seed=rng
+    )
+
+    # Create a prior and two copies - one for each data assimilation class
+    X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))
+    X = X_prior.copy()
+    X_global = X_prior.copy()
+
+    for iteration in range(esmda.num_assimilations()):
         # Predict observations `Y` using the identity model `g(x) = x`
         # We only observe the state at `j_obs`.
-        Y = X_previous[[j_obs], :]
+        Y_global = X_global[[j_obs], :]
+        Y = X[[j_obs], :]
 
-        # Using a simple Gaussian decay for rho
+        # Assimilate with standard ESMDA
+        X_global = esmda.assimilate(X=X_global, Y=Y_global)
+
+        # Assimilate with DistanceESMDA, using a simple Gaussian decay for rho
         localization_radius = 20.0
         rho = calculate_rho_1d(N_m, j_obs, localization_radius)
+        X = esmda_distance.assimilate(X=X, Y=Y, rho=rho)
 
-        esmda_distance = DistanceESMDA(
-            covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
-        )
-        X_posterior = esmda_distance.assimilate(X=X_previous, Y=Y, rho=rho)
-
-        esmda = ESMDA(
-            covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
-        )
-        X_posterior_global = esmda.assimilate(X=X_previous_global, Y=Y)
         assert_tests_for_distance_based_localization(
             X_prior,
             j_obs,
             rho,
             true_parameters,
-            X_posterior,
-            X_posterior_global,
+            X,
+            X_global,
             rho_min=1e-5,
             atol=1e-2,
         )
