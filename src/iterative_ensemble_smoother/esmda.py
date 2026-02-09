@@ -160,10 +160,28 @@ class ESMDA(BaseESMDA):
 
     Examples
     --------
-    >>> covariance = np.diag([1, 1, 1])
-    >>> observations = np.array([1, 2, 3])
-    >>> esmda = ESMDA(covariance, observations)
 
+    A full example where the forward model maps 10 parameters to 3 outputs.
+    We will use 100 realizations. First we define the forward model:
+
+    >>> rng = np.random.default_rng(42)
+    >>> A = rng.normal(size=(3, 10))
+    >>> def forward_model(x):
+    ...     return A @ x
+
+    Then we set up the ESMDA instance and the prior realizations X:
+
+    >>> covariance = np.ones(3)  # Covariance of the observations / outputs
+    >>> observations = np.array([1, 2, 3])  # The observed data
+    >>> esmda = ESMDA(covariance, observations, alpha=3, seed=42)
+    >>> X = rng.normal(size=(10, 100))
+
+    To assimilate data, we iterate over the assimilation steps:
+
+    >>> for iteration in range(esmda.num_assimilations()):
+    ...     # Apply the forward model in each realization in the ensemble
+    ...     Y = np.array([forward_model(x) for x in X.T]).T
+    ...     X = esmda.assimilate(X, Y)  # Update X
     """
 
     # Available inversion methods. The inversion methods all compute
