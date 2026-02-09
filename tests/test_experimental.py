@@ -782,18 +782,6 @@ def draw_1D_field(
     return fields, cov_matrix
 
 
-def generate_alpha_vector(nalpha):
-    """Generate alpha vector with length nalpha
-    where sum of the inverse of alpha is 1.
-    """
-    # Define alpha[k] = [2**(m-1) + 2**(m-2) + ... + 2**(0)] / 2**(k)
-    # such that alpha[k] = (2**m -1)/(2**k)
-    # Then sum (1/alpha[k]) for k=0,1,2,..m-1  is 1.0
-    # The alpha values are reduced with a factor 1/2 for each iteration
-    # Special case: m = 3 gives alpha_vector = [7, 3.5, 1.75]
-    return (2**nalpha - 1) / 2 ** np.arange(nalpha)
-
-
 def predicted_mean_field_values(
     obs_vector: npt.NDArray[np.float64],
     obs_index_vector: npt.NDArray[np.int32],
@@ -978,11 +966,7 @@ def test_distance_based_on_1D_case_multiple_data_assimilation(seed):
     nalpha = (
         3  # number of different alpha values. They satisfy that sum(1/alpha[i]  = 1
     )
-    alpha_vector = generate_alpha_vector(nalpha)
-    inverse_alpha_vector = 1.0 / alpha_vector
-
-    # Consistency requirement for alpha
-    assert abs(inverse_alpha_vector.sum() - 1.0) < 1e-7
+    alpha_vector = normalize_alpha(2.0 ** -np.arange(nalpha))
 
     obs_error_var = 0.01  # Variance of observation error
 
@@ -1047,9 +1031,9 @@ def test_distance_based_on_1D_case_multiple_data_assimilate_batch(seed):
     N_e = 50  # Ensemble size
     j_obs = 50  # Index of the single observation
     nalpha = 10  # Number of different sets of alpha values
-    number_of_alpha_values = np.arange(1, nalpha, 1, dtype=np.int32)
+    number_of_alpha_values = range(1, nalpha)
     for m in number_of_alpha_values:
-        alpha_vector = generate_alpha_vector(m)
+        alpha_vector = normalize_alpha(2.0 ** -np.arange(m))
 
         obs_error_var = 0.01  # Variance of observation error
 
@@ -1125,14 +1109,9 @@ def test_distance_based_on_1D_case_with_rho_equal_one(seed):
 
     # Run the test over 9 different sets of alpha.
     nalpha = 10
-    number_of_alpha_values = np.arange(1, nalpha, 1, dtype=np.int32)
+    number_of_alpha_values = range(1, nalpha)
     for m in number_of_alpha_values:
-        alpha_vector = generate_alpha_vector(m)
-        inverse_alpha_vector = 1.0 / alpha_vector
-
-        # Consistency requirement for alpha
-        # Sum of 1/alpha_vector[i] must be 1
-        assert abs(inverse_alpha_vector.sum() - 1.0) < 1e-7
+        alpha_vector = normalize_alpha(2.0 ** -np.arange(m))
 
         obs_error_var = 0.01  # Variance of observation error
         true_observations = np.array([1.0])
