@@ -15,8 +15,14 @@ Iterative Ensemble Smoother
 
 ## About
 
-**iterative_ensemble_smoother** is a Python package that implements the subspace iterative ensemble smoother as described in [evensen2019](https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full).
-This algorithm is particularly effective for problems with a large number of parameters (e.g., millions) and a few realizations or samples (e.g., hundreds).
+**iterative_ensemble_smoother** is a Python library for **data assimilation and history matching** using ensemble-based methods. It implements efficient algorithms particularly effective for problems with a large number of parameters (e.g., millions) and relatively few realizations (e.g., hundreds).
+
+The package provides two main algorithms:
+
+- **ESMDA** (Ensemble Smoother with Multiple Data Assimilation) - A non-iterative method with multiple data assimilation steps, described in [Emerick & Reynolds 2013](https://doi.org/10.1016/j.cageo.2012.03.011)
+- **SIES** (Subspace Iterative Ensemble Smoother) - An iterative Gauss-Newton method described in [Evensen et al. 2019](https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full)
+
+The package also supports two methods of localization: correlation-based (`AdaptiveESMDA`) and distance-based (`DistanceESMDA`).
 
 ## Installation
 
