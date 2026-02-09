@@ -212,69 +212,6 @@ def calc_max_number_of_layers_per_batch_for_distance_localization(
     return max_nlayer_per_batch
 
 
-def transform_positions_to_local_field_coordinates(
-    coordsys_origin: tuple[float, float],
-    coordsys_rotation_angle: float,
-    utmx: npt.NDArray[np.float64],
-    utmy: npt.NDArray[np.float64],
-) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
-    """Calculates coordinate transformation from global to local coordinates.
-
-    Parameters
-    ----------
-    coordsys_origin : tuple of float
-        (x, y) coordinate of local coordinate origin in global coordinates.
-    coordsys_rotation_angle : float
-        Angle for how much the local x-axis is rotated anti-clockwise
-        relative to the global x-axis in degrees.
-    utmx : np.ndarray
-        Vector of x-coordinates in global coordinates.
-    utmy : np.ndarray
-        Vector of y-coordinates in global coordinates.
-
-    Returns
-    -------
-    tuple of np.ndarray
-        First vector is local x-coordinates and second vector is local y-coordinates.
-    """
-    # Translate
-    x1 = utmx - coordsys_origin[0]
-    y1 = utmy - coordsys_origin[1]
-    # Rotate
-    # Input angle is the local coordinate systems rotation
-    # anticlockwise relative to global x-axis in degrees
-    rotation_of_ertbox = coordsys_rotation_angle
-    rotation_angle = np.deg2rad(rotation_of_ertbox)
-    cos_theta = np.cos(rotation_angle)
-    sin_theta = np.sin(rotation_angle)
-    x2 = x1 * cos_theta + y1 * sin_theta
-    y2 = -x1 * sin_theta + y1 * cos_theta
-    return x2, y2
-
-
-def transform_local_ellipse_angle_to_local_coords(
-    coordsys_rotation_angle: float,
-    ellipse_anisotropy_angle: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
-    """Calculate angles relative to local coordinate system.
-
-    Parameters
-    ----------
-    coordsys_rotation_angle : float
-        Local coordinate systems rotation angle relative to the global
-        coordinate system.
-    ellipse_anisotropy_angle : np.ndarray
-        Vector of input angles in global coordinates.
-
-    Returns
-    -------
-    np.ndarray
-        Vector of output angles relative to the local coordinate system.
-    """
-    # Both angles measured anti-clock from global coordinate systems x-axis in degrees
-    return ellipse_anisotropy_angle - coordsys_rotation_angle
-
-
 def localization_scaling_function(
     distances: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
