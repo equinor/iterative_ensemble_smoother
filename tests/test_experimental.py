@@ -1035,52 +1035,49 @@ def test_distance_based_on_1D_case_multiple_data_assimilation(seed):
 
 
 @pytest.mark.parametrize("seed", list(range(9)))
-def test_distance_based_on_1D_case_multiple_data_assimilate_batch(seed):
+def test_that_assimilate_and_assimilate_batch_produce_identical_results(seed):
     """
-    This test is almost equal to the one above, but here the function
-    assimilate and assimilate_batch are compared to check they give
-    same result. The purpose of assimilate_batch is to avoid
-    re-calculating steps that is not necessary when running a loop
-    over batches of parameters
+    Test that DistanceESMDA.assimilate() and assimilate_batch() produce
+    identical results.
+
+    The assimilate_batch() method is optimized to process parameter batches
+    efficiently by avoiding redundant calculations, but should produce
+    numerically equivalent results to assimilate(). This test verifies their
+    consistency using a 1D distance-based localization setup with multiple
+    assimilation iterations.
     """
     N_m = 100  # Number of model parameters (grid points)
     N_e = 50  # Ensemble size
     j_obs = 50  # Index of the single observation
     nalpha = 10  # Number of different sets of alpha values
     number_of_alpha_values = np.arange(1, nalpha, 1, dtype=np.int32)
+
+    obs_error_var = 0.01  # Variance of observation error
+    true_observations = np.array([1.0])
+    C_D = np.array([obs_error_var])
+
+    rng = np.random.default_rng(seed)
+
+    # Using a simple Gaussian decay for rho
+    localization_radius = 20.0
+    rho = calculate_rho_1d(N_m, j_obs, localization_radius)
+
     for m in number_of_alpha_values:
         alpha_vector = generate_alpha_vector(m)
-
-        obs_error_var = 0.01  # Variance of observation error
-
-        true_parameters = np.zeros(N_m)
-
-        true_observations = np.array([1.0])
-
-        C_D = np.array([obs_error_var])
 
         for iteration in range(len(alpha_vector)):
             alpha_i = np.array([alpha_vector[iteration]])
             if iteration == 0:
                 # Draw prior
-                rng = np.random.default_rng(seed)
                 X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))
                 X_previous = X_prior.copy()
-                X_previous_global = X_prior.copy()
                 X_posterior = X_prior
-                X_posterior_global = X_prior
             else:
                 X_previous = X_posterior
-                X_previous_global = X_posterior_global
             # Predict observations `Y` using the identity model `g(x) = x`
             # We only observe the state at `j_obs`.
             Y = X_previous[[j_obs], :]
 
-            # Using a simple Gaussian decay for rho
-            localization_radius = 20.0
-            rho = calculate_rho_1d(N_m, j_obs, localization_radius)
-
-            # Use same seed for both instances of DistanceESMDA
             esmda_distance = DistanceESMDA(
                 covariance=C_D, observations=true_observations, alpha=alpha_i, seed=seed
             )
@@ -1093,28 +1090,7 @@ def test_distance_based_on_1D_case_multiple_data_assimilate_batch(seed):
             )
             X_posterior_2 = esmda_distance.assimilate(X=X_previous, Y=Y, rho=rho)
 
-            diff_X = X_posterior_2 - X_posterior_1
-            max_diff = np.max(np.abs(diff_X))
-            # Check that the results are equal
-            assert max_diff < 1e-9, (
-                "The function assimilate and assimilate_batch give different results"
-            )
-
-            esmda = ESMDA(
-                covariance=C_D, observations=true_observations, alpha=alpha_i, seed=rng
-            )
-
-            X_posterior_global = esmda.assimilate(X=X_previous_global, Y=Y)
-            assert_tests_for_distance_based_localization(
-                X_prior,
-                j_obs,
-                rho,
-                true_parameters,
-                X_posterior_1,
-                X_posterior_global,
-                rho_min=1e-5,
-                atol=1e-2,
-            )
+            assert_allclose(X_posterior_1, X_posterior_2, atol=1e-9)
 
 
 @pytest.mark.parametrize("seed", list(range(9)))
