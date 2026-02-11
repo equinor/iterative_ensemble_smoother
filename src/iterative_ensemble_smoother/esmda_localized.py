@@ -85,6 +85,45 @@ from iterative_ensemble_smoother.utils import sample_mvnormal
 from iterative_ensemble_smoother.esmda import BaseESMDA
 
 
+def invert_naive(*, delta_D, C_D, alpha):
+    """Naive inversion of the equation:
+
+    (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
+    """
+
+    covariance = np.diag(C_D) if C_D.ndim == 1 else C_D
+    delta_D_inv_cov = delta_D.T @ np.linalg.inv(
+        delta_D @ delta_D.T + alpha * covariance
+    )
+    return delta_D_inv_cov
+
+
+def invert(*, delta_D, C_D, alpha):
+    """Not-so-naive inversion of the equation:
+
+    (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
+    """
+    # Equivalent to: delta_D @ delta_D.T, but only computes upper triangular part
+    inner = sp.linalg.blas.dsyrk(alpha=1.0, a=delta_D)
+
+    # Add to diagonal
+    if C_D.ndim == 1:
+        np.fill_diagonal(inner, np.diagonal(inner) + alpha * C_D)
+    else:
+        inner += alpha * C_D
+
+    # Arguments for sp.linalg.solve
+    solver_kwargs = {
+        "overwrite_a": True,
+        "overwrite_b": True,
+        "assume_a": "pos",  # Assume positive definite matrix (use cholesky)
+        "lower": True,  # Only use the lower part (upper before transpose) while solving
+    }
+
+    # Computes X = delta_D.T @ inner^{-1} by solving a system of equations
+    return sp.linalg.solve(inner.T, delta_D, **solver_kwargs).T
+
+
 class LocalizedESMDA(BaseESMDA):
     # Available inversion methods. The inversion methods all compute
     # C_MD @ (C_DD + alpha * C_D)^(-1)  @ (D - Y)
@@ -141,18 +180,34 @@ class LocalizedESMDA(BaseESMDA):
     def prepare_assmilation(self, *, Y):
         """Prepare assimilation of one or several batches of parameters.
 
+        Parameters
+        ----------
+        Y : np.ndarray
+            2D array of shape (num_observations, ensemble_size), containing
+            responses when evaluating the model at X. In other words, Y = g(X),
+            where g is the forward model.
+
+        Returns
+        -------
+        self
+            The instance with mutated state.
+
+        Notes
+        -----
         In the equation:
 
-        M + (\delta M)(\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1) (D_obs - D)
+            M + (\delta M)
+                (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
+                (D_obs - D)
 
-        This corresponds to computing:
+        This method call corresponds to computing:
 
-            - The next-to-last factor: (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
+            - The next-to-last factors: (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
             - The last factor: (D_obs - D)
 
         The total internal storage is: 2 * ensemble_size * num_observations, since shapes are:
 
-            - The next-to-last factor: (ensemble_size, num_observations)
+            - The next-to-last factors: (ensemble_size, num_observations)
             - The last factor: (num_observations, ensemble_size)
         """
         assert Y.ndim == 2
@@ -164,16 +219,18 @@ class LocalizedESMDA(BaseESMDA):
         delta_D = Y - np.mean(Y, axis=1, keepdims=True)  # Center the observations
 
         # Compute the last factor
-        D_obs = self.perturb_observations(
-            ensemble_size=N_e, alpha=self.alpha[self.iteration]
-        )
+        alpha = self.alpha[iteration]
+        D_obs = self.perturb_observations(ensemble_size=N_e, alpha=alpha)
         self.D_obs_minus_D = D_obs - Y
 
         # Compute the next-to-last factor
         # TODO: Here we must apply a better inversion method
-        covariance = np.diag(self.C_D) if self.C_D.ndim == 1 else self.C_D.ndim
-        delta_D_inv_cov = delta_D.T @ np.linalg.inv(delta_D @ delta_D.T + covariance)
-        self.delta_D_inv_cov = delta_D_inv_cov
+        self.delta_D_inv_cov = invert_naive(delta_D=delta_D, C_D=self.C_D, alpha=alpha)
+
+        assert np.allclose(
+            invert_naive(delta_D=delta_D, C_D=self.C_D, alpha=alpha),
+            invert(delta_D=delta_D, C_D=self.C_D, alpha=alpha),
+        )
 
         self.iteration += 1
         return self
@@ -248,8 +305,6 @@ if __name__ == "__main__":
 
         smoother.prepare_assmilation(Y=Y)
 
-        # X = esmda.assimilate(X, Y)  # Update X
-
         for batch_idx in [[0, 1, 2], [3, 4, 5], [6, 7, 8, 9]]:
 
             def localization_callback(K):
@@ -258,3 +313,15 @@ if __name__ == "__main__":
             X[batch_idx, :] = smoother.assimilate_batch(
                 X=X[batch_idx, :], localization_callback=localization_callback
             )
+
+
+if __name__ == "__main__":
+    import pytest
+
+    pytest.main(
+        args=[
+            __file__,
+            "--doctest-modules",
+            "-v",
+        ]
+    )
