@@ -83,34 +83,38 @@ from iterative_ensemble_smoother.esmda_inversion import (
 )
 from iterative_ensemble_smoother.utils import sample_mvnormal
 from iterative_ensemble_smoother.esmda import BaseESMDA
+from iterative_ensemble_smoother.esmda_inversion import singular_values_to_keep
 
 
-def invert_naive(*, delta_D, C_D, alpha):
+def invert_naive(*, delta_D, C_D, alpha, truncation):
     """Naive inversion of the equation:
 
     (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
     """
+    _, N_e = delta_D.shape  # Number of ensemble members
 
     covariance = np.diag(C_D) if C_D.ndim == 1 else C_D
     delta_D_inv_cov = delta_D.T @ np.linalg.inv(
-        delta_D @ delta_D.T + alpha * covariance
+        delta_D @ delta_D.T + alpha * (N_e - 1) * covariance
     )
     return delta_D_inv_cov
 
 
-def invert(*, delta_D, C_D, alpha):
+def invert(*, delta_D, C_D, alpha, truncation):
     """Not-so-naive inversion of the equation:
 
     (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
     """
+    _, N_e = delta_D.shape  # Number of ensemble members
+
     # Equivalent to: delta_D @ delta_D.T, but only computes upper triangular part
     inner = sp.linalg.blas.dsyrk(alpha=1.0, a=delta_D)
 
     # Add to diagonal
     if C_D.ndim == 1:
-        np.fill_diagonal(inner, np.diagonal(inner) + alpha * C_D)
+        np.fill_diagonal(inner, np.diagonal(inner) + alpha * (N_e - 1) * C_D)
     else:
-        inner += alpha * C_D
+        inner += alpha * (N_e - 1) * C_D
 
     # Arguments for sp.linalg.solve
     solver_kwargs = {
@@ -124,9 +128,52 @@ def invert(*, delta_D, C_D, alpha):
     return sp.linalg.solve(inner.T, delta_D, **solver_kwargs).T
 
 
+def invert_subspace(*, delta_D, C_D, alpha, truncation):
+    N_d, N_e = delta_D.shape  # (num_observations, ensemble_size)
+
+    # Extract diagonals
+    if C_D.ndim == 1:
+        S = np.sqrt(C_D)
+    else:
+        S = np.sqrt(np.diag(C_D))
+    S_inv = 1 / S
+
+    # Equation (B.10), which is equivalent to: np.diag(S_inv) @ delta_D
+    S_inv_delta_D = delta_D * S_inv[:, np.newaxis]
+    assert np.allclose(S_inv_delta_D, np.diag(S_inv) @ delta_D)
+
+    U, w, _ = sp.linalg.svd(S_inv_delta_D, overwrite_a=True, full_matrices=False)
+    idx = singular_values_to_keep(w, truncation=truncation)
+
+    # assert np.allclose(VT @ VT.T, np.eye(VT.shape[0]))
+    N_r = min(N_d, N_e - 1, idx)  # Number of values in SVD to keep
+    U_r, w_r = U[:, :N_r], w[:N_r]  # U_r.shape = (num_observations, ~ensemble_size)
+
+    if C_D.ndim == 1:
+        # This is equation (B.13), which can be simplified drastically:
+        # R = alpha (N_e - 1) diag(1/w_r) @ U_r.T @ hat(C_D) @ U_r @ diag(1/w_r)
+        #  = alpha (N_e - 1) diag(1/w_r) @ U_r.T @ (diag(1/sqrt(C_D))) @ diag(C_D) @ (diag(1/sqrt(C_D))) @ U_r @ diag(1/w_r)
+        #  = alpha (N_e - 1) F.T @ F
+        # where F = diag(sqrt(C_d)) @ (diag(1/sqrt(C_D))) @ U_r @ diag(1/w_r)
+        #         = I @ U_r @ diag(1/w_r)
+        #         = U_r * (1/w_r)[np.newaxis,:]
+        F = U_r * (1 / w_r)[np.newaxis, :]
+
+        # The matrix F has shape (num_observations, ~ensemble_size), so it is thin.
+        # Taking the product first makes it small, and is faster than computing
+        # the SVD of F or F.T directly.
+        Z_r, h_r, _ = sp.linalg.svd(F.T @ F, full_matrices=False)
+
+    # This is equation (B.18), and is equivalent to:
+    # X = np.diag(S_inv) @ U_r @ np.diag(1/w_r) @ Z_r
+    X = (U_r * S_inv[:, np.newaxis]) @ (Z_r * (1 / w_r)[:, np.newaxis])
+    L = 1 / (1 + h_r)
+    return np.linalg.multi_dot([delta_D.T, X * L[np.newaxis], X.T])
+
+
 class LocalizedESMDA(BaseESMDA):
     # Available inversion methods. The inversion methods all compute
-    # C_MD @ (C_DD + alpha * C_D)^(-1)  @ (D - Y)
+    # (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
     _inversion_methods = {
         "exact": inversion_exact_cholesky,
         "subspace": inversion_subspace,
@@ -225,11 +272,33 @@ class LocalizedESMDA(BaseESMDA):
 
         # Compute the next-to-last factor
         # TODO: Here we must apply a better inversion method
-        self.delta_D_inv_cov = invert_naive(delta_D=delta_D, C_D=self.C_D, alpha=alpha)
+        truncation = 1.0
+        self.delta_D_inv_cov = invert_naive(
+            delta_D=delta_D, C_D=self.C_D, alpha=alpha, truncation=truncation
+        )
 
         assert np.allclose(
-            invert_naive(delta_D=delta_D, C_D=self.C_D, alpha=alpha),
-            invert(delta_D=delta_D, C_D=self.C_D, alpha=alpha),
+            invert_naive(
+                delta_D=delta_D, C_D=self.C_D, alpha=alpha, truncation=truncation
+            ),
+            invert(delta_D=delta_D, C_D=self.C_D, alpha=alpha, truncation=truncation),
+        )
+
+        naive = invert_naive(
+            delta_D=delta_D, C_D=self.C_D, alpha=alpha, truncation=truncation
+        )
+        subspace = invert_subspace(
+            delta_D=delta_D, C_D=self.C_D, alpha=alpha, truncation=truncation
+        )
+        print(np.sqrt(np.mean((naive - subspace) ** 2)))
+
+        assert np.allclose(
+            invert_naive(
+                delta_D=delta_D, C_D=self.C_D, alpha=alpha, truncation=truncation
+            ),
+            invert_subspace(
+                delta_D=delta_D, C_D=self.C_D, alpha=alpha, truncation=truncation
+            ),
         )
 
         self.iteration += 1
@@ -305,7 +374,7 @@ if __name__ == "__main__":
 
         smoother.prepare_assmilation(Y=Y)
 
-        for batch_idx in [[0, 1, 2], [3, 4, 5], [6, 7, 8, 9]]:
+        for batch_idx in [[0, 1, 2, 3, 4, 5], [6, 7, 8, 9]]:
 
             def localization_callback(K):
                 return K
