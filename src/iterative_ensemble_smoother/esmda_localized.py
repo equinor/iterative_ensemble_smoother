@@ -7,6 +7,54 @@ This module implements localized ESMDA, following the paper:
     - "Analysis of the performance of ensemble-based assimilation of production and seismic data"
       Alexandre A. Emerick
 
+What is localized ESMDA and what are the performance tradeoffs?
+---------------------------------------------------------------
+
+To understand the performance tradeoffs between vanilla ESMDA and localized
+ESMDA we must examine the ensemble smoother equation and apply some basic
+linear algebra. We assume that the dimensions obey:
+
+    parameters (p) >> observations (o) >> ensemble_realizations (e)
+
+Recall that if we multiply two matrices A and B, and they have shapes
+(a, b) and (b, c), then the matrix multiplication uses O(abc) operations.
+If we ignore details, the gist of the ensemble smoother update equation is:
+
+    X_post  =   X   +   X       Y^T    [Y Y^T + covar]^{-1} (D_obs - Y)
+    (p, e)   (p, e)   (p, e)  (e, o)       (o, o)           (o, e)
+
+The speed and intermediate storage required depends on the order of the matrix
+product (as well as other computational tricks like subspace inversion):
+
+- If we go left-to-right, the total cost is O(poe + po^2 + poe) = O(po^2).
+- If we go right-to-left, the total cost is O(o^2e + oe^2 + pe^2) = O(pe^2).
+
+Localized ESMDA must form the Kalman gain matrix
+
+    K := X Y^T [Y Y^T + covar]^{-1}
+
+with shape (p, o) and applies a localization function elementwise to this matrix.
+This has a cost of at least O(poe) (right-to-left), which is not ideal.
+
+The disadvantage is the memory and computational requirement, but the advantage
+is that we can apply the elementwise localization function, which determines
+how parameter i should influence observation j, at entry K_ij.
+
+Since storing K in memory at once is often prohibitive, we actually first form:
+
+    delta_D_inv_cov := Y^T [Y Y^T + covar]^{-1}
+
+and then update parameters in batches. This works because, given a set of indices
+for a batch with size b, the block equations become:
+
+    K[idx, :] = X[idx, :] Y^T [Y Y^T + covar]^{-1} = X[idx, :] delta_D_inv_cov
+     (b, o)     (b, e)  (e, o)    (o, o)           =  (b, e)     (e, o)
+
+    X_post[idx, :] = X[idx, :] + K[idx, :] (D_obs - Y)
+       (b, e)        (b, e)     (b, o)      (e, o)
+
+In summary localized ESMDA is more computationally expensive than ESMDA,
+but we can alleviate the memory requirement by assimilating parameters in batches.
 
 API design
 ----------
@@ -87,7 +135,7 @@ from iterative_ensemble_smoother.esmda_inversion import singular_values_to_keep
 
 
 def invert_naive(*, delta_D, C_D, alpha, truncation):
-    """Naive inversion of the equation:
+    """Naive implementation of the equation:
 
     (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
     """
@@ -100,8 +148,8 @@ def invert_naive(*, delta_D, C_D, alpha, truncation):
     return delta_D_inv_cov
 
 
-def invert(*, delta_D, C_D, alpha, truncation):
-    """Not-so-naive inversion of the equation:
+def invert_exact(*, delta_D, C_D, alpha, truncation):
+    """Not-so-naive implementation of the equation:
 
     (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
     """
@@ -129,6 +177,13 @@ def invert(*, delta_D, C_D, alpha, truncation):
 
 
 def invert_subspace(*, delta_D, C_D, alpha, truncation):
+    """Subspace inversion implementation of the equation:
+
+    (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
+
+    See the appendix in the 2016 Emerick paper for details:
+    https://doi.org/10.1016/j.petrol.2016.01.029
+    """
     N_d, N_e = delta_D.shape  # (num_observations, ensemble_size)
 
     # Extract diagonals
@@ -140,9 +195,11 @@ def invert_subspace(*, delta_D, C_D, alpha, truncation):
 
     # Equation (B.10), which is equivalent to: np.diag(S_inv) @ delta_D
     S_inv_delta_D = delta_D * S_inv[:, np.newaxis]
-    assert np.allclose(S_inv_delta_D, np.diag(S_inv) @ delta_D)
+    # assert np.allclose(S_inv_delta_D, np.diag(S_inv) @ delta_D)
 
-    U, w, _ = sp.linalg.svd(S_inv_delta_D, overwrite_a=True, full_matrices=False)
+    U, w, _ = sp.linalg.svd(
+        S_inv_delta_D, overwrite_a=True, full_matrices=False, check_finite=False
+    )
     idx = singular_values_to_keep(w, truncation=truncation)
 
     # assert np.allclose(VT @ VT.T, np.eye(VT.shape[0]))
@@ -161,22 +218,35 @@ def invert_subspace(*, delta_D, C_D, alpha, truncation):
 
         # The matrix F has shape (num_observations, ~ensemble_size), so it is thin.
         # Taking the product first makes it small, and is faster than computing
-        # the SVD of F or F.T directly.
-        Z_r, h_r, _ = sp.linalg.svd(F.T @ F, full_matrices=False)
+        # the SVD of F or F.T directly. The code below is equivalent to:
+        # Z_r, h_r, _ = sp.linalg.svd(F.T @ F, full_matrices=False)
+
+        gram_dsyrk = sp.linalg.blas.dsyrk(1.0, F.T, lower=1)
+        h_r, Z_r = sp.linalg.eigh(
+            gram_dsyrk, overwrite_a=True, check_finite=False, driver="evr", lower=True
+        )
+    else:
+        # TODO: the 2D case
+        pass
 
     # This is equation (B.18), and is equivalent to:
     # X = np.diag(S_inv) @ U_r @ np.diag(1/w_r) @ Z_r
     X = (U_r * S_inv[:, np.newaxis]) @ (Z_r * (1 / w_r)[:, np.newaxis])
     L = 1 / (1 + h_r)
-    return np.linalg.multi_dot([delta_D.T, X * L[np.newaxis], X.T])
+
+    # This is the fastest approach:
+    # print(delta_D.T.shape, X.shape) # (100, 1000) (1000, 99)
+    temp = (delta_D.T @ X) * L[np.newaxis, :]
+    return temp @ X.T
 
 
 class LocalizedESMDA(BaseESMDA):
     # Available inversion methods. The inversion methods all compute
     # (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
     _inversion_methods = {
-        "exact": inversion_exact_cholesky,
-        "subspace": inversion_subspace,
+        "naive": invert_naive,
+        "exact": invert_exact,
+        "subspace": invert_subspace,
     }
 
     def __init__(
@@ -224,8 +294,12 @@ class LocalizedESMDA(BaseESMDA):
     def num_assimilations(self) -> int:
         return len(self.alpha)
 
-    def prepare_assmilation(self, *, Y):
+    def prepare_assmilation(self, *, Y, truncation=0.99):
         """Prepare assimilation of one or several batches of parameters.
+
+        This method call pre-computes everything that is needed to assimilate
+        a set of batches once. This saves time since we do not have to repeat
+        the same computations for every single batch.
 
         Parameters
         ----------
@@ -233,6 +307,10 @@ class LocalizedESMDA(BaseESMDA):
             2D array of shape (num_observations, ensemble_size), containing
             responses when evaluating the model at X. In other words, Y = g(X),
             where g is the forward model.
+        truncation : float
+            How large a fraction of the singular values to keep in the inversion
+            routine. Must be a float in the range (0, 1]. A lower number means
+            a more approximate answer and a slightly faster computation.
 
         Returns
         -------
@@ -270,35 +348,10 @@ class LocalizedESMDA(BaseESMDA):
         D_obs = self.perturb_observations(ensemble_size=N_e, alpha=alpha)
         self.D_obs_minus_D = D_obs - Y
 
-        # Compute the next-to-last factor
-        # TODO: Here we must apply a better inversion method
-        truncation = 1.0
-        self.delta_D_inv_cov = invert_naive(
+        # Compute parts of the Kalman gain
+        inversion_func = self._inversion_methods[self.inversion]
+        self.delta_D_inv_cov = inversion_func(
             delta_D=delta_D, C_D=self.C_D, alpha=alpha, truncation=truncation
-        )
-
-        assert np.allclose(
-            invert_naive(
-                delta_D=delta_D, C_D=self.C_D, alpha=alpha, truncation=truncation
-            ),
-            invert(delta_D=delta_D, C_D=self.C_D, alpha=alpha, truncation=truncation),
-        )
-
-        naive = invert_naive(
-            delta_D=delta_D, C_D=self.C_D, alpha=alpha, truncation=truncation
-        )
-        subspace = invert_subspace(
-            delta_D=delta_D, C_D=self.C_D, alpha=alpha, truncation=truncation
-        )
-        print(np.sqrt(np.mean((naive - subspace) ** 2)))
-
-        assert np.allclose(
-            invert_naive(
-                delta_D=delta_D, C_D=self.C_D, alpha=alpha, truncation=truncation
-            ),
-            invert_subspace(
-                delta_D=delta_D, C_D=self.C_D, alpha=alpha, truncation=truncation
-            ),
         )
 
         self.iteration += 1
@@ -351,20 +404,28 @@ class LocalizedESMDA(BaseESMDA):
 
 
 if __name__ == "__main__":
+    from time import perf_counter
+
     rng = np.random.default_rng(42)
-    A = rng.normal(size=(3, 10))
+    num_obs = 10
+    num_params = 10
+    num_realizations = 100
+
+    A = rng.normal(size=(num_obs, num_params))
 
     def forward_model(x):
         return A @ x
 
     # Then we set up the ESMDA instance and the prior realizations X:
 
-    covariance = np.ones(3)  # Covariance of the observations / outputs
-    observations = np.array([1, 2, 3])  # The observed data
+    covariance = 2.0 ** (
+        -np.linspace(0, -10, num_obs)
+    )  # Covariance of the observations / outputs
+    observations = np.ones(num_obs)  # The observed data
     smoother = LocalizedESMDA(
         covariance=covariance, observations=observations, alpha=3, seed=42
     )
-    X = rng.normal(size=(10, 100))
+    X = rng.normal(size=(num_params, num_realizations))
 
     # To assimilate data, we iterate over the assimilation steps:
 
@@ -372,9 +433,18 @@ if __name__ == "__main__":
         # Apply the forward model in each realization in the ensemble
         Y = np.array([forward_model(x) for x in X.T]).T
 
+        # break
+
+        st = perf_counter()
         smoother.prepare_assmilation(Y=Y)
 
-        for batch_idx in [[0, 1, 2, 3, 4, 5], [6, 7, 8, 9]]:
+        def localization_callback(K):
+            return K
+
+        X = smoother.assimilate_batch(X=X, localization_callback=localization_callback)
+        print(perf_counter() - st)
+
+        for batch_idx in [[0]]:
 
             def localization_callback(K):
                 return K
@@ -383,6 +453,19 @@ if __name__ == "__main__":
                 X=X[batch_idx, :], localization_callback=localization_callback
             )
 
+    from iterative_ensemble_smoother.experimental import DistanceESMDA
+
+    esmda_distance = DistanceESMDA(
+        covariance=covariance,
+        observations=observations,
+        alpha=np.array([1, 2]),
+        seed=rng,
+    )
+    rho = np.ones((X.shape[0], Y.shape[0]))
+
+    st = perf_counter()
+    X_posterior = esmda_distance.assimilate(X=X, Y=Y, rho=rho)
+    print(perf_counter() - st)
 
 if __name__ == "__main__":
     import pytest
