@@ -33,14 +33,11 @@ Localized ESMDA must form the Kalman gain matrix
 
     K := X Y^T [Y Y^T + covar]^{-1}
 
-with shape (p, o) and applies a localization function elementwise to this matrix.
+with shape (p, o) in order to apply a localization function elementwise to K,
+which determines how parameter i should influence observation j, at entry K_ij.
 This has a cost of at least O(poe) (right-to-left), which is not ideal.
 
-The disadvantage is the memory and computational requirement, but the advantage
-is that we can apply the elementwise localization function, which determines
-how parameter i should influence observation j, at entry K_ij.
-
-Since storing K in memory at once is often prohibitive, we actually first form:
+Since storing all of K in memory at once can be prohibitive, we first form:
 
     delta_D_inv_cov := Y^T [Y Y^T + covar]^{-1}
 
@@ -59,50 +56,11 @@ but we can alleviate the memory requirement by assimilating parameters in batche
 API design
 ----------
 
-The interface uses human-readable names, just like ESMDA.
-The implementation (local variables in methods) follows the notation in the paper.
+Some notes on design:
 
-The central idea behind localization is to study equation (B.6) and the Kalman gain K:
-
-    M + (\delta M)(\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1) (D_obs - D) =
-    M + K (D_obs - D)
-
-The Kalman gain K has shape (parameters, observations) and encodes how much each
-observation is influenced by each parameter in every update step of the algorithm.
-Given a localization matrix of the same shape with entries in the range [0, 1],
-we can "regularize" the kalmain gain:
-
-    K_regularized = K * localization    (elementwise product)
-
-
-An API might look like:
-
-# Create smoohter instance. Set up all global state used in all iterations
-smoother = LocalizedESMDA(covariance, observations, alpha, seed, inversion)
-X = np.random.randn(...)
-
-for iteration in range(num_assimilations):
-
-    # Run simulation and keep track of living indices
-    Y, living_idx = g(X)
-
-    # Set up all state used for this iteration:
-    # (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1) (D_obs - D)
-    # With the possibility of dropping dead ensemble members
-
-    smoother.prepare_assimilation(Y, living_idx, truncation=0.99)
-
-    # Loop over parameter blocks and update them
-    for param_block_idx in parameter_indicies_generator():
-
-        def localization_callback(K):
-            # Logic that ties each parameter index in this block to the observations
-            return K * localization
-
-        X[param_block_idx, living_idx] = smoother.assimilate(X=X[param_block_idx, living_idx],
-                                                             localization_callback=localization_callback
-                                                             )
-
+- The inferace (API) uses human-readable names, but the internals refer to the paper.
+- Two main methods are used: `prepare_assimilation()` and `assimilate_batch()`.
+- The user is responsible for callling them in the correct order.
 
 Comments
 --------
@@ -110,9 +68,9 @@ Comments
 - If `localization_callback` is the identity function, LocalizedESMDA is identical to ESMDA.
 - The inner loop over parameter blocks saves memory. The result should be the same over any
   possible sequence of parameter blocks.
-- The caller is responsible for keeping track of relationships between input parameters and
-  observations. For instance, if some points in an input parameter grid are known to be close
-  to an observation, the user can create a helper class Grid to keep track of this.
+- Practical elements that are not directly related to ensemble smoothing, such as
+  removing inactive realizations, batching the parameters, maintaining grid information
+  in order to assess the influence of paramter i on response j, is the caller's responsibility.
 
 """
 
@@ -133,8 +91,14 @@ from iterative_ensemble_smoother.esmda_inversion import singular_values_to_keep
 # =============== Inversion methods ===============
 
 
-def invert_naive(*, delta_D, C_D, alpha, truncation):
-    """Naive implementation of the equation:
+def invert_naive(
+    *,
+    delta_D: npt.NDArray[np.double],
+    C_D: npt.NDArray[np.double],
+    alpha: float,
+    truncation: float,
+):
+    r"""Naive implementation of the equation:
 
     (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
 
@@ -149,8 +113,14 @@ def invert_naive(*, delta_D, C_D, alpha, truncation):
     return delta_D_inv_cov
 
 
-def invert_exact(*, delta_D, C_D, alpha, truncation):
-    """Not-so-naive implementation of the equation:
+def invert_exact(
+    *,
+    delta_D: npt.NDArray[np.double],
+    C_D: npt.NDArray[np.double],
+    alpha: float,
+    truncation: float,
+):
+    r"""Not-so-naive implementation of the equation:
 
     (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
     """
@@ -172,13 +142,18 @@ def invert_exact(*, delta_D, C_D, alpha, truncation):
         "assume_a": "pos",  # Assume positive definite matrix (use cholesky)
         "lower": True,  # Only use the lower part (upper before transpose) while solving
     }
-
     # Computes X = delta_D.T @ inner^{-1} by solving a system of equations
     return sp.linalg.solve(inner.T, delta_D, **solver_kwargs).T
 
 
-def invert_subspace(*, delta_D, C_D, alpha, truncation):
-    """Subspace inversion implementation of the equation:
+def invert_subspace(
+    *,
+    delta_D: npt.NDArray[np.double],
+    C_D: npt.NDArray[np.double],
+    alpha: float,
+    truncation: float,
+):
+    r"""Subspace inversion (without rescaling) implementation of the equation:
 
     (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
 
@@ -187,7 +162,56 @@ def invert_subspace(*, delta_D, C_D, alpha, truncation):
     """
     N_d, N_e = delta_D.shape  # (num_observations, ensemble_size)
 
-    # Extract diagonals
+    # Take SVD of delta_D, choose singular values and keep the top ones
+    U, w, _ = sp.linalg.svd(
+        delta_D,
+        overwrite_a=False,  # delta_D is used later
+        full_matrices=False,
+        check_finite=False,
+    )
+    idx = singular_values_to_keep(w, truncation=truncation)
+    N_r = min(N_d, N_e - 1, idx)  # Number of values in SVD to keep
+    U_r, w_r = U[:, :N_r], w[:N_r]  # U_r.shape = (num_observations, ~ensemble_size)
+
+    # The matrix F has shape (num_observations, ~ensemble_size), so it is thin.
+    # Therefore we compute F.T @ F before taking SVD / EIG.
+    F = U_r * (1 / w_r)[np.newaxis, :]  # Factor used next
+    if C_D.ndim == 1:
+        F = F * np.sqrt(C_D)[:, np.newaxis]
+        gram_dsyrk = sp.linalg.blas.dsyrk(alpha * (N_e - 1), F.T, lower=1)
+        h_r, Z_r = sp.linalg.eigh(
+            gram_dsyrk, overwrite_a=True, check_finite=False, driver="evr", lower=True
+        )
+    else:
+        h_r, Z_r = sp.linalg.eigh(
+            alpha * (N_e - 1) * F.T @ C_D @ F,
+            overwrite_a=True,
+            check_finite=False,
+            driver="evr",
+            lower=True,
+        )
+
+    # This is equation (B.18), and is equivalent to:
+    # X = np.diag(S_inv) @ U_r @ np.diag(1/w_r) @ Z_r
+    X = U_r @ (Z_r * (1 / w_r)[:, np.newaxis])
+    L = 1 / (1 + h_r)
+
+    # This is the fastest approach:
+    temp = (delta_D.T @ X) * L[np.newaxis, :]
+    return temp @ X.T
+
+
+def invert_subspace_scaled(*, delta_D, C_D, alpha, truncation):
+    r"""Subspace inversion (with rescaling) implementation of the equation:
+
+    (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
+
+    See the appendix in the 2016 Emerick paper for details:
+    https://doi.org/10.1016/j.petrol.2016.01.029
+    """
+    N_d, N_e = delta_D.shape  # (num_observations, ensemble_size)
+
+    # Extract diagonals, used to re-scale
     if C_D.ndim == 1:
         S = np.sqrt(C_D)
     else:
@@ -196,14 +220,12 @@ def invert_subspace(*, delta_D, C_D, alpha, truncation):
 
     # Equation (B.10), which is equivalent to: np.diag(S_inv) @ delta_D
     S_inv_delta_D = delta_D * S_inv[:, np.newaxis]
-    # assert np.allclose(S_inv_delta_D, np.diag(S_inv) @ delta_D)
 
+    # Take SVD and only keep the largest singular values
     U, w, _ = sp.linalg.svd(
         S_inv_delta_D, overwrite_a=True, full_matrices=False, check_finite=False
     )
     idx = singular_values_to_keep(w, truncation=truncation)
-
-    # assert np.allclose(VT @ VT.T, np.eye(VT.shape[0]))
     N_r = min(N_d, N_e - 1, idx)  # Number of values in SVD to keep
     U_r, w_r = U[:, :N_r], w[:N_r]  # U_r.shape = (num_observations, ~ensemble_size)
 
@@ -220,15 +242,14 @@ def invert_subspace(*, delta_D, C_D, alpha, truncation):
         # The matrix F has shape (num_observations, ~ensemble_size), so it is thin.
         # Taking the product first makes it small, and is faster than computing
         # the SVD of F or F.T directly. The code below is equivalent to:
-        # Z_r, h_r, _ = sp.linalg.svd(F.T @ F, full_matrices=False)
-
+        # Z_r, h_r, _ = sp.linalg.svd(alpha * (N_e - 1) * F.T @ F)
         gram_dsyrk = sp.linalg.blas.dsyrk(alpha * (N_e - 1), F.T, lower=1)
         h_r, Z_r = sp.linalg.eigh(
             gram_dsyrk, overwrite_a=True, check_finite=False, driver="evr", lower=True
         )
     else:
         # Equivalent to:
-        # np.diag(S_inv)  @ U_r @ np.diag(1/w_r)
+        # F = np.diag(S_inv) @ U_r @ np.diag(1/w_r)
         F = U_r * (1 / w_r)[np.newaxis, :] * S_inv[:, np.newaxis]
         h_r, Z_r = sp.linalg.eigh(
             alpha * (N_e - 1) * F.T @ C_D @ F,
@@ -243,19 +264,92 @@ def invert_subspace(*, delta_D, C_D, alpha, truncation):
     X = (U_r * S_inv[:, np.newaxis]) @ (Z_r * (1 / w_r)[:, np.newaxis])
     L = 1 / (1 + h_r)
 
-    # This is the fastest approach:
-    # print(delta_D.T.shape, X.shape) # (100, 1000) (1000, 99)
+    # This is the fastest approach I've found to compute:
+    # delta_D.T @ X @ np.diag(L) @ X.T @ delta_D
     temp = (delta_D.T @ X) * L[np.newaxis, :]
     return temp @ X.T
 
 
 class LocalizedESMDA(BaseESMDA):
+    """
+    Implement a Localized Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
+
+    Parameters
+    ----------
+    covariance : np.ndarray
+        Either a 1D array of diagonal covariances, or a 2D covariance matrix.
+        The shape is either (num_observations,) or (num_observations, num_observations).
+        This is C_D in Emerick (2013), and represents observation or measurement
+        errors. We observe d from the real world, y from the model g(x), and
+        assume that d = y + e, where the error e is multivariate normal with
+        covariance given by `covariance`.
+    observations : np.ndarray
+        1D array of shape (num_observations,) representing real-world observations.
+        This is d_obs in Emerick (2013).
+    alpha : int or 1D np.ndarray, optional
+        Multiplicative factor for the covariance.
+        If an integer `alpha` is given, an array with length `alpha` and
+        elements `alpha` is constructed. If an 1D array is given, it is
+        normalized so sum_i 1/alpha_i = 1 and used. The default is 5, which
+        corresponds to np.array([5, 5, 5, 5, 5]).
+    seed : integer or numpy.random._generator.Generator, optional
+        A seed or numpy.random._generator.Generator used for random number
+        generation. The argument is passed to numpy.random.default_rng().
+        The default is None.
+    inversion : str, optional
+        Which inversion method to use. The default is "exact".
+        See the dictionary ESMDA._inversion_methods for more information.
+
+    Examples
+    --------
+
+    A full example where the forward model maps 10 parameters to 3 outputs.
+    We will use 100 realizations. First we define the forward model:
+
+    >>> rng = np.random.default_rng(42)
+    >>> A = rng.normal(size=(3, 10))
+    >>> def forward_model(x):
+    ...     return A @ x
+
+    Then we set up the LocalizedESMDA instance and the prior realizations X:
+
+    >>> covariance = np.ones(3)  # Covariance of the observations / outputs
+    >>> observations = np.array([1, 2, 3])  # The observed data
+    >>> smoother = LocalizedESMDA(covariance=covariance,
+    ...                           observations=observations, alpha=3, seed=42,
+    ...                           inversion="subspace_scaled")
+    >>> X = rng.normal(size=(10, 100))
+
+    To assimilate data, we iterate over the assimilation steps in an outher
+    loop, then over parameter batches:
+
+    >>> def yield_param_indices():
+    ...     yield [1, 2, 3, 4]
+    ...     yield [5, 6, 7, 8, 9]
+    >>> for iteration in range(smoother.num_assimilations()):
+    ...
+    ...     Y = np.array([forward_model(x) for x in X.T]).T
+    ...
+    ...     # Prepare for assimilation
+    ...     smoother.prepare_assimilation(Y=Y, truncation=0.99)
+    ...
+    ...     def localization_callback(K):
+    ...         # Takes an array of shape (params_batch, obs)
+    ...         # and applies localization to each entry.
+    ...         return K # Here we do nothing
+    ...
+    ...     for param_idx in yield_param_indices():
+    ...         X[param_idx, :] = smoother.assimilate_batch(X=X[param_idx, :],
+    ...                                                     localization_callback=localization_callback)
+    """
+
     # Available inversion methods. The inversion methods all compute
     # (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
     _inversion_methods = {
         "naive": invert_naive,
         "exact": invert_exact,
         "subspace": invert_subspace,
+        "subspace_scaled": invert_subspace_scaled,
     }
 
     def __init__(
@@ -303,8 +397,10 @@ class LocalizedESMDA(BaseESMDA):
     def num_assimilations(self) -> int:
         return len(self.alpha)
 
-    def prepare_assmilation(self, *, Y, truncation=1.0):
-        """Prepare assimilation of one or several batches of parameters.
+    def prepare_assimilation(
+        self, *, Y: npt.NDArray[np.double], truncation: float = 1.0
+    ) -> None:
+        r"""Prepare assimilation of one or several batches of parameters.
 
         This method call pre-computes everything that is needed to assimilate
         a set of batches once. This saves time since we do not have to repeat
@@ -345,6 +441,10 @@ class LocalizedESMDA(BaseESMDA):
             - The last factor: (num_observations, ensemble_size)
         """
         assert Y.ndim == 2
+        assert 0 < truncation <= 1.0
+        if not np.issubdtype(Y.dtype, np.floating):
+            raise TypeError("Argument `Y` must contain floats")
+
         if self.iteration >= self.num_assimilations():
             raise Exception("No more assimilation steps to run.")
 
@@ -365,10 +465,15 @@ class LocalizedESMDA(BaseESMDA):
         )
 
         self.iteration += 1
-        return self
 
-    def assimilate_batch(self, *, X, localization_callback=None):
+    def assimilate_batch(
+        self, *, X: npt.NDArray[np.double], localization_callback: callable = None
+    ) -> npt.NDArray[np.double]:
         """Assimilate a batch of parameters aginst all observations.
+
+        The internal storage used by the class is 2 * ensemble_size * num_observations,
+        so a good batch size that is of the same order of magnitude as the internal
+        storage is 2 * num_observations. This is only a rough guideline.
 
         Parameters
         ----------
@@ -393,6 +498,8 @@ class LocalizedESMDA(BaseESMDA):
         if not hasattr(self, "D_obs_minus_D"):
             raise Exception("The method `prepare_assmilation` must be called.")
         assert localization_callback is None or callable(localization_callback)
+        if not np.issubdtype(X.dtype, np.floating):
+            raise TypeError("Argument `X` must contain floats")
 
         # The default localization is no localization (identity function)
         if localization_callback is None:
@@ -410,7 +517,6 @@ class LocalizedESMDA(BaseESMDA):
         # Create Kalman gain of shape (num_parameters_batch, ensemble_size),
         # then apply the localization callback elementwise
         K = localization_callback(delta_M @ self.delta_D_inv_cov)
-        print(X.shape, K.shape, self.D_obs_minus_D.shape)
         return X + K @ self.D_obs_minus_D
 
 
@@ -452,7 +558,7 @@ if __name__ == "__main__":
         # break
 
         st = perf_counter()
-        smoother.prepare_assmilation(Y=Y)
+        smoother.prepare_assimilation(Y=Y)
 
         def localization_callback(K):
             return K
