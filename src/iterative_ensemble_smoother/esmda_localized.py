@@ -301,7 +301,7 @@ class LocalizedESMDA(BaseESMDA):
         The default is None.
     inversion : str, optional
         Which inversion method to use. The default is "exact".
-        See the dictionary ESMDA._inversion_methods for more information.
+        See the dictionary LocalizedESMDA._inversion_methods for more information.
 
     Examples
     --------
