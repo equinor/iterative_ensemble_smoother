@@ -574,7 +574,7 @@ class DistanceESMDA(ESMDA):
         U_r_w_inv = U_r / w_r
         # See Eqn (B.13)
         R = (
-            self.alpha[0]
+            self.alpha[self.iteration]
             * (N_e - 1)
             * np.linalg.multi_dot([U_r_w_inv.T, C_hat_D, U_r_w_inv])
         )
@@ -601,7 +601,9 @@ class DistanceESMDA(ESMDA):
         # See Eqn (B.24)
         K_rho_i = rho * K_i
 
-        D = self.perturb_observations(ensemble_size=N_e, alpha=self.alpha[0])
+        D = self.perturb_observations(
+            ensemble_size=N_e, alpha=self.alpha[self.iteration]
+        )
         # See Eqn (B.25)
         X4 = K_rho_i @ (D - Y)
 
