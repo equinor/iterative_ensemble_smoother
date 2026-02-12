@@ -68,7 +68,7 @@ Comments
 - If `localization_callback` is the identity, LocalizedESMDA is identical to ESMDA.
 - The inner loop over parameter blocks saves memory. The result should be the
   same over any possible sequence of parameter blocks.
-- Practical elements that are not directly related to ensemble smoothing, such as
+- Practical issues that are not directly related to ensemble smoothing, such as
   removing inactive realizations, batching the parameters, maintaining grid information
   in order to assess the influence of parameter i on response j, is the caller's
   responsibility.
