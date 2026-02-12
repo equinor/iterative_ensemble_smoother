@@ -58,7 +58,7 @@ API design
 
 Some notes on design:
 
-- The inferace (API) uses human-readable names, but the internals refer to the paper.
+- The interface (API) uses human-readable names, but the internals refer to the paper.
 - Two main methods are used: `prepare_assimilation()` and `assimilate_batch()`.
 - The user is responsible for calling them in the correct order.
 
