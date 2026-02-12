@@ -527,7 +527,7 @@ class LocalizedESMDA(BaseESMDA):
         # Center the parameters
         delta_M = X - np.mean(X, axis=1, keepdims=True)
 
-        # Create Kalman gain of shape (num_parameters_batch, ensemble_size),
+        # Create Kalman gain of shape (num_parameters_batch, num_observations),
         # then apply the localization callback elementwise
         K = localization_callback(delta_M @ self.delta_D_inv_cov)
         return X + K @ self.D_obs_minus_D
