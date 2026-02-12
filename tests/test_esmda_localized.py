@@ -1,14 +1,14 @@
-import pytest
 import numpy as np
+import pytest
+
+from iterative_ensemble_smoother.esmda import ESMDA
 from iterative_ensemble_smoother.esmda_localized import (
     LocalizedESMDA,
-    invert_naive,
     invert_exact,
+    invert_naive,
     invert_subspace,
     invert_subspace_scaled,
 )
-
-from iterative_ensemble_smoother.esmda import ESMDA
 
 
 class TestLocalizedESMDA:
