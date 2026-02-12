@@ -117,7 +117,6 @@ Comments
 """
 
 import numbers
-from abc import ABC
 from typing import Union
 
 import numpy as np
@@ -125,19 +124,21 @@ import numpy.typing as npt
 import scipy as sp  # type: ignore
 
 from iterative_ensemble_smoother.esmda_inversion import (
-    inversion_exact_cholesky,
-    inversion_subspace,
     normalize_alpha,
 )
-from iterative_ensemble_smoother.utils import sample_mvnormal
 from iterative_ensemble_smoother.esmda import BaseESMDA
 from iterative_ensemble_smoother.esmda_inversion import singular_values_to_keep
+
+
+# =============== Inversion methods ===============
 
 
 def invert_naive(*, delta_D, C_D, alpha, truncation):
     """Naive implementation of the equation:
 
     (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
+
+    This function should only be used for testing and verification.
     """
     _, N_e = delta_D.shape  # Number of ensemble members
 
@@ -207,7 +208,7 @@ def invert_subspace(*, delta_D, C_D, alpha, truncation):
     U_r, w_r = U[:, :N_r], w[:N_r]  # U_r.shape = (num_observations, ~ensemble_size)
 
     if C_D.ndim == 1:
-        # This is equation (B.13), which can be simplified drastically:
+        # This is equation (B.13), which can be simplified drastically in the 1D case:
         # R = alpha (N_e - 1) diag(1/w_r) @ U_r.T @ hat(C_D) @ U_r @ diag(1/w_r)
         #  = alpha (N_e - 1) diag(1/w_r) @ U_r.T @ (diag(1/sqrt(C_D))) @ diag(C_D) @ (diag(1/sqrt(C_D))) @ U_r @ diag(1/w_r)
         #  = alpha (N_e - 1) F.T @ F
@@ -221,13 +222,21 @@ def invert_subspace(*, delta_D, C_D, alpha, truncation):
         # the SVD of F or F.T directly. The code below is equivalent to:
         # Z_r, h_r, _ = sp.linalg.svd(F.T @ F, full_matrices=False)
 
-        gram_dsyrk = sp.linalg.blas.dsyrk(1.0, F.T, lower=1)
+        gram_dsyrk = sp.linalg.blas.dsyrk(alpha * (N_e - 1), F.T, lower=1)
         h_r, Z_r = sp.linalg.eigh(
             gram_dsyrk, overwrite_a=True, check_finite=False, driver="evr", lower=True
         )
     else:
-        # TODO: the 2D case
-        pass
+        # Equivalent to:
+        # np.diag(S_inv)  @ U_r @ np.diag(1/w_r)
+        F = U_r * (1 / w_r)[np.newaxis, :] * S_inv[:, np.newaxis]
+        h_r, Z_r = sp.linalg.eigh(
+            alpha * (N_e - 1) * F.T @ C_D @ F,
+            overwrite_a=True,
+            check_finite=False,
+            driver="evr",
+            lower=True,
+        )
 
     # This is equation (B.18), and is equivalent to:
     # X = np.diag(S_inv) @ U_r @ np.diag(1/w_r) @ Z_r
@@ -294,7 +303,7 @@ class LocalizedESMDA(BaseESMDA):
     def num_assimilations(self) -> int:
         return len(self.alpha)
 
-    def prepare_assmilation(self, *, Y, truncation=0.99):
+    def prepare_assmilation(self, *, Y, truncation=1.0):
         """Prepare assimilation of one or several batches of parameters.
 
         This method call pre-computes everything that is needed to assimilate
@@ -341,10 +350,11 @@ class LocalizedESMDA(BaseESMDA):
 
         # We strictly follow the notation from the Appendix in the paper
         N_d, N_e = Y.shape  # (num_observations, ensemble_size)
+        assert N_d == self.observations.shape[0], "Shape mismatch"
         delta_D = Y - np.mean(Y, axis=1, keepdims=True)  # Center the observations
 
         # Compute the last factor
-        alpha = self.alpha[iteration]
+        alpha = self.alpha[self.iteration]
         D_obs = self.perturb_observations(ensemble_size=N_e, alpha=alpha)
         self.D_obs_minus_D = D_obs - Y
 
@@ -400,6 +410,7 @@ class LocalizedESMDA(BaseESMDA):
         # Create Kalman gain of shape (num_parameters_batch, ensemble_size),
         # then apply the localization callback elementwise
         K = localization_callback(delta_M @ self.delta_D_inv_cov)
+        print(X.shape, K.shape, self.D_obs_minus_D.shape)
         return X + K @ self.D_obs_minus_D
 
 
@@ -421,9 +432,14 @@ if __name__ == "__main__":
     covariance = 2.0 ** (
         -np.linspace(0, -10, num_obs)
     )  # Covariance of the observations / outputs
+    covariance = np.diag(covariance)
     observations = np.ones(num_obs)  # The observed data
     smoother = LocalizedESMDA(
-        covariance=covariance, observations=observations, alpha=3, seed=42
+        covariance=covariance,
+        observations=observations,
+        alpha=3,
+        seed=42,
+        inversion="subspace",
     )
     X = rng.normal(size=(num_params, num_realizations))
 
