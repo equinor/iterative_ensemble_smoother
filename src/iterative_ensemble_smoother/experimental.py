@@ -601,9 +601,7 @@ class DistanceESMDA(ESMDA):
         # See Eqn (B.24)
         K_rho_i = rho * K_i
 
-        D = self.perturb_observations(
-            ensemble_size=N_e, alpha=self.alpha[0]
-        )
+        D = self.perturb_observations(ensemble_size=N_e, alpha=self.alpha[0])
         # See Eqn (B.25)
         X4 = K_rho_i @ (D - Y)
 
