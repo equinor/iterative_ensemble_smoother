@@ -27,6 +27,8 @@ def empirical_covariance_upper(Y: npt.NDArray[np.double]) -> npt.NDArray[np.doub
            [0.371, 0.392, 0.407]])
     """
     _, num_observations = Y.shape
+    if num_observations <= 1:
+        raise ValueError("Need at least two observations to compute covariance")
     Y = (Y - np.mean(Y, axis=1, keepdims=True)) / np.sqrt(num_observations - 1)
     # https://www.math.utah.edu/software/lapack/lapack-blas/dsyrk.html
     YYT: npt.NDArray[np.double] = sp.linalg.blas.dsyrk(alpha=1.0, a=Y)
@@ -64,6 +66,8 @@ def empirical_cross_covariance(
 
     """
     assert X.shape[1] == Y.shape[1], "Ensemble size must be equal"
+    if X.shape[1] <= 1:
+        raise ValueError("Need at least two observations to compute covariance")
 
     # https://en.wikipedia.org/wiki/Estimation_of_covariance_matrices
     # Subtract mean. Even though the equation says E[(X - E[X])(Y - E[Y])^T],
