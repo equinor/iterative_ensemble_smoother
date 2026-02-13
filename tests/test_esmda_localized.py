@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from iterative_ensemble_smoother.esmda import ESMDA
+from iterative_ensemble_smoother.esmda_inversion import normalize_alpha
 from iterative_ensemble_smoother.esmda_localized import (
     LocalizedESMDA,
     invert_exact,
@@ -197,6 +198,71 @@ class TestLocalizedESMDA:
             assert np.allclose(X_1, X_2, rtol=1e-3)
 
             X = X_1
+
+    @pytest.mark.parametrize("seed", range(9))
+    @pytest.mark.parametrize("inversion", ["exact", "subspace"])
+    def test_setting_alpha_vs_scaling_covariance(self, seed, inversion):
+        """Two approaches should produce identical results:
+        (1) Create instance once, then assimilate over iterations
+        (2) Create instance in each iteration, with manual alpha
+        """
+        rng = np.random.default_rng(seed)
+        num_obs = rng.choice([5, 10, 15])
+        num_params = rng.choice([5, 10, 15])
+        num_realizations = rng.choice([5, 10, 15])
+        truncation = 0.99
+
+        # The linear forward map
+        A = rng.normal(size=(num_obs, num_params), scale=0.1)
+
+        def forward_model(x):
+            """Forward model for a single realization."""
+            return A @ x
+
+        def F(X):
+            "Vectorized forward model, applied to all realizations."
+            return np.array([forward_model(x) for x in X.T]).T
+
+        # Pre-compute alpha values so they are identical for both approaches
+        alpha = normalize_alpha(np.array([1, 2, 3, 4]))
+        covariance = np.logspace(-1, 1, num=num_obs)
+        observations = np.zeros(num_obs)
+        X_prior = 1 + rng.normal(size=(num_params, num_realizations))
+
+        # === APPROACH 1 : Create instance once, then assimilate over iterations ===
+        rng1 = np.random.default_rng(1 + seed)
+        esmda = LocalizedESMDA(
+            covariance=covariance,
+            observations=observations,
+            alpha=alpha,
+            seed=rng1,
+            inversion=inversion,
+        )
+
+        X_1 = X_prior.copy()
+        for _ in range(esmda.num_assimilations()):
+            Y = F(X_1)
+            esmda.prepare_assimilation(Y=Y, truncation=truncation)
+            X_1 = esmda.assimilate_batch(X=X_1, localization_callback=None)
+
+        # === APPROACH 2 : Create instance in each iteration, with manual alpha ===
+        X_2 = X_prior.copy()
+        # Creating the RNG outside of the loop, then advancing it within
+        # each instance of the LocalizedESMDA class created within the loop
+        rng2 = np.random.default_rng(1 + seed)
+        for alpha_i in alpha:
+            esmda = LocalizedESMDA(
+                covariance=covariance * alpha_i,
+                observations=observations,
+                alpha=1,  # Disable the effect of alpha here
+                seed=rng2,
+                inversion=inversion,
+            )
+            Y = F(X_2)
+            esmda.prepare_assimilation(Y=Y, truncation=truncation)
+            X_2 = esmda.assimilate_batch(X=X_2, localization_callback=None)
+
+        assert np.allclose(X_1, X_2), "Posteriors should match"
 
 
 class TestLocalizedESMDAInversionMethods:
