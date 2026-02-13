@@ -30,7 +30,7 @@ class TestLocalizedESMDA:
         inversion = str(rng.choice(list(LocalizedESMDA._inversion_methods.keys())))
         alpha = rng.choice([1, 2, 3])  # Number of iterations
 
-        # The linear forward map
+        # The linear map that defines the forward model
         A = rng.normal(size=(num_obs, num_params), scale=0.1)
 
         def forward_model(x):
@@ -38,7 +38,7 @@ class TestLocalizedESMDA:
             return A @ x
 
         def F(X):
-            "Vectorized forward model, applied to all realizations."
+            """Forward model applied to every realization."""
             return np.array([forward_model(x) for x in X.T]).T
 
         # Set up the localized ESMDA instance and the prior realizations X:
@@ -55,25 +55,35 @@ class TestLocalizedESMDA:
         # Set prior at N(1, 1), a little bit away from observations at 0
         X = 1 + rng.normal(size=(num_params, num_realizations))
 
+        # Loop over all iterations, defined by alpha in the initializer
         for _ in range(smoother.num_assimilations()):
             # Apply forward model and prepare for assimilation
             Y = F(X)
             smoother.prepare_assimilation(Y=Y)
 
-            # Approach 1: one batch with all parameters
-            X_1 = smoother.assimilate_batch(X=X, localization_callback=None)
+            #  =======Approach 1: one batch with all parameters =======
+            def cb(K):
+                # Dummy callback to check that K is passed through
+                assert K.shape == (num_params, num_obs)
+                return 0.5 * K  # A dummy callback
 
-            # Approach 2: several batches
+            X_1 = smoother.assimilate_batch(X=X, localization_callback=cb)
+
+            # ======= Approach 2: several batches =======
             X_2 = np.zeros_like(X_1)  # Empty storage
             for batch_idx in indices_generator(num_params, rng):
+
+                def cb_batch(K):
+                    assert K.shape == (len(batch_idx), num_obs)
+                    return 0.5 * K
+
                 X_2[batch_idx, :] = smoother.assimilate_batch(
-                    X=X[batch_idx, :], localization_callback=None
+                    X=X[batch_idx, :], localization_callback=cb_batch
                 )
 
             # The result should be the same
             assert np.allclose(X_1, X_2)
-
-            X = X_1
+            X = X_1  # For the next iteration
 
     @pytest.mark.parametrize("seed", range(99))
     def test_1D_vs_2D_covariance_invariance(self, seed):
@@ -92,12 +102,13 @@ class TestLocalizedESMDA:
             return np.sum(x, keepdims=True)
 
         def F(X):
-            "Vectorized forward model, applied to all realizations."
+            """Vectorized forward model, applied to all realizations."""
             return np.array([forward_model(x) for x in X.T]).T
 
-        # Set up the localized ESMDA instance and the prior realizations X:
-        covariance = np.logspace(-1, 1, num=num_obs)  # Covar of observations
-        observations = np.zeros(num_obs)  # The observed data
+        # Set up the localized ESMDA instances
+        covariance = np.logspace(-1, 1, num=num_obs)
+        observations = np.zeros(num_obs)
+
         smoother_1D_covar = LocalizedESMDA(
             covariance=covariance,
             observations=observations,
@@ -114,18 +125,19 @@ class TestLocalizedESMDA:
             inversion=inversion,
         )
 
+        # Prior on the observations (initial ensemble)
         X = 1 + rng.normal(size=(num_params, num_realizations))
+
         for _ in range(smoother_1D_covar.num_assimilations()):
-            # Apply forward model and prepare for assimilation
+            # Apply forward model and prepare smoothers for assimilation
             Y = F(X)
             smoother_1D_covar.prepare_assimilation(Y=Y)
             smoother_2D_covar.prepare_assimilation(Y=Y)
 
-            # Approach 1: one batch with all parameters
+            # Apply assimilation step
             X_1 = smoother_1D_covar.assimilate_batch(X=X, localization_callback=None)
             X_2 = smoother_2D_covar.assimilate_batch(X=X, localization_callback=None)
-            assert np.allclose(X_1, X_2)
-
+            assert np.allclose(X_1, X_2), "Results should match exactly"
             X = X_1
 
     @pytest.mark.parametrize("seed", range(99))
@@ -144,9 +156,10 @@ class TestLocalizedESMDA:
         # IMPORTANT: if truncation is set to 1.0, then we do not get
         # numerical equivalence between ESMDA and LocalizedESMDA, because
         # small changes in implementation (e.g. order of operations), produce
-        # small numerical discrepancies that are multiplied. We need to
-        # 'reguarlized' a bit with truncation=0.99, which is what Emerick
-        # recommends, to get equivalent results
+        # small numerical discrepancies that are multiplied and amplified.
+        # We need to 'reguarlize' a bit with truncation=0.99 (which is what
+        # Emerick recommends too), to get equivalent results
+
         truncation = 0.99
 
         # The linear forward map
@@ -157,12 +170,12 @@ class TestLocalizedESMDA:
             return A @ x
 
         def F(X):
-            "Vectorized forward model, applied to all realizations."
+            """Forward model applied to every realization."""
             return np.array([forward_model(x) for x in X.T]).T
 
         # Set up the localized ESMDA instance and the prior realizations X:
-        covariance = np.logspace(-1, 1, num=num_obs)  # Covar of observations
-        covariance = np.ones(num_obs)  # Covar of observations
+        covariance = np.logspace(-4, 4, num=num_obs)  # Covar of observations
+
         observations = np.zeros(num_obs)  # The observed data
         esmda = ESMDA(
             covariance=covariance,
@@ -193,10 +206,9 @@ class TestLocalizedESMDA:
             # is 1, then it should return exactly the same result as ESMDA
             lesmda.prepare_assimilation(Y=Y, truncation=truncation)
 
-            # Approach 1: one batch with all parameters
+            # Assimilate with LocalizedESMDA, using identity function as callback
             X_2 = lesmda.assimilate_batch(X=X, localization_callback=None)
-            assert np.allclose(X_1, X_2, rtol=1e-3)
-
+            assert np.allclose(X_1, X_2), "LocalizedESMDA should match with ESMDA"
             X = X_1
 
     @pytest.mark.parametrize("seed", range(9))
@@ -220,21 +232,21 @@ class TestLocalizedESMDA:
             return A @ x
 
         def F(X):
-            "Vectorized forward model, applied to all realizations."
+            """Vectorized forward model, applied to all realizations."""
             return np.array([forward_model(x) for x in X.T]).T
 
         # Pre-compute alpha values so they are identical for both approaches
         alpha = normalize_alpha(np.array([1, 2, 3, 4]))
-        covariance = np.logspace(-1, 1, num=num_obs)
+        covariance = np.logspace(-5, 5, num=num_obs)
         observations = np.zeros(num_obs)
         X_prior = 1 + rng.normal(size=(num_params, num_realizations))
 
         # === APPROACH 1 : Create instance once, then assimilate over iterations ===
-        rng1 = np.random.default_rng(1 + seed)
+        rng1 = np.random.default_rng(seed)
         esmda = LocalizedESMDA(
             covariance=covariance,
             observations=observations,
-            alpha=alpha,
+            alpha=alpha,  # Alpha will incremented by the instance
             seed=rng1,
             inversion=inversion,
         )
@@ -242,6 +254,7 @@ class TestLocalizedESMDA:
         X_1 = X_prior.copy()
         for _ in range(esmda.num_assimilations()):
             Y = F(X_1)
+            # The call to `prepare_assimilation()` increments alpha
             esmda.prepare_assimilation(Y=Y, truncation=truncation)
             X_1 = esmda.assimilate_batch(X=X_1, localization_callback=None)
 
@@ -249,7 +262,7 @@ class TestLocalizedESMDA:
         X_2 = X_prior.copy()
         # Creating the RNG outside of the loop, then advancing it within
         # each instance of the LocalizedESMDA class created within the loop
-        rng2 = np.random.default_rng(1 + seed)
+        rng2 = np.random.default_rng(seed)
         for alpha_i in alpha:
             esmda = LocalizedESMDA(
                 covariance=covariance * alpha_i,
@@ -281,9 +294,10 @@ class TestLocalizedESMDAInversionMethods:
         alpha = rng.choice([0.1, 1, 10])
 
         # IMPORTANT: for scaled and non-scaled subspace inversion to be
-        # identical, the covariances should be constant
-        C_D = np.ones(num_obs) * rng.random() + 1e-3
-        C_D = np.diag(C_D) if diagonal else C_D
+        # identical, the covariances must be constant
+        C_D_diag = np.ones(num_obs) * rng.random()
+        C_D = np.diag(C_D_diag) if diagonal else C_D_diag
+
         # delta_D is a centered forward model output Y
         Y = rng.normal(size=(num_obs, num_realizations))
         delta_D = Y - np.mean(Y, axis=1, keepdims=True)
@@ -302,7 +316,7 @@ class TestLocalizedESMDAInversionMethods:
             delta_D=delta_D, C_D=C_D, alpha=alpha, truncation=1.0
         )
 
-        # All three should be identical
+        # All should be identical
         assert np.allclose(delta_D_inv_cov1, delta_D_inv_cov2)
         assert np.allclose(delta_D_inv_cov2, delta_D_inv_cov3)
         assert np.allclose(delta_D_inv_cov3, delta_D_inv_cov4)
@@ -321,9 +335,11 @@ class TestLocalizedESMDAInversionMethods:
         alpha = rng.choice([0.1, 1, 10])
 
         # IMPORTANT: If the covariance has different orders of magnitude, then
-        # naive and subspace scaled inversion is the same (for diagonal cov.)
-        C_D = np.logspace(-2, 2, num=num_obs)
+        # naive and subspace scaled inversion is the same (for diagonal cov.).
+        # However, this is not the case for unscaled and scaled subspace inversion
+        C_D = np.logspace(-5, 5, num=num_obs)  # From 1e-5 to 1e5
         C_D = np.diag(C_D) if diagonal else C_D
+
         # delta_D is a centered forward model output Y
         Y = rng.normal(size=(num_obs, num_realizations))
         delta_D = Y - np.mean(Y, axis=1, keepdims=True)
@@ -339,7 +355,7 @@ class TestLocalizedESMDAInversionMethods:
             delta_D=delta_D, C_D=C_D, alpha=alpha, truncation=1.0
         )
 
-        # All three should be identical
+        # All should be identical
         assert np.allclose(delta_D_inv_cov1, delta_D_inv_cov2)
         assert np.allclose(delta_D_inv_cov2, delta_D_inv_cov3)
 
