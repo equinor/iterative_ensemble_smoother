@@ -35,6 +35,7 @@ Localized ESMDA must form the Kalman gain matrix
 
 with shape (p, o) in order to apply a localization function elementwise to K,
 which determines how parameter i should influence observation j, at entry K_ij.
+The localization function is the matrix rho in the paper by Emerick.
 This has a cost of at least O(poe) (right-to-left), which is not ideal.
 
 Since storing all of K in memory at once can be prohibitive, we first form:
@@ -364,8 +365,6 @@ class LocalizedESMDA(BaseESMDA):
         seed: Union[np.random._generator.Generator, int, None] = None,
         inversion: str = "exact",
     ) -> None:
-        """Initialize the instance."""
-
         super().__init__(covariance=covariance, observations=observations, seed=seed)
 
         if not (
@@ -385,7 +384,6 @@ class LocalizedESMDA(BaseESMDA):
                 f"{tuple(self._inversion_methods.keys())}, but got {inversion}"
             )
 
-        # Store data
         self.inversion = inversion
 
         # Alpha can either be an integer (num iterations) or a list of weights
@@ -453,15 +451,15 @@ class LocalizedESMDA(BaseESMDA):
         if self.iteration >= self.num_assimilations():
             raise Exception("No more assimilation steps to run.")
 
-        # We strictly follow the notation from the Appendix in the paper
-        N_d, N_e = Y.shape  # (num_observations, ensemble_size)
+        D = Y  # Switch from API notation to paper notation
+        N_d, N_e = D.shape  # (num_observations, ensemble_size)
         assert N_d == self.observations.shape[0], "Shape mismatch"
-        delta_D = Y - np.mean(Y, axis=1, keepdims=True)  # Center the observations
+        delta_D = D - np.mean(D, axis=1, keepdims=True)  # Center observations
 
         # Compute the last factor
         alpha = self.alpha[self.iteration]
         D_obs = self.perturb_observations(ensemble_size=N_e, alpha=alpha)
-        self.D_obs_minus_D = D_obs - Y
+        self.D_obs_minus_D = D_obs - D
 
         # Compute parts of the Kalman gain
         inversion_func = self._inversion_methods[self.inversion]

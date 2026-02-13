@@ -54,7 +54,7 @@ class TestLocalizedESMDA:
         # Set prior at N(1, 1), a little bit away from observations at 0
         X = 1 + rng.normal(size=(num_params, num_realizations))
 
-        for iteration in range(smoother.num_assimilations()):
+        for _ in range(smoother.num_assimilations()):
             # Apply forward model and prepare for assimilation
             Y = F(X)
             smoother.prepare_assimilation(Y=Y)
@@ -114,7 +114,7 @@ class TestLocalizedESMDA:
         )
 
         X = 1 + rng.normal(size=(num_params, num_realizations))
-        for iteration in range(smoother_1D_covar.num_assimilations()):
+        for _ in range(smoother_1D_covar.num_assimilations()):
             # Apply forward model and prepare for assimilation
             Y = F(X)
             smoother_1D_covar.prepare_assimilation(Y=Y)
@@ -180,7 +180,7 @@ class TestLocalizedESMDA:
         )
 
         X = 1 + rng.normal(size=(num_params, num_realizations))
-        for iteration in range(esmda.num_assimilations()):
+        for _ in range(esmda.num_assimilations()):
             # Apply forward model
             Y = F(X)
 
