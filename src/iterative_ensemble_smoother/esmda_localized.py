@@ -6,6 +6,8 @@ This module implements localized ESMDA, following the paper:
 
     - "Analysis of the performance of ensemble-based assimilation
        of production and seismic data", Alexandre A. Emerick
+       https://doi.org/10.1016/j.petrol.2016.01.029
+
 
 What is localized ESMDA and what are the performance tradeoffs?
 ---------------------------------------------------------------
@@ -35,8 +37,13 @@ Localized ESMDA must form the Kalman gain matrix
 
 with shape (p, o) in order to apply a localization function elementwise to K,
 which determines how parameter i should influence observation j, at entry K_ij.
+
 The localization function is the matrix rho in the paper by Emerick.
 This has a cost of at least O(poe) (right-to-left), which is not ideal.
+
+The localization function is the matrix rho (ρ) in the paper by Emerick.
+Forming K has a cost of at least O(poe) (right-to-left), which is not ideal.
+
 
 Since storing all of K in memory at once can be prohibitive, we first form:
 
@@ -129,7 +136,7 @@ def invert_exact(
     # Equivalent to: delta_D @ delta_D.T, but only computes upper triangular part
     inner = sp.linalg.blas.dsyrk(alpha=1.0, a=delta_D)
 
-    # Add to diagonal
+    # Add to diagonal in the 1D and 2D case
     if C_D.ndim == 1:
         np.fill_diagonal(inner, np.diagonal(inner) + alpha * (N_e - 1) * C_D)
     else:
@@ -276,7 +283,7 @@ def invert_subspace_scaled(
 
 class LocalizedESMDA(BaseESMDA):
     """
-    Implement a Localized Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
+    Localized Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
 
     Parameters
     ----------
