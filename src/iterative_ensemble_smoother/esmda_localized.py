@@ -59,7 +59,7 @@ API design
 
 Some notes on design:
 
-- The inferace (API) uses human-readable names, but the internals refer to the paper.
+- The interface (API) uses human-readable names, but the internals refer to the paper.
 - Two main methods are used: `prepare_assimilation()` and `assimilate_batch()`.
 - The user is responsible for calling them in the correct order.
 
@@ -69,7 +69,7 @@ Comments
 - If `localization_callback` is the identity, LocalizedESMDA is identical to ESMDA.
 - The inner loop over parameter blocks saves memory. The result should be the
   same over any possible sequence of parameter blocks.
-- Practical elements that are not directly related to ensemble smoothing, such as
+- Practical issues that are not directly related to ensemble smoothing, such as
   removing inactive realizations, batching the parameters, maintaining grid information
   in order to assess the influence of parameter i on response j, is the caller's
   responsibility.
@@ -302,7 +302,7 @@ class LocalizedESMDA(BaseESMDA):
         The default is None.
     inversion : str, optional
         Which inversion method to use. The default is "exact".
-        See the dictionary ESMDA._inversion_methods for more information.
+        See the dictionary LocalizedESMDA._inversion_methods for more information.
 
     Examples
     --------
@@ -525,7 +525,7 @@ class LocalizedESMDA(BaseESMDA):
         # Center the parameters
         delta_M = X - np.mean(X, axis=1, keepdims=True)
 
-        # Create Kalman gain of shape (num_parameters_batch, ensemble_size),
+        # Create Kalman gain of shape (num_parameters_batch, num_observations),
         # then apply the localization callback elementwise
         K = localization_callback(delta_M @ self.delta_D_inv_cov)
         return X + K @ self.D_obs_minus_D
