@@ -37,13 +37,8 @@ Localized ESMDA must form the Kalman gain matrix
 
 with shape (p, o) in order to apply a localization function elementwise to K,
 which determines how parameter i should influence observation j, at entry K_ij.
-
-The localization function is the matrix rho in the paper by Emerick.
-This has a cost of at least O(poe) (right-to-left), which is not ideal.
-
 The localization function is the matrix rho (ρ) in the paper by Emerick.
 Forming K has a cost of at least O(poe) (right-to-left), which is not ideal.
-
 
 Since storing all of K in memory at once can be prohibitive, we first form:
 
