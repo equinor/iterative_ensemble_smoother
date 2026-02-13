@@ -301,7 +301,7 @@ class LocalizedESMDA(BaseESMDA):
         generation. The argument is passed to numpy.random.default_rng().
         The default is None.
     inversion : str, optional
-        Which inversion method to use. The default is "exact".
+        Which inversion method to use. The default is "subspace_scaled".
         See the dictionary LocalizedESMDA._inversion_methods for more information.
 
     Examples
@@ -363,7 +363,7 @@ class LocalizedESMDA(BaseESMDA):
         observations: npt.NDArray[np.double],
         alpha: Union[int, npt.NDArray[np.double]] = 5,
         seed: Union[np.random._generator.Generator, int, None] = None,
-        inversion: str = "exact",
+        inversion: str = "subspace_scaled",
     ) -> None:
         super().__init__(covariance=covariance, observations=observations, seed=seed)
 
@@ -399,7 +399,7 @@ class LocalizedESMDA(BaseESMDA):
         return len(self.alpha)
 
     def prepare_assimilation(
-        self, *, Y: npt.NDArray[np.double], truncation: float = 1.0
+        self, *, Y: npt.NDArray[np.double], truncation: float = 0.99
     ) -> None:
         r"""Prepare assimilation of one or several batches of parameters.
 
@@ -415,8 +415,10 @@ class LocalizedESMDA(BaseESMDA):
             where g is the forward model.
         truncation : float
             How large a fraction of the singular values to keep in the inversion
-            routine. Must be a float in the range (0, 1]. A lower number means
-            a more approximate answer and a slightly faster computation.
+            routine (if the inversion routine supports it). Must be a float in
+            the range (0, 1]. A lower number means a more approximate answer and a
+            slightly faster computation. The default is 0.99, which is recommended
+            by Emerick in the reference paper.
 
         Returns
         -------
