@@ -314,10 +314,11 @@ SAVE_UPDATE_TO_STORAGE = True
 # Turn on/off the two types of update
 SKIP_GLOBAL_UPDATE = True
 SKIP_DL_UPDATE = False
-ALPHA = np.array([1.0])
-ALPHA_LABEL = "_1_0"
+SKIP_MERGE_SUMMARY_OBS_FROM_RMS_AND_ERT = False
+ALPHA = np.array([7.0])
+ALPHA_LABEL = "_7_0"
 
-ENSEMBLE_TAG = "DL_R2000" + ALPHA_LABEL
+ENSEMBLE_TAG = "DL_" + ALPHA_LABEL
 
 # Create unique label for each ensemble created by running this script
 ENSEMBLE_LABEL = run_number()
@@ -333,7 +334,7 @@ SEED_1_75 = 61952988
 # SEED_1_75 = 99121232
 
 # SEED = 123456 # Test with same as in ERT config file for Drogon
-SEED = SEED_1_75
+SEED = SEED_7_0
 
 # Only for temporary test of some pieces of the code
 TESTS = False
@@ -342,7 +343,7 @@ TESTS = False
 DEBUG_PRINT = True
 
 # Turn on/of use of seismic obs
-USE_SEIS_OBS = True
+USE_SEIS_OBS = False
 
 
 if USE_SEIS_OBS:
@@ -359,26 +360,31 @@ OUTPUT_PATH = "TMP"
 SCALAR_UPDATE_METHOD = "ADAPTIVE"  # ESMDA or ADAPTIVE
 
 ERT_CONFIG_PATH = (
-    "/project/fmu/users/olia/drogon_20250623_11-50/resmod/ff/25.0.0/ert/model"
+#    "/project/fmu/users/olia/drogon_20250623_11-50/resmod/ff/25.0.0/ert/model"
+    "/project/fmu/users/olia/drogon_current/drogon_20250822_11-23/resmod/ff/25.0.0/ert/model"
 )
 # ERT_CONFIG_PATH = (
 #    "/project/fmu/tutorial/drogon/resmod/ff/users/olia/"
 #    + "drogon_20240709_15-30/resmod/ff/24.3.0/ert/model"
 # )
 
-SCRATCH_PATH = "/scratch/fmu/olia/drogon_ahm_ertbox_base"
+# SCRATCH_PATH = "/scratch/fmu/olia/drogon_ahm_ertbox_base"
 # SCRATCH_PATH = "/scratch/fmu/olia/drogon_ahm_500"
 # SCRATCH_PATH = "/scratch/fmu/olia/drogon_ahm_facies_petro_ertbox_test"
-
+SCRATCH_PATH = "/scratch/fmu/olia/drogon_ahm_current_base"
 # Storage
 # STORAGE_PATH = (
 #    "/project/fmu/users/olia/drogon_20250623_11-50/"
 #    + "resmod/ff/25.0.0/ert/output/drogon_ahm/storage"
 # )
 STORAGE_PATH = (
-    "/project/fmu/users/olia/drogon_20250623_11-50/"
-    + "resmod/ff/25.0.0/ert/output/drogon_ahm_ertbox/storage"
+    "/project/fmu/users/olia/drogon_current/drogon_20250822_11-23/"
+    + "resmod/ff/25.0.0/ert/output/drogon_ahm/storage"
 )
+#STORAGE_PATH = (
+#    "/project/fmu/users/olia/drogon_20250623_11-50/"
+#    + "resmod/ff/25.0.0/ert/output/drogon_ahm_ertbox/storage"
+#)
 # STORAGE_PATH = (
 #    "/project/fmu/tutorial/drogon/resmod/ff/users/"
 #    + "olia/drogon_20240709_15-30/resmod/ff/24.3.0/ert/"
@@ -735,9 +741,9 @@ RFT_OBS_AND_RESPONSE_DICT = {
     },
 }
 RFT_FILENAME = "rft_ert.csv"
-USE_RFT_OBS = True
+USE_RFT_OBS = False
 
-USE_TRACER_OBS = True
+USE_TRACER_OBS = False
 TRACER_OBS_FILENAME = "tracer_obs.txt"
 TRACER_RESPONSE_FILENAME = "drogon_tracer_sim_1.txt"
 
@@ -1963,8 +1969,8 @@ def define_response_and_observations(
     if DEBUG_PRINT:
         print(f"{C_D.shape}")
 
-    xpos = df_filtered["xpos"].to_numpy()
-    ypos = df_filtered["ypos"].to_numpy()
+    xpos = df_filtered["east"].to_numpy()
+    ypos = df_filtered["north"].to_numpy()
     main_ranges = df_filtered["main_range"].to_numpy()
     perp_ranges = df_filtered["perp_range"].to_numpy()
     anisotropy_angle = df_filtered["anisotropy_angle"].to_numpy()
@@ -3786,6 +3792,8 @@ def split_observations_into_one_dataframe_per_zone(
     # Get a list of the zone names
     zone_names = df["zone_name"].unique().to_list()
     zone_names.sort()
+    print(f"Zone names found in dataframe: {zone_names}")
+    print(f"Zone names defined: {defined_zone_names}")
     if zone_names != defined_zone_names:
         raise ValueError(
             f"Zone names defined for observations: {zone_names} \n"
@@ -3806,7 +3814,7 @@ def split_observations_into_one_dataframe_per_zone(
     # The "value" is the same as "observations"
     # The "error" is the same as "std"
     # zone_name is not used after splitting the data frame into one per zone_name
-    columns_to_remove = ["zone_name", "summary_vector", "date", "value", "error"]
+    columns_to_remove = ["zone_name"]
     zone_dataframes_reduced = {}
     for zone_name, df in zone_dataframes.items():
         has_no_duplicated_obs, list_of_duplicated_obs = check_unique_observation_key(df)
@@ -4080,20 +4088,24 @@ def merge_storage_and_rms_created_dataframes_of_obs(
     df_obs_merged = observations_and_responses.join(
         df_obs_with_localization_param, on="observation_key", how="inner"
     )
-    # The 12 last columns is moved to column 6 to 19
+    # The 12 last columns is moved to column 9 to 22
     nlast_columns = 12
-    nfirst_columns = 5
+    nfirst_columns = 8
     last_columns = df_obs_merged.columns[-nlast_columns:]
     other_columns = df_obs_merged.columns[:-nlast_columns]
     new_order = (
         other_columns[:nfirst_columns] + last_columns + other_columns[nfirst_columns:]
     )
     df_obs = df_obs_merged.select(new_order)
+
     if DEBUG_PRINT:
         columns_to_print = [
             "observation_key",
             "observations",
             "value",
+            "east",
+            "north",
+            "radius",
             "xpos",
             "ypos",
             "main_range",
@@ -4102,12 +4114,69 @@ def merge_storage_and_rms_created_dataframes_of_obs(
             "zone_name",
         ]
         selected_columns = [col for col in df_obs.columns if col in columns_to_print]
-        print("Selected columns:")
+        print("obs merged")
         print(df_obs.select(selected_columns))
-        print("")
-
+        os.exit(0)
     return df_obs
 
+def add_columns_for_localization_range_and_zone(observations_and_responses):
+    # This function will duplicate the summary observations with one per zone
+    # and add main_range, perp_range, zone_name to make it compatible with the rest of the code
+    # This function removes all observations without localization parameters
+    df = observations_and_responses.with_columns(
+        [
+            pl.col("radius").alias("main_range"),
+            pl.col("radius").alias("perp_range"),
+            pl.lit(0).alias("anisotropy_angle"),
+            pl.lit("Valysar").alias("zone_name")
+        ]
+    )
+    columns_to_remove = ["radius"]
+    df = df.drop(columns_to_remove)
+        # The 4 last columns is moved to column 8 to 11
+    nlast_columns = 4
+    nfirst_columns = 7
+    last_columns = df.columns[-nlast_columns:]
+    other_columns = df.columns[:-nlast_columns]
+    new_order = (
+        other_columns[:nfirst_columns] + last_columns + other_columns[nfirst_columns:]
+    )
+    df_obs = df.select(new_order)
+
+    # Duplicate the dataframe with identical copies, one marked with Valysar, Therys and Volon
+    zone_names = ["Valysar", "Therys", "Volon"]
+    duplicates = [
+        df.with_columns(pl.lit(zone).alias("zone_name"))
+        for zone in zone_names
+    ]
+    df_obs = pl.concat(duplicates)
+
+    # Remove observations without localization parameters
+    df_obs_local = df_obs.filter(pl.col("east").is_not_null())
+
+    # Remove observations with localization parameters
+    df_obs_not_local = df_obs.filter(pl.col("east").is_null())
+
+    if DEBUG_PRINT:
+        columns_to_print = [
+            "observation_key",
+            "observations",
+            "east",
+            "north",
+            "main_range",
+            "perp_range",
+            "anisotropy_angle",
+            "zone_name",
+        ]
+        selected_columns = [col for col in df_obs.columns if col in columns_to_print]
+        print("Selected columns with summary obs for observations with localization parameters:")
+        print(df_obs_local.select(selected_columns))
+
+#        print("Selected columns with summary obs for observations with no localization parameters:")
+#        print(df_obs_not_local.select(selected_columns))
+
+
+    return df_obs_local, df_obs_not_local
 
 def main():
     if not USE_LOCALIZATION:
@@ -4125,7 +4194,7 @@ def main():
     if not SAVE_UPDATE_TO_STORAGE:
         print("Updated parameters are not saved to ERT storage")
 
-    Nmax_rows = 10000
+    Nmax_rows = 500
     Nmax_cols = 15
     pl.Config.set_tbl_rows(Nmax_rows)
     pl.Config.set_tbl_cols(Nmax_cols)
@@ -4191,11 +4260,13 @@ def main():
         param_config_all = experiment.parameter_configuration
         groups = list(param_config_all.keys())
         realizations = ensemble.get_realization_list_with_responses()
-        selected_obs = ensemble.experiment.observation_keys
+        selected_obs_keys = ensemble.experiment.observation_keys
+
         iens_active_index = np.array(ensemble.get_realization_list_with_responses())
         observations_and_responses = ensemble.get_observations_and_responses(
-            selected_obs, iens_active_index
+            selected_obs_keys, iens_active_index
         )
+
         print("Step 2: Get list of 3D field parameters and ertbox per field if any.")
         # dict with zone name as key and value that is a list of
         # 3D field parameter names
@@ -4223,22 +4294,25 @@ def main():
             print(" List of scalar parametr groups:")
             print(f" {json.dumps(scalar_param_list, indent=3)}")
 
-    print(
-        "Step 5: Get observations with position and localization"
-        " parameters from file generated by an RMS script."
-    )
-    df_obs_with_local = read_observations_with_localization_attributes(
-        OBS_SUMMARY_WITH_LOCAL_ATTRIBUTES_FILE
-    )
+#    print(
+#        "Step 5: Get observations with position and localization"
+#        " parameters from file generated by an RMS script."
+#    )
+#    df_obs_with_local = read_observations_with_localization_attributes(
+#        OBS_SUMMARY_WITH_LOCAL_ATTRIBUTES_FILE
+#    )
 
     print(
-        "Step 6: Combine the observation dataframe from storage with "
-        "the observation data frame from file with additional information "
-        "about position and localization attributes per observation"
+        "Step 6: Add new columns to the dataframe from ERT storage to make it compatible with the code"
     )
-    df_obs = merge_storage_and_rms_created_dataframes_of_obs(
-        observations_and_responses, df_obs_with_local
-    )
+
+#    if not SKIP_MERGE_SUMMARY_OBS_FROM_RMS_AND_ERT:
+#        df_obs = merge_storage_and_rms_created_dataframes_of_obs(
+#            observations_and_responses, df_obs_with_local
+#        )
+#    else:
+    df_obs, df_obs_not_local = add_columns_for_localization_range_and_zone(observations_and_responses)
+
     if USE_SEIS_OBS:
         print(
             "Step 7: Read seismic obs from config path and response from scratch disk."
@@ -4338,8 +4412,8 @@ def main():
             "response_key",
             "index",
             "observation_key",
-            "xpos",
-            "ypos",
+            "east",
+            "north",
             "main_range",
             "perp_range",
             "anisotropy_angle",
@@ -4431,8 +4505,8 @@ def main():
             "observation_key",
             "observations",
             "std",
-            "xpos",
-            "ypos",
+            "east",
+            "north",
             "main_range",
             "perp_range",
             "anisotropy_angle",
