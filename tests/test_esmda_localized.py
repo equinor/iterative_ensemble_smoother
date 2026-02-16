@@ -220,8 +220,8 @@ class TestLocalizedESMDA:
             return np.array([forward_model(x) for x in X.T]).T
 
         # Set up the localized ESMDA instance and the prior realizations X:
-        covariance = np.logspace(-1, 1, num=num_obs)  # Covar of observations
-        covariance = np.ones(num_obs)  # Covar of observations
+        covariance = np.logspace(-5, 5, num=num_obs)  # Covar of observations
+        # covariance = np.ones(num_obs)  # Covar of observations
         observations = np.zeros(num_obs)  # The observed data
         esmda = ESMDA(
             covariance=covariance,
