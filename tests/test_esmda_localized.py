@@ -1,5 +1,8 @@
+import warnings
+
 import numpy as np
 import pytest
+import scipy as sp
 
 from iterative_ensemble_smoother.esmda import ESMDA
 from iterative_ensemble_smoother.esmda_inversion import normalize_alpha
@@ -127,6 +130,62 @@ class TestLocalizedESMDA:
             assert np.allclose(X_1, X_2)
 
             X = X_1
+
+    @pytest.mark.parametrize("seed", range(99))
+    @pytest.mark.parametrize("dense_covariance", [True, False])
+    @pytest.mark.parametrize("inversion", LocalizedESMDA._inversion_methods.keys())
+    def test_numerical_stability_covariance(self, seed, dense_covariance, inversion):
+        """Test that covariance with diagonal on vastly different scales
+        does not raise any errors."""
+        rng = np.random.default_rng(seed)
+        # This property should hold for any size, inversion method, etc.
+        num_obs = rng.choice([5, 10, 15])
+        num_params = rng.choice([5, 10, 15])
+        num_realizations = rng.choice([5, 10, 15])
+        alpha = rng.choice([1, 2, 3])
+
+        # The linear forward map
+        A = rng.normal(size=(num_obs, num_params), scale=0.1)
+        observations = np.zeros(num_obs)  # The observed data
+
+        def forward_model(x):
+            """Forward model for a single realization."""
+            return A @ x
+
+        def F(X):
+            "Vectorized forward model, applied to all realizations."
+            return np.array([forward_model(x) for x in X.T]).T
+
+        # Here we create a covariance matrix (1D or 2D) with values that are
+        # on extremely different scales
+        diagonal = np.logspace(-25, 25, num=num_obs)
+
+        if dense_covariance:
+            factor = rng.normal(size=(num_obs, num_obs))
+            covariance = factor.T @ factor
+            np.fill_diagonal(covariance, np.diag(covariance) + diagonal)
+        else:
+            covariance = diagonal
+
+        # Test that no warning is raised
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", sp.linalg.LinAlgWarning)
+            smoother = LocalizedESMDA(
+                covariance=covariance,
+                observations=observations,
+                alpha=alpha,
+                seed=seed,
+                inversion=inversion,
+            )
+
+        X = 1 + rng.normal(size=(num_params, num_realizations))
+        for _ in range(smoother.num_assimilations()):
+            # Apply forward model and prepare for assimilation
+            Y = F(X)
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", sp.linalg.LinAlgWarning)
+                smoother.prepare_assimilation(Y=Y, truncation=1.0)
+                smoother.assimilate_batch(X=X, localization_callback=None)
 
     @pytest.mark.parametrize("seed", range(99))
     @pytest.mark.parametrize("inversion", ["exact", "subspace"])
