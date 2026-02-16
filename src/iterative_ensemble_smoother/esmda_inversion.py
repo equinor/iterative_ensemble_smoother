@@ -223,14 +223,21 @@ def inversion_exact_cholesky(
     }
 
     # Compute T := sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)
+    D_minus_Y = D - Y
     if C_D.ndim == 2:
         # C_D is a covariance matrix
         C_DD += alpha * C_D  # Save memory by mutating
-        T = sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
     elif C_D.ndim == 1:
         # C_D is an array, so add it to the diagonal without forming diag(C_D)
-        C_DD.flat[:: C_DD.shape[1] + 1] += alpha * C_D
-        T = sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
+        np.fill_diagonal(C_DD, np.diagonal(C_DD) + alpha * C_D)
+
+    # Scale equation before solving (helps when C_D has different scales)
+    scaling = np.sqrt(1 / np.diag(C_DD))
+    C_DD *= scaling[:, None]
+    C_DD *= scaling[None, :]
+    D_minus_Y *= scaling[:, None]
+    T = sp.linalg.solve(C_DD, D_minus_Y, **solver_kwargs)
+    T *= scaling[:, None]  # Scale back
 
     # Center matrix
     Y = Y - np.mean(Y, axis=1, keepdims=True)

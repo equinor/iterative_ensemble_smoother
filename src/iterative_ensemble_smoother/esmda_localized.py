@@ -131,9 +131,19 @@ def invert_exact(
 
     # Add to diagonal
     if C_D.ndim == 1:
-        np.fill_diagonal(inner, np.diagonal(inner) + alpha * (N_e - 1) * C_D)
+        new_diagonal = np.diagonal(inner) + alpha * (N_e - 1) * C_D
+        np.fill_diagonal(inner, new_diagonal)
+        scaling = np.sqrt(1 / new_diagonal)  # Scaling factor based on diagonal
     else:
         inner += alpha * (N_e - 1) * C_D
+        scaling = np.sqrt(1 / np.diag(inner))
+
+    # Scale to correlation-like matrix by scaling rows and columns with diag
+    inner *= scaling[:, None]
+    inner *= scaling[None, :]
+
+    # Scale RHS
+    rhs = delta_D * scaling[:, None]
 
     # Arguments for sp.linalg.solve
     solver_kwargs = {
@@ -143,7 +153,9 @@ def invert_exact(
         "lower": True,  # Only use the lower part (upper before transpose) while solving
     }
     # Computes X = delta_D.T @ inner^{-1} by solving a system of equations
-    return sp.linalg.solve(inner.T, delta_D, **solver_kwargs).T
+    X = sp.linalg.solve(inner.T, rhs, **solver_kwargs)
+    X *= scaling[:, None]  # Scale back
+    return X.T
 
 
 def invert_subspace(

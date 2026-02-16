@@ -99,7 +99,7 @@ class TestLocalizedESMDA:
             return np.array([forward_model(x) for x in X.T]).T
 
         # Set up the localized ESMDA instance and the prior realizations X:
-        covariance = np.logspace(-1, 1, num=num_obs)  # Covar of observations
+        covariance = np.logspace(-10, 10, num=num_obs)  # Covar of observations
         observations = np.zeros(num_obs)  # The observed data
         smoother_1D_covar = LocalizedESMDA(
             covariance=covariance,
@@ -220,7 +220,7 @@ class TestLocalizedESMDA:
             return np.array([forward_model(x) for x in X.T]).T
 
         # Set up the localized ESMDA instance and the prior realizations X:
-        covariance = np.logspace(-5, 5, num=num_obs)  # Covar of observations
+        covariance = np.logspace(-6, 6, num=num_obs)  # Covar of observations
         # covariance = np.ones(num_obs)  # Covar of observations
         observations = np.zeros(num_obs)  # The observed data
         esmda = ESMDA(
@@ -284,7 +284,7 @@ class TestLocalizedESMDA:
 
         # Pre-compute alpha values so they are identical for both approaches
         alpha = normalize_alpha(np.array([1, 2, 3, 4]))
-        covariance = np.logspace(-1, 1, num=num_obs)
+        covariance = np.logspace(-5, 5, num=num_obs)
         observations = np.zeros(num_obs)
         X_prior = 1 + rng.normal(size=(num_params, num_realizations))
 
@@ -340,8 +340,8 @@ class TestLocalizedESMDAInversionMethods:
         alpha = rng.choice([0.1, 1, 10])
 
         # IMPORTANT: for scaled and non-scaled subspace inversion to be
-        # identical, the covariances should be constant
-        C_D = np.ones(num_obs) * rng.random() + 1e-3
+        # identical, the covariances should be constant (test large and small)
+        C_D = np.ones(num_obs) * np.exp(np.random.normal(scale=6))
         C_D = np.diag(C_D) if diagonal else C_D
         # delta_D is a centered forward model output Y
         Y = rng.normal(size=(num_obs, num_realizations))
@@ -381,7 +381,7 @@ class TestLocalizedESMDAInversionMethods:
 
         # IMPORTANT: If the covariance has different orders of magnitude, then
         # naive and subspace scaled inversion is the same (for diagonal cov.)
-        C_D = np.logspace(-2, 2, num=num_obs)
+        C_D = np.logspace(-7, 7, num=num_obs)
         C_D = np.diag(C_D) if diagonal else C_D
         # delta_D is a centered forward model output Y
         Y = rng.normal(size=(num_obs, num_realizations))
