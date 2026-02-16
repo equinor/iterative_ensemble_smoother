@@ -64,7 +64,7 @@ class SIES:
             This is d in Evensen (2019).
         inversion : str
             The type of inversion used in the algorithm. Every inversion method
-            scales the variables. The default is `subspace.`
+            scales the variables. The default is `subspace_exact.`
             The options are:
 
                 * `direct`:
