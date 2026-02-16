@@ -128,7 +128,7 @@ class TestLocalizedESMDA:
 
             X = X_1
 
-    @pytest.mark.parametrize("seed", range(1))
+    @pytest.mark.parametrize("seed", range(99))
     @pytest.mark.parametrize("inversion", ["exact", "subspace"])
     @pytest.mark.parametrize("dense_covariance", [True, False])
     def test_equivalence_with_ESMDA(self, seed, inversion, dense_covariance):
@@ -165,8 +165,8 @@ class TestLocalizedESMDA:
         covariance = np.logspace(-1, 1, num=num_obs)  # Covar of observations
 
         if dense_covariance:
-            factor = rng.normal(size=(num_obs, num_obs))
-            covariance = factor.T @ factor
+            factor = rng.normal(size=(num_obs, num_obs)) / num_obs
+            covariance = np.diag(covariance) + factor.T @ factor
 
         observations = np.zeros(num_obs)  # The observed data
         esmda = ESMDA(
@@ -178,7 +178,7 @@ class TestLocalizedESMDA:
         )
 
         lesmda = LocalizedESMDA(
-            covariance=np.diag(covariance),
+            covariance=covariance,
             observations=observations,
             alpha=alpha,
             seed=seed,  # Same seed
