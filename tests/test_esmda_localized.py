@@ -158,7 +158,7 @@ class TestLocalizedESMDA:
         # numerical equivalence between ESMDA and LocalizedESMDA, because
         # small changes in implementation (e.g. order of operations), produce
         # small numerical discrepancies that are multiplied and amplified.
-        # We need to 'reguarlize' a bit with truncation=0.99 (which is what
+        # We need to 'regularize' a bit with truncation=0.99 (which is what
         # Emerick recommends too), to get equivalent results
 
         truncation = 0.99
