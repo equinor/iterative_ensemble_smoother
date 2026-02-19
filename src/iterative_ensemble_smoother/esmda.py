@@ -23,6 +23,7 @@ https://helper.ipam.ucla.edu/publications/oilws3/oilws3_14147.pdf
 """
 
 import numbers
+import warnings
 from abc import ABC
 from typing import Union
 
@@ -31,7 +32,6 @@ import numpy.typing as npt
 import scipy as sp  # type: ignore
 
 from iterative_ensemble_smoother.esmda_inversion import (
-    inversion_exact_cholesky,
     inversion_subspace,
     normalize_alpha,
 )
@@ -184,44 +184,33 @@ class ESMDA(BaseESMDA):
     ...     X = esmda.assimilate(X, Y)  # Update X
     """
 
-    # Available inversion methods. The inversion methods all compute
-    # C_MD @ (C_DD + alpha * C_D)^(-1)  @ (D - Y)
-    _inversion_methods = {
-        "exact": inversion_exact_cholesky,
-        "subspace": inversion_subspace,
-    }
-
     def __init__(
         self,
         covariance: npt.NDArray[np.double],
         observations: npt.NDArray[np.double],
         alpha: Union[int, npt.NDArray[np.double]] = 5,
         seed: Union[np.random._generator.Generator, int, None] = None,
-        inversion: str = "exact",
+        inversion: str | None = None,
     ) -> None:
         """Initialize the instance."""
 
         super().__init__(covariance=covariance, observations=observations, seed=seed)
+
+        # Warn about deprecated inversion argument
+        if inversion is not None:
+            warnings.warn(
+                "'inversion' is deprecated and will be removed.\n"
+                "Use 'truncation=1.0' for an exact version, or \n"
+                "e.g. 'truncation=0.99' for an approximate inversion.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         if not (
             (isinstance(alpha, np.ndarray) and alpha.ndim == 1)
             or isinstance(alpha, numbers.Integral)
         ):
             raise TypeError("Argument `alpha` must be an integer or a 1D NumPy array.")
-
-        if not isinstance(inversion, str):
-            raise TypeError(
-                "Argument `inversion` must be a string in "
-                f"{tuple(self._inversion_methods.keys())}, but got {inversion}"
-            )
-        if inversion not in self._inversion_methods:
-            raise ValueError(
-                "Argument `inversion` must be a string in "
-                f"{tuple(self._inversion_methods.keys())}, but got {inversion}"
-            )
-
-        # Store data
-        self.inversion = inversion
 
         # Alpha can either be an integer (num iterations) or a list of weights
         if isinstance(alpha, np.ndarray) and alpha.ndim == 1:
@@ -312,14 +301,12 @@ class ESMDA(BaseESMDA):
         assert D.shape == (num_outputs, num_ensemble)
 
         # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
-        # Choose inversion method, e.g. 'exact'. The inversion method computes
-        # C_MD @ sp.linalg.inv(C_DD + C_D_alpha) @ (D - Y)
-        inversion_func = self._inversion_methods[self.inversion]
-
+        # The inversion method computes C_MD @ sp.linalg.inv(C_DD + C_D_alpha) @ (D - Y)
         # Update and return
-        X += inversion_func(
+        X += inversion_subspace(
             alpha=self.alpha[self.iteration],
             C_D=self.C_D,
+            C_D_L=self.C_D_L,
             D=D,
             Y=Y,
             X=X,
@@ -373,10 +360,10 @@ class ESMDA(BaseESMDA):
         # X += X @ T
 
         D = self.perturb_observations(ensemble_size=Y.shape[1], alpha=alpha)
-        inversion_func = self._inversion_methods[self.inversion]
-        return inversion_func(
+        return inversion_subspace(
             alpha=alpha,
             C_D=self.C_D,
+            C_D_L=self.C_D_L,
             D=D,
             Y=Y,
             X=None,  # We don't need X to compute the factor T

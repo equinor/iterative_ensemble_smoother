@@ -575,9 +575,8 @@ class TestRowScaling:
         # Check that an update happened
         assert not np.allclose(X_before[-1][0], X_with_row_scaling_updated[-1][0])
 
-    @pytest.mark.parametrize("inversion", list(ESMDA._inversion_methods.keys()))
     @pytest.mark.parametrize("num_ensemble", [5, 25, 200])
-    def test_that_row_scaling_equal_single_ES_update(self, inversion, num_ensemble):
+    def test_that_row_scaling_equal_single_ES_update(self, num_ensemble):
         class RowScaling:
             # Illustration of how row scaling works, `multiply` is the important part
             # For the actual implementation, which is more involved, see:
@@ -617,7 +616,6 @@ class TestRowScaling:
             observations=observations,
             X_with_row_scaling=X_with_row_scaling,
             Y=Y,
-            inversion=inversion,
             seed=1,
         )
 
@@ -626,7 +624,6 @@ class TestRowScaling:
             covariance=covariance,
             observations=observations,
             alpha=1,
-            inversion=inversion,
             seed=1,
         )
         for _ in range(smoother.num_assimilations()):

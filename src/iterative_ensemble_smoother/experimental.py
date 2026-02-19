@@ -382,7 +382,6 @@ def ensemble_smoother_update_step_row_scaling(
     X_with_row_scaling: List[Tuple[npt.NDArray[np.double], RowScaling]],
     Y: npt.NDArray[np.double],
     seed: Union[np.random._generator.Generator, int, None] = None,
-    inversion: str = "exact",
     truncation: float = 1.0,
 ):
     """Perform a single ESMDA update (ES) with row scaling.
@@ -421,7 +420,6 @@ def ensemble_smoother_update_step_row_scaling(
         covariance=covariance,
         observations=observations,
         seed=seed,
-        inversion=inversion,
         alpha=1,
     )
 
