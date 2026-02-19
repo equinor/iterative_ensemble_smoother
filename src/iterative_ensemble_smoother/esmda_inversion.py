@@ -144,7 +144,7 @@ The version of Woodbury that we'll use is the following:
 But in order to use this identity, we need to get rid of C_D in the expression
 for A and somehow transform it into the identity matrix. We'll see that the trick
 is to use the Cholesky factorization of C_D. In the papers, the following is not
-as clear as it should be:
+obvious:
 
     If we do not use the Cholesky factor, we compute the wrong answer.
 
