@@ -17,14 +17,14 @@ There are essentially two main methods:
     (1) Exact inversion: use Cholesky to invert C_DD + alpha * C_D
     (2) Subspace inversion: use the Woodbury identity and an SVD
 
-When reading about these methods in the papers, e.g.:
+The exposition of these methods can be quite hard to follow in papers like:
 
     - "History Matching Time-lapse Seismic Data Using the Ensemble Kalman
        Filter with Multiple Data Assimilations", Emerick and Reynolds
     - "Analysis of the Performance of Ensemble-based Assimilation of
        Production and Seismic Data", Emerick
 
-The exposition is quite hard to understand. In the first paper above, the authors
+In the first paper above, the authors
 cite an example where water-cut data could not be matched, and therefore claim
 that one should rescale the equation in subspace inversion before taking SVD.
 In the second paper, the authors suggest that scaling should be done based
@@ -148,8 +148,8 @@ obvious:
 
     If we do not use the Cholesky factor, we compute the wrong answer.
 
-Assume that we can find an invertible scaling matrix S such that S^-1 C_D S^-T = I.
-The matrix S is the Cholesky factor. Using S, we can write:
+Let S be the Cholesky factor of C_D, such that S^-1 C_D S^-T = I.
+We can then write:
 
     A = (F F.T + C_D) = S (S^-1 F F.T S^-T + S^-1 C_D S^-T) S^T = S (G G.T + I) S^T,
 
@@ -181,7 +181,7 @@ array([[ 0.9,  0. , -0.3, -0.1],
        [-0.3,  0.1,  0.4, -0.2],
        [-0.1,  0.1, -0.2,  0.4]])
 
-At this point, one approach would be to use Woodbury identity directly, which
+One approach is to use Woodbury identity directly, which
 avoids inverting a large matrix and instead inverts a much smaller matrix.
 If G has shape (m, n), with m >> n, then this has cost O(n^3) for the inversion,
 plus a cost of O(nm^2) to form the full product I - G (G.T G + I)^-1 G.T.
@@ -196,8 +196,8 @@ take the SVD of the matrix G. Assume U, W, V.T = svd(G), then:
 What remains in this equation is to compute the middle factor. If we use
 G = U W V.T at this point to simplify, we need to assume that V V.T = I,
 but this only holds when rows >= columns. However, the above holds for
-*any* G, regardless of shape. To show this, we again appeal to the Woodbury
-identity, this time the version: (I + UV)^-1 = I - U (I + VU)^-1 V.
+*any* G, regardless of shape. To demonstrate this, we use the specific Woodbury identity variant:
+(I + UV)^-1 = I - U (I + VU)^-1 V.
 Note that while V V.T != I in general, V.T V = I and U.T U = I always holds:
 
     (I + (V W U.T)(U W V.T))^-1 = (I + (V W**2) V.T)^-1               (U.T U = I)
@@ -207,7 +207,7 @@ Note that while V V.T != I in general, V.T V = I and U.T U = I always holds:
 Now we substitute this middle term back. Starting from the first equation to the last:
 
     (G G.T + I)^-1
-    =  I - G (I + G.T  G)^-1 G.T =
+    = I - G (I + G.T  G)^-1 G.T
     = I -  G [ (I + (V W U.T) (U W V.T))^-1 ] G.T            (substitute)
     = I -  G [ I - V W**2 (I + W**2)^-1 V.T ] G.T            (substitute)
     = I - U W V.T [ I - V W**2 (I + W**2)^-1 V.T ] V W U.T   (G = U W V.T)
