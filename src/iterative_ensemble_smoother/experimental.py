@@ -332,6 +332,8 @@ class AdaptiveESMDA(BaseESMDA):
         # Loop only over rows with significant correlations
         params_to_update = np.where(significant_rows)[0]
 
+        C_D = self.C_D_L**2 if self.C_D_L.ndim == 1 else self.C_D_L.T @ self.C_D_L
+
         results = Parallel(n_jobs=n_jobs)(
             delayed(self._update_single_parameter)(
                 param_num,
@@ -341,7 +343,7 @@ class AdaptiveESMDA(BaseESMDA):
                 # for all workers. Joblib handles this well.
                 Y,
                 D,
-                self.C_D,
+                C_D,
                 cov_YY,
                 alpha,
                 self.compute_cross_covariance_multiplier,
@@ -483,6 +485,7 @@ class DistanceESMDA(ESMDA):
         # Is set in prepare_assimilation and used in assimilate_batch
         # Is not used when using assimilate
         self.X3: npt.NDArray[np.float64] = None
+        self.C_D = covariance
 
     def assimilate(
         self,

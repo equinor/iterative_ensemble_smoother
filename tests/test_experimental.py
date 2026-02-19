@@ -617,6 +617,7 @@ class TestRowScaling:
             X_with_row_scaling=X_with_row_scaling,
             Y=Y,
             seed=1,
+            truncation=1.0,
         )
 
         # Perform an update using ESMDA API
@@ -627,7 +628,7 @@ class TestRowScaling:
             seed=1,
         )
         for _ in range(smoother.num_assimilations()):
-            X_posterior = smoother.assimilate(X, Y)
+            X_posterior = smoother.assimilate(X, Y, truncation=1.0)
 
         # The result should be the same
         assert np.allclose(
