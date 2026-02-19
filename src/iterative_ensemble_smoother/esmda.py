@@ -83,10 +83,6 @@ class BaseESMDA(ABC):
         else:
             raise TypeError("Argument `covariance` must be 1D or 2D array")
 
-        self.C_D = covariance
-        assert isinstance(self.C_D, np.ndarray)
-        assert self.C_D.ndim in (1, 2)
-
     def perturb_observations(
         self, *, ensemble_size: int, alpha: float
     ) -> npt.NDArray[np.double]:

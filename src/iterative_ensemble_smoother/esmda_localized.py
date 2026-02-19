@@ -97,7 +97,7 @@ from iterative_ensemble_smoother.esmda_inversion import (
 def invert_naive(
     *,
     delta_D: npt.NDArray[np.double],
-    C_D: npt.NDArray[np.double],
+    C_D_L: npt.NDArray[np.double],
     alpha: float,
     truncation: float,
 ) -> npt.NDArray[np.double]:
@@ -109,171 +109,63 @@ def invert_naive(
     """
     _, N_e = delta_D.shape  # Number of ensemble members
 
-    covariance = np.diag(C_D) if C_D.ndim == 1 else C_D
+    covariance = np.diag(C_D_L**2) if C_D_L.ndim == 1 else C_D_L.T @ C_D_L
     return delta_D.T @ np.linalg.inv(
         delta_D @ delta_D.T + alpha * (N_e - 1) * covariance
     )
 
 
-def invert_exact(
-    *,
-    delta_D: npt.NDArray[np.double],
-    C_D: npt.NDArray[np.double],
-    alpha: float,
-    truncation: float,
-) -> npt.NDArray[np.double]:
-    r"""Not-so-naive implementation of the equation:
-
-    (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
-    """
-    _, N_e = delta_D.shape  # Number of ensemble members
-
-    # Equivalent to: delta_D @ delta_D.T, but only computes upper triangular part
-    inner = sp.linalg.blas.dsyrk(alpha=1.0, a=delta_D)
-
-    # Add to diagonal in the 1D and 2D case
-    if C_D.ndim == 1:
-        np.fill_diagonal(inner, np.diagonal(inner) + alpha * (N_e - 1) * C_D)
-    else:
-        inner += alpha * (N_e - 1) * C_D
-
-    # Arguments for sp.linalg.solve
-    solver_kwargs = {
-        "overwrite_a": True,
-        "overwrite_b": True,
-        "assume_a": "pos",  # Assume positive definite matrix (use cholesky)
-        "lower": True,  # Only use the lower part (upper before transpose) while solving
-    }
-    # Computes X = delta_D.T @ inner^{-1} by solving a system of equations
-    return sp.linalg.solve(inner.T, delta_D, **solver_kwargs).T
-
-
 def invert_subspace(
     *,
     delta_D: npt.NDArray[np.double],
-    C_D: npt.NDArray[np.double],
+    C_D_L: npt.NDArray[np.double],
     alpha: float,
     truncation: float,
 ) -> npt.NDArray[np.double]:
-    r"""Subspace inversion (without rescaling) implementation of the equation:
+    r"""Subspace inversion implementation of the equation:
 
     (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
 
     See the appendix in the 2016 Emerick paper for details:
     https://doi.org/10.1016/j.petrol.2016.01.029
     """
-    N_d, N_e = delta_D.shape  # (num_observations, ensemble_size)
+    # Quick verification of shapes
+    assert alpha >= 0, "Alpha must be non-negative"
 
-    # Take SVD of delta_D, choose singular values and keep the top ones
-    U, w, _ = sp.linalg.svd(
-        delta_D,
-        overwrite_a=False,  # delta_D is used later
-        full_matrices=False,
-        check_finite=False,
-    )
+    # Shapes
+    N_n, N_e = delta_D.shape
+
+    # If the matrix C_D is 2D, then C_D_L is the (upper) Cholesky factor
+    if C_D_L.ndim == 2:
+        # Computes G := inv(sqrt(alpha) * C_D_L.T) @ D_delta
+        G = sp.linalg.solve_triangular(
+            np.sqrt(alpha) * C_D_L, delta_D, lower=False, trans=1
+        )
+
+    # If the matrix C_D is 1D, then C_D_L is the square-root of C_D
+    else:
+        G = delta_D / (np.sqrt(alpha) * C_D_L[:, np.newaxis])
+
+    # Take the SVD and truncate it. N_r is the number of values to keep
+    U, w, _ = sp.linalg.svd(G, overwrite_a=True, full_matrices=False)
     idx = singular_values_to_keep(w, truncation=truncation)
-    N_r = min(N_d, N_e - 1, idx)  # Number of values in SVD to keep
-    U_r, w_r = U[:, :N_r], w[:N_r]  # U_r.shape = (num_observations, ~ensemble_size)
+    N_r = min(N_n, N_e - 1, idx)  # Number of values in SVD to keep
+    U_r, w_r = U[:, :N_r], w[:N_r]
 
-    # The matrix F has shape (num_observations, ~ensemble_size), so it is thin.
-    # Therefore we compute F.T @ F before taking SVD / EIG.
-    F = U_r * (1 / w_r)[np.newaxis, :]  # Factor used next
-    if C_D.ndim == 1:
-        F = F * np.sqrt(C_D)[:, np.newaxis]
-        gram_dsyrk = sp.linalg.blas.dsyrk(alpha * (N_e - 1), F.T, lower=1)
-        h_r, Z_r = sp.linalg.eigh(
-            gram_dsyrk, overwrite_a=True, check_finite=False, driver="evr", lower=True
+    # Compute the symmetric terms
+    if C_D_L.ndim == 2:
+        # Computes term := np.linalg.inv(np.sqrt(alpha) * C_D_L) @ U_r @ np.diag(1/w_r)
+        term = sp.linalg.solve_triangular(
+            np.sqrt(alpha) * C_D_L, (U_r / w_r[np.newaxis, :]), lower=False
         )
     else:
-        h_r, Z_r = sp.linalg.eigh(
-            alpha * (N_e - 1) * F.T @ C_D @ F,
-            overwrite_a=True,
-            check_finite=False,
-            driver="evr",
-            lower=True,
-        )
+        term = (U_r / w_r[np.newaxis, :]) / (np.sqrt(alpha) * C_D_L)[:, np.newaxis]
 
-    # This is equation (B.18), and is equivalent to:
-    # X = np.diag(S_inv) @ U_r @ np.diag(1/w_r) @ Z_r
-    X = U_r @ (Z_r * (1 / w_r)[:, np.newaxis])
-    L = 1 / (1 + h_r)
-
-    # This is the fastest approach:
-    temp = (delta_D.T @ X) * L[np.newaxis, :]
-    return temp @ X.T
-
-
-def invert_subspace_scaled(
-    *,
-    delta_D: npt.NDArray[np.double],
-    C_D: npt.NDArray[np.double],
-    alpha: float,
-    truncation: float,
-) -> npt.NDArray[np.double]:
-    r"""Subspace inversion (with rescaling) implementation of the equation:
-
-    (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
-
-    See the appendix in the 2016 Emerick paper for details:
-    https://doi.org/10.1016/j.petrol.2016.01.029
-    """
-    N_d, N_e = delta_D.shape  # (num_observations, ensemble_size)
-
-    # Extract diagonals, used to re-scale
-    S = np.sqrt(C_D) if C_D.ndim == 1 else np.sqrt(np.diag(C_D))
-    S_inv = 1 / S
-
-    # Equation (B.10), which is equivalent to: np.diag(S_inv) @ delta_D
-    S_inv_delta_D = delta_D * S_inv[:, np.newaxis]
-
-    # Take SVD and only keep the largest singular values
-    U, w, _ = sp.linalg.svd(
-        S_inv_delta_D, overwrite_a=True, full_matrices=False, check_finite=False
+    # Diagonal matrix represented as vector
+    diag = w_r**2 / (w_r**2 + N_e - 1)
+    return np.linalg.multi_dot(  # type: ignore
+        [delta_D.T, term * diag, term.T]
     )
-    idx = singular_values_to_keep(w, truncation=truncation)
-    N_r = min(N_d, N_e - 1, idx)  # Number of values in SVD to keep
-    U_r, w_r = U[:, :N_r], w[:N_r]  # U_r.shape = (num_observations, ~ensemble_size)
-
-    if C_D.ndim == 1:
-        # This is equation (B.13), which can be simplified drastically in the 1D case:
-        # R = alpha (N_e - 1) diag(1/w_r) @ U_r.T @ hat(C_D) @ U_r @ diag(1/w_r)
-        #  = alpha (N_e - 1) diag(1/w_r) @ U_r.T @ (diag(1/sqrt(C_D))) @ diag(C_D) @
-        #    (diag(1/sqrt(C_D))) @ U_r @ diag(1/w_r)
-        #  = alpha (N_e - 1) F.T @ F
-        # where F = diag(sqrt(C_d)) @ (diag(1/sqrt(C_D))) @ U_r @ diag(1/w_r)
-        #         = I @ U_r @ diag(1/w_r)
-        #         = U_r * (1/w_r)[np.newaxis,:]
-        F = U_r * (1 / w_r)[np.newaxis, :]
-
-        # The matrix F has shape (num_observations, ~ensemble_size), so it is thin.
-        # Taking the product first makes it small, and is faster than computing
-        # the SVD of F or F.T directly. The code below is equivalent to:
-        # Z_r, h_r, _ = sp.linalg.svd(alpha * (N_e - 1) * F.T @ F)
-        gram_dsyrk = sp.linalg.blas.dsyrk(alpha * (N_e - 1), F.T, lower=1)
-        h_r, Z_r = sp.linalg.eigh(
-            gram_dsyrk, overwrite_a=True, check_finite=False, driver="evr", lower=True
-        )
-    else:
-        # Equivalent to:
-        # F = np.diag(S_inv) @ U_r @ np.diag(1/w_r)
-        F = U_r * (1 / w_r)[np.newaxis, :] * S_inv[:, np.newaxis]
-        h_r, Z_r = sp.linalg.eigh(
-            alpha * (N_e - 1) * F.T @ C_D @ F,
-            overwrite_a=True,
-            check_finite=False,
-            driver="evr",
-            lower=True,
-        )
-
-    # This is equation (B.18), and is equivalent to:
-    # X = np.diag(S_inv) @ U_r @ np.diag(1/w_r) @ Z_r
-    X = (U_r * S_inv[:, np.newaxis]) @ (Z_r * (1 / w_r)[:, np.newaxis])
-    L = 1 / (1 + h_r)
-
-    # This is the fastest approach I've found to compute:
-    # delta_D.T @ X @ np.diag(L) @ X.T @ delta_D
-    temp = (delta_D.T @ X) * L[np.newaxis, :]
-    return temp @ X.T
 
 
 class LocalizedESMDA(BaseESMDA):
@@ -302,9 +194,6 @@ class LocalizedESMDA(BaseESMDA):
         A seed or numpy.random._generator.Generator used for random number
         generation. The argument is passed to numpy.random.default_rng().
         The default is None.
-    inversion : str, optional
-        Which inversion method to use. The default is "subspace_scaled".
-        See the dictionary LocalizedESMDA._inversion_methods for more information.
 
     Examples
     --------
@@ -322,8 +211,7 @@ class LocalizedESMDA(BaseESMDA):
     >>> covariance = np.ones(3)  # Covariance of the observations / outputs
     >>> observations = np.array([1, 2, 3])  # The observed data
     >>> smoother = LocalizedESMDA(covariance=covariance,
-    ...                           observations=observations, alpha=3, seed=42,
-    ...                           inversion="subspace_scaled")
+    ...                           observations=observations, alpha=3, seed=42)
     >>> X = rng.normal(size=(10, 100))
 
     To assimilate data, we iterate over the assimilation steps in an outer
@@ -349,15 +237,6 @@ class LocalizedESMDA(BaseESMDA):
     ...                                                     localization_callback=func)
     """
 
-    # Available inversion methods. The inversion methods all compute
-    # (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
-    _inversion_methods = {
-        "naive": invert_naive,
-        "exact": invert_exact,
-        "subspace": invert_subspace,
-        "subspace_scaled": invert_subspace_scaled,
-    }
-
     def __init__(
         self,
         *,
@@ -365,7 +244,6 @@ class LocalizedESMDA(BaseESMDA):
         observations: npt.NDArray[np.double],
         alpha: Union[int, npt.NDArray[np.double]] = 5,
         seed: Union[np.random._generator.Generator, int, None] = None,
-        inversion: str = "subspace_scaled",
     ) -> None:
         super().__init__(covariance=covariance, observations=observations, seed=seed)
 
@@ -374,19 +252,6 @@ class LocalizedESMDA(BaseESMDA):
             or isinstance(alpha, numbers.Integral)
         ):
             raise TypeError("Argument `alpha` must be an integer or a 1D NumPy array.")
-
-        if not isinstance(inversion, str):
-            raise TypeError(
-                "Argument `inversion` must be a string in "
-                f"{tuple(self._inversion_methods.keys())}, but got {inversion}"
-            )
-        if inversion not in self._inversion_methods:
-            raise ValueError(
-                "Argument `inversion` must be a string in "
-                f"{tuple(self._inversion_methods.keys())}, but got {inversion}"
-            )
-
-        self.inversion = inversion
 
         # Alpha can either be an integer (num iterations) or a list of weights
         if isinstance(alpha, np.ndarray) and alpha.ndim == 1:
@@ -466,9 +331,8 @@ class LocalizedESMDA(BaseESMDA):
         self.D_obs_minus_D = D_obs - D
 
         # Compute parts of the Kalman gain
-        inversion_func = self._inversion_methods[self.inversion]
-        self.delta_D_inv_cov = inversion_func(
-            delta_D=delta_D, C_D=self.C_D, alpha=alpha, truncation=truncation
+        self.delta_D_inv_cov = invert_subspace(
+            delta_D=delta_D, C_D_L=self.C_D_L, alpha=alpha, truncation=truncation
         )
 
         self.iteration += 1
