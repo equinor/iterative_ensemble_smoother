@@ -23,7 +23,6 @@ https://helper.ipam.ucla.edu/publications/oilws3/oilws3_14147.pdf
 """
 
 import numbers
-import warnings
 from abc import ABC
 from typing import Union
 
@@ -154,9 +153,6 @@ class ESMDA(BaseESMDA):
         A seed or numpy.random._generator.Generator used for random number
         generation. The argument is passed to numpy.random.default_rng().
         The default is None.
-    inversion : str, optional
-        Which inversion method to use. The default is "exact".
-        See the dictionary ESMDA._inversion_methods for more information.
 
     Examples
     --------
@@ -190,21 +186,10 @@ class ESMDA(BaseESMDA):
         observations: npt.NDArray[np.double],
         alpha: Union[int, npt.NDArray[np.double]] = 5,
         seed: Union[np.random._generator.Generator, int, None] = None,
-        inversion: str | None = None,
     ) -> None:
         """Initialize the instance."""
 
         super().__init__(covariance=covariance, observations=observations, seed=seed)
-
-        # Warn about deprecated inversion argument
-        if inversion is not None:
-            warnings.warn(
-                "'inversion' is deprecated and will be removed.\n"
-                "Use 'truncation=1.0' for an exact version, or \n"
-                "e.g. 'truncation=0.99' for an approximate inversion.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
 
         if not (
             (isinstance(alpha, np.ndarray) and alpha.ndim == 1)
@@ -230,7 +215,7 @@ class ESMDA(BaseESMDA):
         Y: npt.NDArray[np.double],
         *,
         overwrite: bool = False,
-        truncation: float = 1.0,
+        truncation: float = 0.99,
         D: Union[npt.NDArray[np.double], None] = None,
     ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble X_posterior.
