@@ -28,6 +28,43 @@ from iterative_ensemble_smoother.esmda_inversion import empirical_cross_covarian
 from iterative_ensemble_smoother.sies import SIES
 
 
+def test_ESMDA_snapshot():
+    """The purpose of this test is to alert the developer if any changes
+    change the behavior of ESMDA. If this is intended, changing the
+    expected value is perfectly fine."""
+
+    rng = np.random.default_rng(42)
+
+    # Problem size
+    num_outputs = 100
+    num_inputs = 50
+    num_ensemble = 10
+    alpha = 2
+
+    # Prior is N(0, 1)
+    X_prior = rng.normal(size=(num_inputs, num_ensemble))
+    A = rng.normal(size=(num_outputs, num_inputs))
+
+    def forward(X):
+        return A @ X
+
+    # Measurement errors
+    F = rng.normal(size=(num_outputs, num_outputs))
+    covariance = F.T @ F + np.diag(np.logspace(-10, 10, num=num_outputs))
+
+    # Observations
+    observations = rng.normal(size=num_outputs, loc=1)
+    X = np.copy(X_prior)
+
+    esmda = ESMDA(covariance, observations, alpha=alpha, seed=42, inversion="exact")
+    for _ in range(esmda.num_assimilations()):
+        Y = forward(X)
+        X = esmda.assimilate(X, Y, truncation=1.0)
+
+    expected = np.array([-1.07090935, 0.93111682, -0.41614521, -0.58934856])
+    assert np.allclose(np.diag(X)[:4], expected)
+
+
 class TestESMDARealizationsDying:
     @pytest.mark.parametrize("seed", list(range(9)))
     @pytest.mark.parametrize("inversion", ESMDA._inversion_methods.keys())
