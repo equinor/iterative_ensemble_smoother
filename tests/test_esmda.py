@@ -56,7 +56,7 @@ def test_ESMDA_snapshot():
     observations = rng.normal(size=num_outputs, loc=1)
     X = np.copy(X_prior)
 
-    esmda = ESMDA(covariance, observations, alpha=alpha, seed=42, inversion="exact")
+    esmda = ESMDA(covariance, observations, alpha=alpha, seed=42)
     for _ in range(esmda.num_assimilations()):
         Y = forward(X)
         X = esmda.assimilate(X, Y, truncation=1.0)
