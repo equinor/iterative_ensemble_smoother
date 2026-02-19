@@ -158,7 +158,6 @@ then the equation above is an approximation and does not hold.
 
 Inverting A then boils down to computing A^-1 = S^-T (G G.T + I)^-1 S^-1,
 and this is where the Woodbury identity comes in. Let us now look at some code.
-We take the SVD of G, to get U, W, V.T = svd(G) = svd(S^-1 F).
 
 >>> S = np.linalg.cholesky(C_D)
 >>> G = np.linalg.inv(S) @ F
@@ -196,8 +195,8 @@ take the SVD of the matrix G. Assume U, W, V.T = svd(G), then:
 What remains in this equation is to compute the middle factor. If we use
 G = U W V.T at this point to simplify, we need to assume that V V.T = I,
 but this only holds when rows >= columns. However, the above holds for
-*any* G, regardless of shape. To demonstrate this, we use the specific Woodbury identity variant:
-(I + UV)^-1 = I - U (I + VU)^-1 V.
+*any* G, regardless of shape. To demonstrate this, we use the specific Woodbury
+identity variant: (I + UV)^-1 = I - U (I + VU)^-1 V.
 Note that while V V.T != I in general, V.T V = I and U.T U = I always holds:
 
     (I + (V W U.T)(U W V.T))^-1 = (I + (V W**2) V.T)^-1               (U.T U = I)
