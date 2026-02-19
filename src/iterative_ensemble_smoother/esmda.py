@@ -290,7 +290,6 @@ class ESMDA(BaseESMDA):
         # Update and return
         X += inversion_subspace(
             alpha=self.alpha[self.iteration],
-            C_D=self.C_D,
             C_D_L=self.C_D_L,
             D=D,
             Y=Y,
@@ -347,7 +346,6 @@ class ESMDA(BaseESMDA):
         D = self.perturb_observations(ensemble_size=Y.shape[1], alpha=alpha)
         return inversion_subspace(
             alpha=alpha,
-            C_D=self.C_D,
             C_D_L=self.C_D_L,
             D=D,
             Y=Y,

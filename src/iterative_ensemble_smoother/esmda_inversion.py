@@ -248,8 +248,6 @@ To summarize subspace inversion:
   are nearly identical. This can happen if columns are highly correlated.
 """
 
-from typing import Optional
-
 import numpy as np
 import numpy.typing as npt
 import scipy as sp  # type: ignore
@@ -406,7 +404,6 @@ def singular_values_to_keep(
 def inversion_exact_naive(
     *,
     alpha: float,
-    C_D: npt.NDArray[np.double],
     C_D_L: npt.NDArray[np.double],
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],
@@ -416,70 +413,19 @@ def inversion_exact_naive(
     """Naive inversion, used for testing only.
 
     Computes C_MD @ inv(C_DD + alpha * C_D) @ (D - Y) naively.
+
+    C_D_L is the upper cholesky factor. C_D_L.T @ C_D_L = C_D
     """
     # Naive implementation of Equation (3) in Emerick (2013)
     C_MD = empirical_cross_covariance(X, Y)
     C_DD = empirical_cross_covariance(Y, Y)
-    C_D = np.diag(C_D) if C_D.ndim == 1 else C_D
+    C_D = np.diag(C_D_L**2) if C_D_L.ndim == 1 else C_D_L.T @ C_D_L
     return C_MD @ sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)  # type: ignore
-
-
-def inversion_exact_cholesky(
-    *,
-    alpha: float,
-    C_D: npt.NDArray[np.double],
-    C_D_L: npt.NDArray[np.double],
-    D: npt.NDArray[np.double],
-    Y: npt.NDArray[np.double],
-    X: Optional[npt.NDArray[np.double]],
-    truncation: float = 1.0,
-    return_T: bool = False,
-) -> npt.NDArray[np.double]:
-    """Computes an exact inversion using `sp.linalg.solve`, which uses a
-    Cholesky factorization in the case of symmetric, positive definite matrices.
-
-    The goal is to compute: C_MD @ inv(C_DD + alpha * C_D) @ (D - Y)
-
-    First we solve (C_DD + alpha * C_D) @ T = (D - Y) for T, so that
-    T = inv(C_DD + alpha * C_D) @ (D - Y), then we compute
-    C_MD @ T, but we don't explicitly form C_MD, since it might be more
-    efficient to perform the matrix products in another order.
-    """
-    C_DD = empirical_covariance_upper(Y)  # Only compute upper part
-
-    # Arguments for sp.linalg.solve
-    solver_kwargs = {
-        "overwrite_a": True,
-        "overwrite_b": True,
-        "assume_a": "pos",  # Assume positive definite matrix (use cholesky)
-        "lower": False,  # Only use the upper part while solving
-    }
-
-    # Compute T := sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)
-    if C_D.ndim == 2:
-        # C_D is a covariance matrix
-        C_DD += alpha * C_D  # Save memory by mutating
-        T = sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
-    elif C_D.ndim == 1:
-        # C_D is an array, so add it to the diagonal without forming diag(C_D)
-        C_DD.flat[:: C_DD.shape[1] + 1] += alpha * C_D
-        T = sp.linalg.solve(C_DD, D - Y, **solver_kwargs)
-
-    # Center matrix
-    Y = Y - np.mean(Y, axis=1, keepdims=True)
-    _, num_ensemble = Y.shape
-
-    # Don't left-multiply the X
-    if return_T:
-        return (Y.T @ T) / (num_ensemble - 1)  # type: ignore
-
-    return np.linalg.multi_dot([X, Y.T / (num_ensemble - 1), T])  # type: ignore
 
 
 def inversion_subspace(
     *,
     alpha: float,
-    C_D: npt.NDArray[np.double],
     C_D_L: npt.NDArray[np.double],
     D: npt.NDArray[np.double],
     Y: npt.NDArray[np.double],

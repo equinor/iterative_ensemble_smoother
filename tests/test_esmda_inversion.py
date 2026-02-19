@@ -5,29 +5,22 @@ import pytest
 import scipy as sp
 
 from iterative_ensemble_smoother.esmda_inversion import (
-    inversion_exact_cholesky,
     inversion_exact_naive,
     inversion_subspace,
     normalize_alpha,
 )
 
-INVERSIONS = [inversion_exact_cholesky, inversion_exact_naive, inversion_subspace]
+INVERSIONS = [inversion_exact_naive, inversion_subspace]
 
 
 class TestEsmdaInversion:
     # Functions that take the parameter return_K
-    @pytest.mark.parametrize(
-        "function",
-        [inversion_exact_cholesky, inversion_subspace],
-    )
     @pytest.mark.parametrize("ensemble_members", [5, 10, 15])
     @pytest.mark.parametrize("num_outputs", [5, 10, 15])
     @pytest.mark.parametrize("num_inputs", [5, 10, 15])
     def test_that_returning_T_is_equivalent_to_full_computation(
-        self, function, ensemble_members, num_outputs, num_inputs
+        self, ensemble_members, num_outputs, num_inputs
     ):
-        # ensemble_members, num_outputs, num_inputs = 5, 10, 15
-
         np.random.seed(ensemble_members * 100 + num_outputs * 10 + num_inputs)
 
         # Create positive symmetric definite covariance C_D
@@ -44,8 +37,10 @@ class TestEsmdaInversion:
         X = np.random.randn(num_inputs, ensemble_members)
 
         # Test both with and without X / return_T
-        ans = function(alpha=alpha, C_D=C_D, C_D_L=C_D_L, D=D, Y=Y, X=X)
-        T = function(alpha=alpha, C_D=C_D, C_D_L=C_D_L, D=D, Y=Y, X=None, return_T=True)
+        ans = inversion_subspace(alpha=alpha, C_D_L=C_D_L, D=D, Y=Y, X=X)
+        T = inversion_subspace(
+            alpha=alpha, C_D_L=C_D_L, D=D, Y=Y, X=None, return_T=True
+        )
 
         assert np.allclose(X + ans, X + X @ T)
 
@@ -75,8 +70,7 @@ class TestEsmdaInversion:
         """
 
         # Create positive symmetric definite covariance C_D
-        C_D = np.identity(3)
-        C_D_L = np.identity(3)
+        C_D_L = np.identity(3)  # Cholesky factor of C_D
 
         # Create observations
         D = np.ones((3, 2))
@@ -85,11 +79,11 @@ class TestEsmdaInversion:
         np.fill_diagonal(X, 1.0)
 
         # inv(diag([3, 1, 1])) @ (D - Y)
-        K0 = function(alpha=1, C_D=C_D, C_D_L=C_D_L, D=D, Y=Y, X=X)
+        K0 = function(alpha=1, C_D_L=C_D_L, D=D, Y=Y, X=X)
         assert np.allclose(K0, np.array([[-1 / 3, 1 / 3], [1 / 3, -1 / 3], [0, 0]]))
 
         # Same thing, but with a diagonal covariance represented as an array
-        K0 = function(alpha=1, C_D=np.diag(C_D), C_D_L=np.diag(C_D_L), D=D, Y=Y, X=X)
+        K0 = function(alpha=1, C_D_L=np.diag(C_D_L), D=D, Y=Y, X=X)
         assert np.allclose(K0, np.array([[-1 / 3, 1 / 3], [1 / 3, -1 / 3], [0, 0]]))
 
     @pytest.mark.parametrize("function", INVERSIONS)
@@ -116,8 +110,8 @@ class TestEsmdaInversion:
         X = np.random.randn(num_inputs, ensemble_members)
 
         # All non-subspace methods
-        K1 = inversion_exact_naive(alpha=alpha, C_D=C_D, C_D_L=C_D_L, D=D, Y=Y, X=X)
-        K2 = function(alpha=alpha, C_D=C_D, C_D_L=C_D_L, D=D, Y=Y, X=X, truncation=1.0)
+        K1 = inversion_exact_naive(alpha=alpha, C_D_L=C_D_L, D=D, Y=Y, X=X)
+        K2 = function(alpha=alpha, C_D_L=C_D_L, D=D, Y=Y, X=X, truncation=1.0)
         assert np.allclose(K1, K2)
 
     @pytest.mark.parametrize("function", [inversion_subspace])
@@ -144,14 +138,12 @@ class TestEsmdaInversion:
         X = np.random.randn(num_inputs, num_emsemble)
 
         # Exact answer
-        exact = inversion_exact_naive(alpha=alpha, C_D=C_D, C_D_L=C_D_L, D=D, Y=Y, X=X)
+        exact = inversion_exact_naive(alpha=alpha, C_D_L=C_D_L, D=D, Y=Y, X=X)
 
         # Approximate answers
         truncations = np.linspace(1e-8, 1, num=64)
         approximations = [
-            function(
-                alpha=alpha, C_D=C_D, C_D_L=C_D_L, D=D, Y=Y, X=X, truncation=truncation
-            )
+            function(alpha=alpha, C_D_L=C_D_L, D=D, Y=Y, X=X, truncation=truncation)
             for truncation in truncations
         ]
 
@@ -195,8 +187,8 @@ class TestEsmdaInversion:
         assert C_D_2D.ndim == 2
         assert C_D_diag.ndim == 1
 
-        result_diag = function(alpha=alpha, C_D=C_D_diag, C_D_L=C_D_L_2D, D=D, Y=Y, X=X)
-        result_2D = function(alpha=alpha, C_D=C_D_2D, C_D_L=C_D_L_diag, D=D, Y=Y, X=X)
+        result_diag = function(alpha=alpha, C_D_L=C_D_L_2D, D=D, Y=Y, X=X)
+        result_2D = function(alpha=alpha, C_D_L=C_D_L_diag, D=D, Y=Y, X=X)
 
         assert np.allclose(result_diag, result_2D)
 
@@ -225,7 +217,7 @@ class TestEsmdaInversion:
         args = [alpha, C_D, D, Y, X]
         args_copy = [np.copy(arg) for arg in args]
 
-        function(alpha=alpha, C_D=C_D, C_D_L=C_D_L, D=D, Y=Y, X=X)
+        function(alpha=alpha, C_D_L=C_D_L, D=D, Y=Y, X=X)
 
         for arg, arg_copy in zip(args, args_copy):
             assert np.allclose(arg, arg_copy)
@@ -257,7 +249,6 @@ def test_timing():
 
     exact_inversion_funcs = [
         inversion_exact_naive,
-        inversion_exact_cholesky,
         inversion_subspace,
     ]
 
@@ -265,12 +256,12 @@ def test_timing():
 
     for func in exact_inversion_funcs:
         start_time = perf_counter()
-        result_matrix = func(alpha=alpha, C_D=C_D, C_D_L=C_D_L, D=D, Y=Y, X=X)
+        result_matrix = func(alpha=alpha, C_D_L=C_D_L, D=D, Y=Y, X=X)
         elapsed_time = round(perf_counter() - start_time, 4)
         print(f"Function: {func.__name__} on dense covariance: {elapsed_time} s")
 
         start_time = perf_counter()
-        result_vector = func(alpha=alpha, C_D=C_D_diag, C_D_L=C_D_L_diag, D=D, Y=Y, X=X)
+        result_vector = func(alpha=alpha, C_D_L=C_D_L_diag, D=D, Y=Y, X=X)
         elapsed_time = round(perf_counter() - start_time, 4)
         print(f"Function: {func.__name__} on diagonal covariance: {elapsed_time} s")
         assert np.allclose(result_matrix, result_vector)
