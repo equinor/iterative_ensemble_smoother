@@ -13,6 +13,71 @@ from iterative_ensemble_smoother.esmda_localized import (
 
 class TestLocalizedESMDA:
     @pytest.mark.parametrize("seed", range(99))
+    def test_observation_scale_invariance(self, seed):
+        """ESMDA should be scale invariant, even with huge differences
+        in scales. A trivial example: if we change outputs from gallons
+        to liters, the result should be the same."""
+
+        rng = np.random.default_rng(seed)
+        # This property should hold for any size
+        num_obs = rng.choice([5, 10, 15])
+        num_params = rng.choice([5, 10, 15])
+        num_realizations = rng.choice([5, 10, 15])
+        alpha = rng.choice([1, 2, 3])  # Number of iterations
+
+        # The linear map that defines the forward model
+        A = rng.normal(size=(num_obs, num_params), scale=0.1)
+        scales = np.logspace(-10, 10, num=num_obs)  # Extreme scaling
+        A_scaled = A * scales[:, np.newaxis]
+
+        def forward_model(x, scaled):
+            """Forward model for a single realization."""
+            if scaled:
+                return A_scaled @ x
+            return A @ x
+
+        def F(X, scaled):
+            """Forward model applied to every realization."""
+            return np.array([forward_model(x, scaled) for x in X.T]).T
+
+        # Covariances for the base (unscaled) case
+        covariance = np.logspace(-1, 1, num=num_obs)  # Covar of observations
+
+        # True parameters that create the observed values
+        X_true = rng.normal(scale=0.1, size=(num_params, num_realizations))
+
+        # Set prior at N(1, 1), a little bit away from observations at 0
+        X1 = 1 + rng.normal(size=(num_params, num_realizations))
+        X2 = X1.copy()
+
+        # ================ Unscaled ================
+        smoother = LocalizedESMDA(
+            covariance=covariance,
+            observations=F(X_true, scaled=False).mean(axis=1),
+            alpha=alpha,
+            seed=seed,
+        )
+        for _ in range(smoother.num_assimilations()):
+            Y = F(X1, scaled=False)
+            smoother.prepare_assimilation(Y=Y)
+            X1 = smoother.assimilate_batch(X=X1)
+
+        # ================ Scaled ================
+        smoother = LocalizedESMDA(
+            # Scale the covariance (notice the power of two)
+            covariance=covariance * scales**2,
+            observations=F(X_true, scaled=True).mean(axis=1),
+            alpha=alpha,
+            seed=seed,
+        )
+        for _ in range(smoother.num_assimilations()):
+            Y = F(X2, scaled=True)
+            smoother.prepare_assimilation(Y=Y)
+            X2 = smoother.assimilate_batch(X=X2)
+
+        assert np.allclose(X1, X2)
+
+    @pytest.mark.parametrize("seed", range(99))
     def test_batch_subset_invariance(self, seed):
         def indices_generator(n, rng):
             """Generate two random subsets of indices."""
@@ -37,7 +102,7 @@ class TestLocalizedESMDA:
 
         # Set up the localized ESMDA instance and the prior realizations X:
         covariance = np.logspace(-1, 1, num=num_obs)  # Covar of observations
-        observations = np.zeros(num_obs)  # The observed data
+        observations = rng.normal(size=num_obs, scale=0.01)  # The observed data
         smoother = LocalizedESMDA(
             covariance=covariance,
             observations=observations,
@@ -99,7 +164,7 @@ class TestLocalizedESMDA:
 
         # Set up the localized ESMDA instances
         covariance = np.logspace(-10, 10, num=num_obs)
-        observations = np.zeros(num_obs)
+        observations = rng.normal(size=num_obs, scale=0.01)
 
         smoother_1D_covar = LocalizedESMDA(
             covariance=covariance,
@@ -165,7 +230,7 @@ class TestLocalizedESMDA:
             factor = rng.normal(size=(num_obs, num_obs)) / num_obs
             covariance = np.diag(covariance) + factor.T @ factor
 
-        observations = np.zeros(num_obs)  # The observed data
+        observations = rng.normal(size=num_obs, scale=0.01)  # The observed data
         esmda = ESMDA(
             covariance=covariance,
             observations=observations,
@@ -220,7 +285,7 @@ class TestLocalizedESMDA:
         # Pre-compute alpha values so they are identical for both approaches
         alpha = normalize_alpha(np.array([1, 2, 3, 4]))
         covariance = np.logspace(-5, 5, num=num_obs)
-        observations = np.zeros(num_obs)
+        observations = rng.normal(size=num_obs, scale=0.01)
         X_prior = 1 + rng.normal(size=(num_params, num_realizations))
 
         # === APPROACH 1 : Create instance once, then assimilate over iterations ===
