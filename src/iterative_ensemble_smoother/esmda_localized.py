@@ -95,10 +95,12 @@ from iterative_ensemble_smoother.esmda_inversion import (
 def remove_missing(
     X: npt.NDArray[np.double], *, missing: npt.NDArray[np.bool_]
 ) -> npt.NDArray[np.double]:
-    """Removes missing values from X, such that the product X @ Y / (N_e - 1)
-    becomes correct even in the presence of missing parameters in some
-    ensemble members.
+    """Removes missing values from X, such that the cross-covariance product
 
+        center(X) @ center(Y).T / (N_e - 1)
+
+    remains correct even in the presence of missing parameters in some
+    ensemble members (realizations).
 
     Examples
     --------
@@ -106,15 +108,16 @@ def remove_missing(
     ...               [ 0.23,  0.12,  0.22,  0.87],
     ...               [ 0.22,  0.68,  0.07,  0.29]])
 
-    The second parameter is missing from one realization.
-    The third parameter is missing from two realizations.
+    Let us encode some missing data:
+      - The second parameter is missing from one realization.
+      - The third parameter is missing from two realizations.
 
     >>> missing = np.array([[0, 0, 0, 0],
     ...                     [0, 0, 0, 1],
     ...                     [0, 0, 1, 1]], dtype=np.bool_)
 
     If we compute the cross-covariance directly, we get the wrong answer.
-    (Recall that we do not have to center both matrices, one is enough.)
+    (Recall that we don't have to center both matrices, centering one is enough.)
 
     >>> Y = np.array([[ 0.59,  0.71,  0.79, -0.35],
     ...               [-0.46,  0.86, -0.19, -1.28]])
@@ -123,8 +126,9 @@ def remove_missing(
            [-0.17873333, -0.2576    ],
            [ 0.0061    ,  0.14538333]])
 
-    Only the top row is actually correct. The rest are wrong, because missing
-    values are not taken into account. Let us compute a few by hand.
+    Only the top row is actually correct, since only the first parameter has no
+    missing values. The rest are wrong, because missing values are not taken into
+    account. Let us compute a few entries by hand.
 
     The entry in the second row, first column should be:
 
@@ -140,12 +144,17 @@ def remove_missing(
     >>> float((x - np.mean(x)) @ y / (2 - 1))
     0.30360000...
 
-    Now let us use our function. Notice that the entries match up to numerics:
+    Now let us use our function. Notice that the entries match up to numerical
+    accuracy:
 
     >>> remove_missing(X, missing=missing) @ Y.T / (X.shape[1] - 1)
     array([[ 0.34063333,  0.47648333],
            [-0.0012    , -0.04215   ],
            [ 0.0276    ,  0.3036    ]])
+
+    To summarize, this function prepares a matrix X for the cross-covariance
+    computation, such that the computation is correct even is the presence
+    of missing values.
 
     """
     N_e = X.shape[1]  # Ensemble members / realizations
