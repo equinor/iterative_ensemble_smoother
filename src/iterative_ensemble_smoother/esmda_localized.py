@@ -91,6 +91,86 @@ from iterative_ensemble_smoother.esmda_inversion import (
     singular_values_to_keep,
 )
 
+
+def remove_missing(
+    X: npt.NDArray[np.double], *, missing: npt.NDArray[np.bool_]
+) -> npt.NDArray[np.double]:
+    """Removes missing values from X, such that the product X @ Y / (N_e - 1)
+    becomes correct even in the presence of missing parameters in some
+    ensemble members.
+
+
+    Examples
+    --------
+    >>> X = np.array([[ 0.65,  0.74,  0.54, -0.67],
+    ...               [ 0.23,  0.12,  0.22,  0.87],
+    ...               [ 0.22,  0.68,  0.07,  0.29]])
+
+    The second parameter is missing from one realization.
+    The third parameter is missing from two realizations.
+
+    >>> missing = np.array([[0, 0, 0, 0],
+    ...                     [0, 0, 0, 1],
+    ...                     [0, 0, 1, 1]], dtype=np.bool_)
+
+    If we compute the cross-covariance directly, we get the wrong answer.
+    (Recall that we do not have to center both matrices, one is enough.)
+
+    >>> Y = np.array([[ 0.59,  0.71,  0.79, -0.35],
+    ...               [-0.46,  0.86, -0.19, -1.28]])
+    >>> (X - np.mean(X, axis=1, keepdims=True)) @ Y.T / (X.shape[1] - 1)
+    array([[ 0.34063333,  0.47648333],
+           [-0.17873333, -0.2576    ],
+           [ 0.0061    ,  0.14538333]])
+
+    Only the top row is actually correct. The rest are wrong, because missing
+    values are not taken into account. Let us compute a few by hand.
+
+    The entry in the second row, first column should be:
+
+    >>> x = np.array([0.23,  0.12,  0.22])
+    >>> y = np.array([0.59,  0.71,  0.79])
+    >>> float((x - np.mean(x)) @ y / (3 - 1))
+    -0.0011999...
+
+    The bottom-right entry should be:
+
+    >>> x = np.array([0.22, 0.68])
+    >>> y = np.array([-0.46,  0.86])
+    >>> float((x - np.mean(x)) @ y / (2 - 1))
+    0.30360000...
+
+    Now let us use our function. Notice that the entries match up to numerics:
+
+    >>> remove_missing(X, missing=missing) @ Y.T / (X.shape[1] - 1)
+    array([[ 0.34063333,  0.47648333],
+           [-0.0012    , -0.04215   ],
+           [ 0.0276    ,  0.3036    ]])
+
+    """
+    N_e = X.shape[1]  # Ensemble members / realizations
+    missing_per_param = np.sum(missing, axis=1, keepdims=True)
+
+    if np.any(missing_per_param + 1 == N_e):
+        raise ValueError(
+            "One or several parameters have too many missing values (need >=2)."
+        )
+
+    X_masked = np.logical_not(missing) * X  # Set missing values to zero
+    # Compute mean values, taking missing into account
+    X_means = np.sum(X_masked, axis=1, keepdims=True) / (N_e - missing_per_param)
+
+    # Center the matrix
+    X = X_masked - X_means
+
+    # Scale by number of ensemble members. I think of this as a scaling of
+    # the final covariance matrix, but it works to apply it to X directly
+    # due to linearity: a[:, None] * (X @ Y.T) == (a[:, None] * X) @ Y.T
+    X *= (N_e - 1) / (N_e - missing_per_param - 1)
+
+    return X * np.logical_not(missing)  # Mask to zero in anticipation of X @ Y.T
+
+
 # =============== Inversion methods ===============
 
 
@@ -341,6 +421,7 @@ class LocalizedESMDA(BaseESMDA):
         self,
         *,
         X: npt.NDArray[np.double],
+        missing: npt.NDArray[np.bool_] = None,
         localization_callback: Callable[
             [npt.NDArray[np.double]], npt.NDArray[np.double]
         ]
@@ -358,6 +439,12 @@ class LocalizedESMDA(BaseESMDA):
             A 2D array of shape (num_parameters_batch, ensemble_size). Each row
             corresponds to a parameter in the model, and each column corresponds
             to an ensemble member (realization).
+        missing : np.ndarray
+            A 2D array of shape (num_parameters_batch, ensemble_size). If an
+            entry is set to True, then that value is assumed missing. This can
+            happen if the ensemble members use different grids, where each
+            ensemble member has a slightly different grid layout. If None,
+            then all entries are assumed to be valid.
         localization_callback : callable, optional
             A callable that takes as input a Kalman gain 2D array of shape
             (num_parameters_batch, num_observations) and returns a 2D array of
@@ -377,6 +464,11 @@ class LocalizedESMDA(BaseESMDA):
         assert localization_callback is None or callable(localization_callback)
         if not np.issubdtype(X.dtype, np.floating):
             raise TypeError("Argument `X` must contain floats")
+        if not (missing is None or np.issubdtype(missing.dtype, np.bool_)):
+            raise TypeError("Argument `missing_mask` must contain booleans")
+
+        if missing is not None:
+            X = remove_missing(X, missing=missing)
 
         # The default localization is no localization (identity function)
         if localization_callback is None:
@@ -391,11 +483,11 @@ class LocalizedESMDA(BaseESMDA):
         assert N_e == self.delta_D_inv_cov.shape[0], "Dimension mismatch"
 
         # Center the parameters
-        delta_M = X - np.mean(X, axis=1, keepdims=True)
+        # delta_M = X # - np.mean(X, axis=1, keepdims=True)
 
         # Create Kalman gain of shape (num_parameters_batch, num_observations),
         # then apply the localization callback elementwise
-        K = localization_callback(delta_M @ self.delta_D_inv_cov)
+        K = localization_callback(X @ self.delta_D_inv_cov)
         return X + K @ self.D_obs_minus_D
 
 
