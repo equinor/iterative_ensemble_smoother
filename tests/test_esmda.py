@@ -56,7 +56,7 @@ def test_ESMDA_snapshot():
     observations = rng.normal(size=num_outputs, loc=1)
     X = np.copy(X_prior)
 
-    esmda = ESMDA(covariance, observations, alpha=alpha, seed=42, inversion="exact")
+    esmda = ESMDA(covariance, observations, alpha=alpha, seed=42)
     for _ in range(esmda.num_assimilations()):
         Y = forward(X)
         X = esmda.assimilate(X, Y, truncation=1.0)
@@ -67,8 +67,7 @@ def test_ESMDA_snapshot():
 
 class TestESMDARealizationsDying:
     @pytest.mark.parametrize("seed", list(range(9)))
-    @pytest.mark.parametrize("inversion", ESMDA._inversion_methods.keys())
-    def test_that_subspaces_have_full_rank_as_realizations_die(self, seed, inversion):
+    def test_that_subspaces_have_full_rank_as_realizations_die(self, seed):
         """Consider the case with twice as many realizations as parameters.
 
         We start with a matrix
@@ -111,7 +110,6 @@ class TestESMDARealizationsDying:
             observations=observations,
             alpha=10,  # Number of iterations
             seed=rng,
-            inversion=inversion,
         )
 
         # Initially, the first 10 realization span a 10 dimensional space
@@ -163,9 +161,7 @@ class TestESMDA:
         observations = rng.normal(size=num_outputs, loc=1)
 
         # Create ESMDA instance and perform one iteration
-        esmda = ESMDA(
-            covariance, observations, alpha=alpha, seed=seed + 99, inversion="exact"
-        )
+        esmda = ESMDA(covariance, observations, alpha=alpha, seed=seed + 99)
         X_ESMDA = np.copy(X)
 
         # Perform one iteration of ESMDA
@@ -186,8 +182,7 @@ class TestESMDA:
         assert np.allclose(X_ESMDA, X_SIES)
 
     @pytest.mark.parametrize("seed", list(range(10)))
-    @pytest.mark.parametrize("inversion", ESMDA._inversion_methods.keys())
-    def test_that_diagonal_covariance_gives_same_answer_as_dense(self, seed, inversion):
+    def test_that_diagonal_covariance_gives_same_answer_as_dense(self, seed):
         rng = np.random.default_rng(seed)
 
         num_outputs = rng.choice([5, 10, 15, 25])
@@ -206,7 +201,10 @@ class TestESMDA:
         observations = rng.normal(size=num_outputs, loc=1)
 
         esmda = ESMDA(
-            covariance, observations, alpha=alpha, seed=seed, inversion=inversion
+            covariance,
+            observations,
+            alpha=alpha,
+            seed=seed,
         )
         X_posterior1 = np.copy(X_prior)
         for _ in range(esmda.num_assimilations()):
@@ -217,7 +215,6 @@ class TestESMDA:
             observations,
             alpha=alpha,
             seed=seed,
-            inversion=inversion,
         )
         X_posterior2 = np.copy(X_prior)
         for _ in range(esmda.num_assimilations()):
@@ -477,34 +474,33 @@ class TestESMDAMemory:
         return X_prior, Y_prior, covariance, observations
 
     @pytest.mark.limit_memory("138 MB")
-    def test_ESMDA_memory_usage_subspace_inversion_without_overwrite(self, setup):
+    def test_ESMDA_memory_usage_without_overwrite(self, setup):
         # TODO: Currently this is a regression test. Work to improve memory usage.
 
         X_prior, Y_prior, covariance, observations = setup
 
         # Create ESMDA instance from an integer `alpha` and run it
-        esmda = ESMDA(covariance, observations, alpha=1, seed=1, inversion="subspace")
+        esmda = ESMDA(covariance, observations, alpha=1, seed=1)
 
         for _ in range(esmda.num_assimilations()):
             esmda.assimilate(X_prior, Y_prior)
 
     @pytest.mark.limit_memory("129 MB")
-    def test_ESMDA_memory_usage_subspace_inversion_with_overwrite(self, setup):
+    def test_ESMDA_memory_usage_with_overwrite(self, setup):
         # TODO: Currently this is a regression test. Work to improve memory usage.
 
         X_prior, Y_prior, covariance, observations = setup
 
         # Create ESMDA instance from an integer `alpha` and run it
-        esmda = ESMDA(covariance, observations, alpha=1, seed=1, inversion="subspace")
+        esmda = ESMDA(covariance, observations, alpha=1, seed=1)
 
         for _ in range(esmda.num_assimilations()):
             esmda.assimilate(X_prior, Y_prior, overwrite=True)
 
 
-@pytest.mark.parametrize("inversion", ESMDA._inversion_methods.keys())
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 @pytest.mark.parametrize("diagonal", [True, False])
-def test_that_float_dtypes_are_preserved(inversion, dtype, diagonal):
+def test_that_float_dtypes_are_preserved(dtype, diagonal):
     """If every matrix passed is of a certain dtype, then the output
     should also be of the same dtype. 'linalg' does not support float16
     nor float128."""
@@ -534,7 +530,7 @@ def test_that_float_dtypes_are_preserved(inversion, dtype, diagonal):
     observations = observations.astype(dtype)
 
     # Create ESMDA instance from an integer `alpha` and run it
-    esmda = ESMDA(covariance, observations, alpha=1, seed=1, inversion=inversion)
+    esmda = ESMDA(covariance, observations, alpha=1, seed=1)
 
     for _ in range(esmda.num_assimilations()):
         X_posterior = esmda.assimilate(X_prior, Y_prior)
@@ -543,8 +539,7 @@ def test_that_float_dtypes_are_preserved(inversion, dtype, diagonal):
     assert X_posterior.dtype == dtype
 
 
-@pytest.mark.parametrize("inversion", ESMDA._inversion_methods.keys())
-def test_row_by_row_assimilation(inversion):
+def test_row_by_row_assimilation():
     # Create problem instance
     rng = np.random.default_rng(42)
 
@@ -570,7 +565,6 @@ def test_row_by_row_assimilation(inversion):
         covariance=covariance,
         observations=observations,
         alpha=2,
-        inversion=inversion,
         seed=1,
     )
     X = np.copy(X_prior)
@@ -584,7 +578,6 @@ def test_row_by_row_assimilation(inversion):
         covariance=covariance,
         observations=observations,
         alpha=2,
-        inversion=inversion,
         seed=1,
     )
     X = np.copy(X_prior)
@@ -599,8 +592,7 @@ def test_row_by_row_assimilation(inversion):
     assert np.allclose(X_posterior_highlevel_API, X_posterior_lowlevel_API)
 
 
-@pytest.mark.parametrize("inversion", ESMDA._inversion_methods.keys())
-def test_row_by_row_assimilation_order(inversion):
+def test_row_by_row_assimilation_order():
     """A regression test for issue #232.
 
     The problem was that in a SVD call we had
@@ -639,7 +631,6 @@ def test_row_by_row_assimilation_order(inversion):
         covariance=covariance,
         observations=observations,
         alpha=2,
-        inversion=inversion,
         seed=1,
     )
 
@@ -647,7 +638,6 @@ def test_row_by_row_assimilation_order(inversion):
         covariance=covariance,
         observations=observations,
         alpha=2,
-        inversion=inversion,
         seed=1,
     )
 
@@ -669,6 +659,6 @@ if __name__ == "__main__":
         args=[
             __file__,
             "-v",
-            "-k TestESMDARealizationsDying",
+            # "-k TestESMDARealizationsDying",
         ]
     )
