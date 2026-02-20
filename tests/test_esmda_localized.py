@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import scipy as sp
 
 from iterative_ensemble_smoother.esmda import ESMDA
 from iterative_ensemble_smoother.esmda_inversion import normalize_alpha
@@ -259,22 +260,27 @@ class TestLocalizedESMDA:
     @pytest.mark.parametrize("seed", range(99))
     @pytest.mark.parametrize("diagonal", [True, False])
     def test_that_inversion_methods_are_identical(self, seed, diagonal):
-        """On non-uniform (different orders of magnitude) diagonal covariances,
-        exact inversion and scaled subspace inversion produces the same result."""
+        """On any covariance, exact inversion and scaled subspace
+        inversion produces the same result."""
         # Create a problem of random size
         rng = np.random.default_rng(seed)
         num_obs = rng.choice([5, 10, 15])
         num_realizations = rng.choice([5, 10, 15])
         alpha = rng.choice([0.1, 1, 10])
 
-        # IMPORTANT: If the covariance has different orders of magnitude, then
-        # naive and subspace scaled inversion is the same (for diagonal cov.).
-        # However, this is not the case for unscaled and scaled subspace inversion
-        C_D_L = np.logspace(-6, 6, num=num_obs)  # From 1e-5 to 1e5
-        C_D_L = np.diag(C_D_L) if diagonal else C_D_L
+        # Create an extreme covariance matrix
+        scales = np.logspace(-3, 3, num=num_obs)
+        rng.shuffle(scales)
+        F = rng.normal(size=(num_obs, num_obs)) * scales
+        C_D = F.T @ F
+
+        C_D_L = sp.linalg.cholesky(C_D, lower=False)
+        if diagonal:
+            C_D_L = np.diag(C_D_L)
 
         # delta_D is a centered forward model output Y
-        Y = rng.normal(size=(num_obs, num_realizations))
+        rng.shuffle(scales)
+        Y = rng.normal(size=(num_obs, num_realizations)) * scales[:, np.newaxis]
         delta_D = Y - np.mean(Y, axis=1, keepdims=True)
 
         # With no truncation, all methods are identical
@@ -285,8 +291,13 @@ class TestLocalizedESMDA:
             delta_D=delta_D, C_D_L=C_D_L, alpha=alpha, truncation=1.0
         )
 
-        # All should be identical
+        # These should be identical.
+        # They have values that are very small, around 1e-8,
+        # so comparing floats with relative precision at this level is hard
         assert np.allclose(delta_D_inv_cov1, delta_D_inv_cov2)
+
+        assert np.min(delta_D_inv_cov1) < 10
+        assert np.min(delta_D_inv_cov2) < 10
 
 
 if __name__ == "__main__":
