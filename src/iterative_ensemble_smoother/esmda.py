@@ -31,7 +31,6 @@ import numpy.typing as npt
 import scipy as sp  # type: ignore
 
 from iterative_ensemble_smoother.esmda_inversion import (
-    inversion_exact_cholesky,
     inversion_subspace,
     normalize_alpha,
 )
@@ -83,10 +82,6 @@ class BaseESMDA(ABC):
             self.C_D_L = np.sqrt(covariance)
         else:
             raise TypeError("Argument `covariance` must be 1D or 2D array")
-
-        self.C_D = covariance
-        assert isinstance(self.C_D, np.ndarray)
-        assert self.C_D.ndim in (1, 2)
 
     def perturb_observations(
         self, *, ensemble_size: int, alpha: float
@@ -154,9 +149,6 @@ class ESMDA(BaseESMDA):
         A seed or numpy.random._generator.Generator used for random number
         generation. The argument is passed to numpy.random.default_rng().
         The default is None.
-    inversion : str, optional
-        Which inversion method to use. The default is "exact".
-        See the dictionary ESMDA._inversion_methods for more information.
 
     Examples
     --------
@@ -184,20 +176,12 @@ class ESMDA(BaseESMDA):
     ...     X = esmda.assimilate(X, Y)  # Update X
     """
 
-    # Available inversion methods. The inversion methods all compute
-    # C_MD @ (C_DD + alpha * C_D)^(-1)  @ (D - Y)
-    _inversion_methods = {
-        "exact": inversion_exact_cholesky,
-        "subspace": inversion_subspace,
-    }
-
     def __init__(
         self,
         covariance: npt.NDArray[np.double],
         observations: npt.NDArray[np.double],
         alpha: Union[int, npt.NDArray[np.double]] = 5,
         seed: Union[np.random._generator.Generator, int, None] = None,
-        inversion: str = "exact",
     ) -> None:
         """Initialize the instance."""
 
@@ -208,20 +192,6 @@ class ESMDA(BaseESMDA):
             or isinstance(alpha, numbers.Integral)
         ):
             raise TypeError("Argument `alpha` must be an integer or a 1D NumPy array.")
-
-        if not isinstance(inversion, str):
-            raise TypeError(
-                "Argument `inversion` must be a string in "
-                f"{tuple(self._inversion_methods.keys())}, but got {inversion}"
-            )
-        if inversion not in self._inversion_methods:
-            raise ValueError(
-                "Argument `inversion` must be a string in "
-                f"{tuple(self._inversion_methods.keys())}, but got {inversion}"
-            )
-
-        # Store data
-        self.inversion = inversion
 
         # Alpha can either be an integer (num iterations) or a list of weights
         if isinstance(alpha, np.ndarray) and alpha.ndim == 1:
@@ -241,7 +211,7 @@ class ESMDA(BaseESMDA):
         Y: npt.NDArray[np.double],
         *,
         overwrite: bool = False,
-        truncation: float = 1.0,
+        truncation: float = 0.99,
         D: Union[npt.NDArray[np.double], None] = None,
     ) -> npt.NDArray[np.double]:
         """Assimilate data and return an updated ensemble X_posterior.
@@ -312,14 +282,11 @@ class ESMDA(BaseESMDA):
         assert D.shape == (num_outputs, num_ensemble)
 
         # Line 2 (c) in the description of ES-MDA in the 2013 Emerick paper
-        # Choose inversion method, e.g. 'exact'. The inversion method computes
-        # C_MD @ sp.linalg.inv(C_DD + C_D_alpha) @ (D - Y)
-        inversion_func = self._inversion_methods[self.inversion]
-
+        # The inversion method computes C_MD @ sp.linalg.inv(C_DD + C_D_alpha) @ (D - Y)
         # Update and return
-        X += inversion_func(
+        X += inversion_subspace(
             alpha=self.alpha[self.iteration],
-            C_D=self.C_D,
+            C_D_L=self.C_D_L,
             D=D,
             Y=Y,
             X=X,
@@ -373,10 +340,9 @@ class ESMDA(BaseESMDA):
         # X += X @ T
 
         D = self.perturb_observations(ensemble_size=Y.shape[1], alpha=alpha)
-        inversion_func = self._inversion_methods[self.inversion]
-        return inversion_func(
+        return inversion_subspace(
             alpha=alpha,
-            C_D=self.C_D,
+            C_D_L=self.C_D_L,
             D=D,
             Y=Y,
             X=None,  # We don't need X to compute the factor T

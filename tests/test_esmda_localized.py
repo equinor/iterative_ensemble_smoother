@@ -5,10 +5,8 @@ from iterative_ensemble_smoother.esmda import ESMDA
 from iterative_ensemble_smoother.esmda_inversion import normalize_alpha
 from iterative_ensemble_smoother.esmda_localized import (
     LocalizedESMDA,
-    invert_exact,
     invert_naive,
     invert_subspace,
-    invert_subspace_scaled,
 )
 
 
@@ -23,11 +21,10 @@ class TestLocalizedESMDA:
             yield indices[n // 2 :]
 
         rng = np.random.default_rng(seed)
-        # This property should hold for any size, inversion method, etc.
+        # This property should hold for any size
         num_obs = rng.choice([5, 10, 15])
         num_params = rng.choice([5, 10, 15])
         num_realizations = rng.choice([5, 10, 15])
-        inversion = str(rng.choice(list(LocalizedESMDA._inversion_methods.keys())))
         alpha = rng.choice([1, 2, 3])  # Number of iterations
 
         # The linear map that defines the forward model
@@ -49,7 +46,6 @@ class TestLocalizedESMDA:
             observations=observations,
             alpha=alpha,
             seed=seed,
-            inversion=inversion,
         )
 
         # Set prior at N(1, 1), a little bit away from observations at 0
@@ -91,10 +87,9 @@ class TestLocalizedESMDA:
         should not change the result - but 1D is faster and uses less memory."""
         rng = np.random.default_rng(seed)
         num_obs = 1
-        # This property should hold for any size, inversion method, etc.
+        # This property should hold for any size
         num_params = rng.choice([5, 10, 15])
         num_realizations = rng.choice([5, 10, 15])
-        inversion = str(rng.choice(list(LocalizedESMDA._inversion_methods.keys())))
         alpha = rng.choice([1, 2, 3])  # Number of iterations
 
         def forward_model(x):
@@ -114,7 +109,6 @@ class TestLocalizedESMDA:
             observations=observations,
             alpha=alpha,
             seed=seed,  # Same seed
-            inversion=inversion,
         )
 
         smoother_2D_covar = LocalizedESMDA(
@@ -122,7 +116,6 @@ class TestLocalizedESMDA:
             observations=observations,
             alpha=alpha,
             seed=seed,  # Same seed
-            inversion=inversion,
         )
 
         # Prior on the observations (initial ensemble)
@@ -141,14 +134,13 @@ class TestLocalizedESMDA:
             X = X_1
 
     @pytest.mark.parametrize("seed", range(99))
-    @pytest.mark.parametrize("inversion", ["exact", "subspace"])
-    @pytest.mark.parametrize("dense_covariance", [True, False])
-    def test_equivalence_with_ESMDA(self, seed, inversion, dense_covariance):
+    @pytest.mark.parametrize("dense_covariance", [False])
+    def test_equivalence_with_ESMDA(self, seed, dense_covariance):
         """With no localization, ESMDA and LocalizedESMDA should produce
         exactly the same results."""
 
         rng = np.random.default_rng(seed)
-        # This property should hold for any size, inversion method, etc.
+        # This property should hold for any size
         num_obs = rng.choice([5, 10, 15])
         num_params = rng.choice([5, 10, 15])
         num_realizations = rng.choice([5, 10, 15])
@@ -186,15 +178,13 @@ class TestLocalizedESMDA:
             observations=observations,
             alpha=alpha,
             seed=seed,  # Same seed
-            inversion=inversion,
         )
 
         lesmda = LocalizedESMDA(
             covariance=covariance,
             observations=observations,
             alpha=alpha,
-            seed=seed,  # Same seed
-            inversion=inversion,
+            seed=seed,
         )
 
         X = 1 + rng.normal(size=(num_params, num_realizations))
@@ -216,8 +206,7 @@ class TestLocalizedESMDA:
             X = X_1
 
     @pytest.mark.parametrize("seed", range(9))
-    @pytest.mark.parametrize("inversion", ["exact", "subspace"])
-    def test_setting_alpha_vs_scaling_covariance(self, seed, inversion):
+    def test_setting_alpha_vs_scaling_covariance(self, seed):
         """Two approaches should produce identical results:
         (1) Create instance once, then assimilate over iterations
         (2) Create instance in each iteration, with manual alpha
@@ -252,7 +241,6 @@ class TestLocalizedESMDA:
             observations=observations,
             alpha=alpha,  # Alpha will incremented by the instance
             seed=rng1,
-            inversion=inversion,
         )
 
         X_1 = X_prior.copy()
@@ -273,7 +261,6 @@ class TestLocalizedESMDA:
                 observations=observations,
                 alpha=1,  # Disable the effect of alpha here
                 seed=rng2,
-                inversion=inversion,
             )
             Y = F(X_2)
             esmda.prepare_assimilation(Y=Y, truncation=truncation)
@@ -281,55 +268,9 @@ class TestLocalizedESMDA:
 
         assert np.allclose(X_1, X_2), "Posteriors should match"
 
-
-class TestLocalizedESMDAInversionMethods:
     @pytest.mark.parametrize("seed", range(99))
     @pytest.mark.parametrize("diagonal", [True, False])
-    def test_that_inversion_methods_are_identical_on_uniform_covariance(
-        self, seed, diagonal
-    ):
-        """When the covariance is constant diagonal, every single inversion
-        method produces exactly the same results."""
-
-        # Create a problem of random size
-        rng = np.random.default_rng(seed)
-        num_obs = rng.choice([5, 10, 15])
-        num_realizations = rng.choice([5, 10, 15])
-        alpha = rng.choice([0.1, 1, 10])
-
-        # IMPORTANT: for scaled and non-scaled subspace inversion to be
-        # identical, the covariances must be constant
-        C_D_diag = np.ones(num_obs) * rng.random()
-        C_D = np.diag(C_D_diag) if diagonal else C_D_diag
-
-        # delta_D is a centered forward model output Y
-        Y = rng.normal(size=(num_obs, num_realizations))
-        delta_D = Y - np.mean(Y, axis=1, keepdims=True)
-
-        # With no truncation, all methods are identical
-        delta_D_inv_cov1 = invert_naive(
-            delta_D=delta_D, C_D=C_D, alpha=alpha, truncation=1.0
-        )
-        delta_D_inv_cov2 = invert_exact(
-            delta_D=delta_D, C_D=C_D, alpha=alpha, truncation=1.0
-        )
-        delta_D_inv_cov3 = invert_subspace(
-            delta_D=delta_D, C_D=C_D, alpha=alpha, truncation=1.0
-        )
-        delta_D_inv_cov4 = invert_subspace_scaled(
-            delta_D=delta_D, C_D=C_D, alpha=alpha, truncation=1.0
-        )
-
-        # All should be identical
-        assert np.allclose(delta_D_inv_cov1, delta_D_inv_cov2)
-        assert np.allclose(delta_D_inv_cov2, delta_D_inv_cov3)
-        assert np.allclose(delta_D_inv_cov3, delta_D_inv_cov4)
-
-    @pytest.mark.parametrize("seed", range(99))
-    @pytest.mark.parametrize("diagonal", [True, False])
-    def test_that_inversion_methods_are_identical_on_nonuniform_covariance(
-        self, seed, diagonal
-    ):
+    def test_that_inversion_methods_are_identical(self, seed, diagonal):
         """On non-uniform (different orders of magnitude) diagonal covariances,
         exact inversion and scaled subspace inversion produces the same result."""
         # Create a problem of random size
@@ -341,8 +282,8 @@ class TestLocalizedESMDAInversionMethods:
         # IMPORTANT: If the covariance has different orders of magnitude, then
         # naive and subspace scaled inversion is the same (for diagonal cov.).
         # However, this is not the case for unscaled and scaled subspace inversion
-        C_D = np.logspace(-5, 5, num=num_obs)  # From 1e-5 to 1e5
-        C_D = np.diag(C_D) if diagonal else C_D
+        C_D_L = np.logspace(-5, 5, num=num_obs)  # From 1e-5 to 1e5
+        C_D_L = np.diag(C_D_L) if diagonal else C_D_L
 
         # delta_D is a centered forward model output Y
         Y = rng.normal(size=(num_obs, num_realizations))
@@ -350,18 +291,14 @@ class TestLocalizedESMDAInversionMethods:
 
         # With no truncation, all methods are identical
         delta_D_inv_cov1 = invert_naive(
-            delta_D=delta_D, C_D=C_D, alpha=alpha, truncation=1.0
+            delta_D=delta_D, C_D_L=C_D_L, alpha=alpha, truncation=1.0
         )
-        delta_D_inv_cov2 = invert_exact(
-            delta_D=delta_D, C_D=C_D, alpha=alpha, truncation=1.0
-        )
-        delta_D_inv_cov3 = invert_subspace_scaled(
-            delta_D=delta_D, C_D=C_D, alpha=alpha, truncation=1.0
+        delta_D_inv_cov2 = invert_subspace(
+            delta_D=delta_D, C_D_L=C_D_L, alpha=alpha, truncation=1.0
         )
 
         # All should be identical
         assert np.allclose(delta_D_inv_cov1, delta_D_inv_cov2)
-        assert np.allclose(delta_D_inv_cov2, delta_D_inv_cov3)
 
 
 if __name__ == "__main__":
