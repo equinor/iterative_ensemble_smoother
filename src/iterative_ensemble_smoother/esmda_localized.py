@@ -483,11 +483,14 @@ class LocalizedESMDA(BaseESMDA):
         assert N_e == self.delta_D_inv_cov.shape[0], "Dimension mismatch"
 
         # Center the parameters
-        # delta_M = X # - np.mean(X, axis=1, keepdims=True)
+        if missing is not None:
+            delta_M = remove_missing(X, missing=missing)
+        else:
+            delta_M = X - np.mean(X, axis=1, keepdims=True)
 
         # Create Kalman gain of shape (num_parameters_batch, num_observations),
         # then apply the localization callback elementwise
-        K = localization_callback(X @ self.delta_D_inv_cov)
+        K = localization_callback(delta_M @ self.delta_D_inv_cov)
         return X + K @ self.D_obs_minus_D
 
 
