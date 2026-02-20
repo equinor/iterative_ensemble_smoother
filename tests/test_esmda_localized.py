@@ -40,7 +40,7 @@ class TestLocalizedESMDA:
 
         # Set up the localized ESMDA instance and the prior realizations X:
         covariance = np.logspace(-1, 1, num=num_obs)  # Covar of observations
-        observations = np.zeros(num_obs)  # The observed data
+        observations = rng.normal(size=num_obs, scale=0.01)  # The observed data
         smoother = LocalizedESMDA(
             covariance=covariance,
             observations=observations,
@@ -102,7 +102,7 @@ class TestLocalizedESMDA:
 
         # Set up the localized ESMDA instances
         covariance = np.logspace(-1, 1, num=num_obs)
-        observations = np.zeros(num_obs)
+        observations = rng.normal(size=num_obs, scale=0.01)
 
         smoother_1D_covar = LocalizedESMDA(
             covariance=covariance,
@@ -172,7 +172,7 @@ class TestLocalizedESMDA:
             factor = rng.normal(size=(num_obs, num_obs)) / num_obs
             covariance = np.diag(covariance) + factor.T @ factor
 
-        observations = np.zeros(num_obs)  # The observed data
+        observations = rng.normal(size=num_obs, scale=0.01)  # The observed data
         esmda = ESMDA(
             covariance=covariance,
             observations=observations,
@@ -231,7 +231,7 @@ class TestLocalizedESMDA:
         # Pre-compute alpha values so they are identical for both approaches
         alpha = normalize_alpha(np.array([1, 2, 3, 4]))
         covariance = np.logspace(-5, 5, num=num_obs)
-        observations = np.zeros(num_obs)
+        observations = rng.normal(size=num_obs, scale=0.01)
         X_prior = 1 + rng.normal(size=(num_params, num_realizations))
 
         # === APPROACH 1 : Create instance once, then assimilate over iterations ===
