@@ -30,13 +30,9 @@ class TestLocalizedESMDA:
         # The linear map that defines the forward model
         A = rng.normal(size=(num_obs, num_params), scale=0.1)
 
-        def forward_model(x):
-            """Forward model for a single realization."""
-            return A @ x
-
         def F(X):
             """Forward model applied to every realization."""
-            return np.array([forward_model(x) for x in X.T]).T
+            return A @ X
 
         # Set up the localized ESMDA instance and the prior realizations X:
         covariance = np.logspace(-1, 1, num=num_obs)  # Covar of observations
@@ -101,7 +97,7 @@ class TestLocalizedESMDA:
             return np.array([forward_model(x) for x in X.T]).T
 
         # Set up the localized ESMDA instances
-        covariance = np.logspace(-1, 1, num=num_obs)
+        covariance = np.logspace(-10, 10, num=num_obs)
         observations = np.zeros(num_obs)
 
         smoother_1D_covar = LocalizedESMDA(
@@ -158,16 +154,12 @@ class TestLocalizedESMDA:
         # The linear forward map
         A = rng.normal(size=(num_obs, num_params), scale=0.1)
 
-        def forward_model(x):
-            """Forward model for a single realization."""
-            return A @ x
-
         def F(X):
             """Forward model applied to every realization."""
-            return np.array([forward_model(x) for x in X.T]).T
+            return A @ X
 
         # Set up the localized ESMDA instance and the prior realizations X:
-        covariance = np.logspace(-4, 4, num=num_obs)  # Covar of observations
+        covariance = np.logspace(-10, 10, num=num_obs)  # Covar of observations
         if dense_covariance:
             factor = rng.normal(size=(num_obs, num_obs)) / num_obs
             covariance = np.diag(covariance) + factor.T @ factor
@@ -220,13 +212,9 @@ class TestLocalizedESMDA:
         # The linear forward map
         A = rng.normal(size=(num_obs, num_params), scale=0.1)
 
-        def forward_model(x):
-            """Forward model for a single realization."""
-            return A @ x
-
         def F(X):
             """Vectorized forward model, applied to all realizations."""
-            return np.array([forward_model(x) for x in X.T]).T
+            return A @ X
 
         # Pre-compute alpha values so they are identical for both approaches
         alpha = normalize_alpha(np.array([1, 2, 3, 4]))
@@ -282,7 +270,7 @@ class TestLocalizedESMDA:
         # IMPORTANT: If the covariance has different orders of magnitude, then
         # naive and subspace scaled inversion is the same (for diagonal cov.).
         # However, this is not the case for unscaled and scaled subspace inversion
-        C_D_L = np.logspace(-5, 5, num=num_obs)  # From 1e-5 to 1e5
+        C_D_L = np.logspace(-6, 6, num=num_obs)  # From 1e-5 to 1e5
         C_D_L = np.diag(C_D_L) if diagonal else C_D_L
 
         # delta_D is a centered forward model output Y
