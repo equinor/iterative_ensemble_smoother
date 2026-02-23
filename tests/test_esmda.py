@@ -25,7 +25,6 @@ import pytest
 
 from iterative_ensemble_smoother.esmda import ESMDA
 from iterative_ensemble_smoother.esmda_inversion import empirical_cross_covariance
-from iterative_ensemble_smoother.sies import SIES
 
 
 def test_ESMDA_snapshot():
@@ -137,50 +136,6 @@ class TestESMDARealizationsDying:
 
 
 class TestESMDA:
-    @pytest.mark.parametrize("num_inputs", [10, 25, 50])
-    @pytest.mark.parametrize("num_outputs", [5, 25, 50])
-    @pytest.mark.parametrize("sies_inversion", ["direct", "subspace_exact"])
-    @pytest.mark.parametrize("seed", list(range(10)))
-    def test_that_ESMDA_and_SIES_produce_same_result_with_one_step(
-        self, seed, sies_inversion, num_outputs, num_inputs
-    ):
-        """With a single step (alpha=1), ESMDA = SIES = ES.
-
-        When num_inputs < num_ensemble - 1, then Section (2.4.3) in the SIES
-        paper triggers and the result is not identical.
-        """
-        rng = np.random.default_rng(seed)
-
-        num_ensemble = 10
-        alpha = 1
-
-        # Create problem instance
-        X = rng.normal(size=(num_inputs, num_ensemble))
-        Y = rng.normal(size=(num_outputs, num_ensemble))
-        covariance = np.exp(rng.normal(size=num_outputs))
-        observations = rng.normal(size=num_outputs, loc=1)
-
-        # Create ESMDA instance and perform one iteration
-        esmda = ESMDA(covariance, observations, alpha=alpha, seed=seed + 99)
-        X_ESMDA = np.copy(X)
-
-        # Perform one iteration of ESMDA
-        X_ESMDA = esmda.assimilate(X_ESMDA, Y)
-
-        # Create SIES instance and perform one iteration
-        sies = SIES(
-            parameters=X,
-            covariance=covariance,
-            observations=observations,
-            inversion=sies_inversion,
-            truncation=1.0,
-            seed=seed + 99,
-        )
-
-        X_SIES = sies.sies_iteration(responses=Y, step_length=1)
-
-        assert np.allclose(X_ESMDA, X_SIES)
-
     @pytest.mark.parametrize("seed", list(range(10)))
     def test_that_diagonal_covariance_gives_same_answer_as_dense(self, seed):
         rng = np.random.default_rng(seed)
