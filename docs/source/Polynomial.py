@@ -19,9 +19,7 @@
 # # Fitting a polynomial with Gaussian priors
 #
 # We fit a simple polynomial with Gaussian priors, which is an example of a Gauss-linear
-# problem for which the results obtained using Subspace Iterative Ensemble Smoother
-# (SIES) tend to those obtained using Ensemble Smoother (ES).
-# This notebook illustrated this property.
+# problem.
 # %%
 import itertools
 
@@ -135,43 +133,29 @@ assert Y.shape == (
 )
 
 # %% [markdown]
-# ## Condition on observations to calculate posterior using both `ES` and `SIES`
+# ## Condition on observations to calculate posterior using both `ESMDA`
 
 # %%
-from iterative_ensemble_smoother.utils import steplength_exponential
 
-X_ES_ert = X.copy()
-Y_ES_ert = Y.copy()
-smoother_es = ies.SIES(
-    parameters=X_ES_ert,
+X_ESMDA = X.copy()
+Y_ESMDA = Y.copy()
+smoother = ies.ESMDA(
     covariance=d.sd.to_numpy() ** 2,
     observations=d.value.to_numpy(),
     seed=42,
 )
-X_ES_ert = smoother_es.sies_iteration(Y_ES_ert, step_length=1.0)
 
+for _ in range(smoother.num_assimilations()):
+    # Assimilation step
+    X_ESMDA = smoother.assimilate(X_ESMDA, Y_ESMDA, truncation=1.0)
 
-X_IES_ert = X.copy()
-Y_IES_ert = Y.copy()
-smoother_ies = ies.SIES(
-    parameters=X_IES_ert,
-    covariance=d.sd.to_numpy() ** 2,
-    observations=d.value.values,
-    seed=42,
-)
-n_ies_iter = 7
-for i in range(n_ies_iter):
-    step_length = steplength_exponential(i + 1)
-    X_IES_ert = smoother_ies.sies_iteration(Y_IES_ert, step_length=step_length)
-
-    _coeff_a, _coeff_b, _coeff_c = X_IES_ert
+    # Apply forward model again
+    _coeff_a, _coeff_b, _coeff_c = X_ESMDA
     x = [np.arange(max(x_observations) + 1)] * ensemble_size
-
     _fwd_runs = [
         poly(_coeff_a[i], _coeff_b[i], _coeff_c[i], x[i]) for i in range(len(_coeff_a))
     ]
-
-    Y_IES_ert = np.array(
+    Y_ESMDA = np.array(
         [fwd_run[d.index.get_level_values("x").to_list()] for fwd_run in _fwd_runs]
     ).T
 
@@ -200,8 +184,7 @@ ax[0].axvline(a_t, color="k", linestyle="--", label="truth")
 ax[1].axvline(b_t, color="k", linestyle="--", label="truth")
 ax[2].axvline(c_t, color="k", linestyle="--", label="truth")
 
-plot_posterior(ax, X_ES_ert, method="ES ert")
-_ = plot_posterior(ax, X_IES_ert, method=f"SIES ert ({n_ies_iter})")
+plot_posterior(ax, X_ESMDA, method="ESMDA")
 
 # %%
 fig, axes = plt.subplots(1, 3, figsize=(8, 2.75))
@@ -209,11 +192,10 @@ axes = axes.ravel()
 labels = "abc"
 true_parameters = [a_t, b_t, c_t]
 
-fig.suptitle(f"SIES ert ({n_ies_iter}) Posterior distribution")
+fig.suptitle("ESMDA Posterior distribution")
 for k, (i, j) in enumerate(itertools.combinations([0, 1, 2], 2)):
     axes[k].scatter(X[i, :], X[j, :], s=15, alpha=0.6)
-    axes[k].scatter(X_ES_ert[i, :], X_ES_ert[j, :], s=15, alpha=0.2)
-    axes[k].scatter(X_IES_ert[i, :], X_IES_ert[j, :], s=15, alpha=0.2)
+    axes[k].scatter(X_ESMDA[i, :], X_ESMDA[j, :], s=15, alpha=0.2)
     axes[k].scatter(
         [true_parameters[i]],
         [true_parameters[j]],
@@ -230,7 +212,7 @@ fig.tight_layout()
 plt.show()
 
 # %%
-fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(8, 2.5), sharex=True, sharey=True)
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 2.5), sharex=True, sharey=True)
 x_plot = np.linspace(0, 10, 2**8)
 
 # Plot the prior
@@ -242,23 +224,16 @@ for parameter_prior in X.T:
     )
 
 # Plot the posterior
-ax2.set_title("ES ert posterior")
+ax2.set_title("ESMDA posterior")
 ax2.plot(x_plot, poly(a_t, b_t, c_t, x_plot), zorder=10, lw=4, color="black")
-for parameter_posterior in X_ES_ert.T:
+for parameter_posterior in X_ESMDA.T:
     ax2.plot(
         x_plot, poly(*parameter_posterior, x_plot), alpha=0.1, zorder=5, color=COLORS[1]
     )
 
-# Plot the posterior
-ax3.set_title(f"SIES ert ({n_ies_iter}) posterior")
-ax3.plot(x_plot, poly(a_t, b_t, c_t, x_plot), zorder=10, lw=4, color="black")
-for parameter_posterior in X_IES_ert.T:
-    ax3.plot(
-        x_plot, poly(*parameter_posterior, x_plot), alpha=0.1, zorder=5, color=COLORS[2]
-    )
 
 # Common axes setup
-for ax in [ax1, ax2, ax3]:
+for ax in [ax1, ax2]:
     ax.set_ylim([0, 70])
     ax.set_xlabel("Time step")
     ax.set_ylabel("Response")

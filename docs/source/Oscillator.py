@@ -215,73 +215,27 @@ assert np.allclose(
 # %%
 # Create a standard normal prior and plot it in transformed space
 A = rng.standard_normal(size=(2, realizations))
-plot_result(standard_normal_to_prior(A), response_x_axis)
+plot_result(standard_normal_to_prior(A), response_x_axis, title="Prior")
 
 # %% [markdown]
 # ## A single update step
 
 # %%
-plot_result(standard_normal_to_prior(A), response_x_axis)
 
 # The forward model is composed with the transformation from N(0, 1) to uniform priors
 responses_before = forward_model(standard_normal_to_prior(A), response_x_axis)
 Y = responses_before[observation_x_axis]
 
 # Run smoother for one step
-smoother = ies.SIES(
-    parameters=A,
-    covariance=observation_errors**2,
-    observations=observation_values,
-    seed=42,
+smoother = ies.ESMDA(
+    covariance=observation_errors**2, observations=observation_values, seed=42, alpha=1
 )
 
-new_A = smoother.sies_iteration(Y, step_length=1.0)
+for _ in range(smoother.num_assimilations()):
+    new_A = smoother.assimilate(A, Y, truncation=1.0)
 
 
-plot_result(standard_normal_to_prior(new_A), response_x_axis)
-
-# %% [markdown]
-# ## Iterative smoother
-
-# %%
-from iterative_ensemble_smoother.utils import steplength_exponential
-
-
-def iterative_smoother(A):
-    A_current = np.copy(A)
-    iterations = 4
-    smoother = ies.SIES(
-        parameters=A,
-        covariance=observation_errors**2,
-        observations=observation_values,
-        seed=42,
-    )
-
-    plot_result(
-        standard_normal_to_prior(A_current),
-        response_x_axis,
-        title="Prior",
-    )
-
-    for iteration in range(iterations):
-        responses_before = forward_model(
-            standard_normal_to_prior(A_current), response_x_axis
-        )
-
-        Y = responses_before[observation_x_axis]
-
-        A_current = smoother.sies_iteration(
-            Y, step_length=steplength_exponential(iteration + 1)
-        )
-
-        plot_result(
-            standard_normal_to_prior(A_current),
-            response_x_axis,
-            title=f"SIES iteration {iteration + 1}",
-        )
-
-
-iterative_smoother(A)
+plot_result(standard_normal_to_prior(new_A), response_x_axis, title="ES")
 
 
 # %% [markdown]
