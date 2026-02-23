@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def remove_missing(
+def adjust_for_missing(
     X: npt.NDArray[np.double], *, missing: npt.NDArray[np.bool_]
 ) -> npt.NDArray[np.double]:
     """Removes missing values from X, such that the cross-covariance product
@@ -97,9 +97,9 @@ def remove_missing(
     # due to linearity: a[:, None] * (X @ Y.T) == (a[:, None] * X) @ Y.T
     X_centered *= (N_e - 1) / (n_available - 1)
 
-    return X_centered * np.logical_not(
-        missing
-    )  # Mask to zero in anticipation of X @ Y.T
+    # Mask to zero in anticipation of C = X @ Y.T, so that in the product
+    # zero values are accounted for in the sum-of-products in C_ij
+    return X_centered * np.logical_not(missing)
 
 
 def steplength_exponential(

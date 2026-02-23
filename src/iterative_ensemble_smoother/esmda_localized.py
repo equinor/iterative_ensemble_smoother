@@ -90,7 +90,7 @@ from iterative_ensemble_smoother.esmda_inversion import (
     normalize_alpha,
     singular_values_to_keep,
 )
-from iterative_ensemble_smoother.utils import remove_missing
+from iterative_ensemble_smoother.utils import adjust_for_missing
 
 # =============== Inversion methods ===============
 
@@ -400,9 +400,9 @@ class LocalizedESMDA(BaseESMDA):
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)
         assert N_e == self.delta_D_inv_cov.shape[0], "Dimension mismatch"
 
-        # Center the parameters, accounting for possibly missing data
+        # Center the parameters, possibly accounting for missing data
         if missing is not None:
-            delta_M = remove_missing(X, missing=missing)
+            delta_M = adjust_for_missing(X, missing=missing)
         else:
             delta_M = X - np.mean(X, axis=1, keepdims=True)
 
