@@ -20,7 +20,6 @@ Iterative Ensemble Smoother
 The package provides two main algorithms:
 
 - **ESMDA** (Ensemble Smoother with Multiple Data Assimilation) - A non-iterative method with multiple data assimilation steps, described in [Emerick & Reynolds 2013](https://doi.org/10.1016/j.cageo.2012.03.011)
-- **SIES** (Subspace Iterative Ensemble Smoother) - An iterative Gauss-Newton method described in [Evensen et al. 2019](https://www.frontiersin.org/articles/10.3389/fams.2019.00047/full)
 
 The package also supports two methods of localization: correlation-based (`AdaptiveESMDA`) and distance-based (`DistanceESMDA`).
 
@@ -43,8 +42,8 @@ pip install --editable '.[doc,dev]'
 
 ## Usage
 
-**iterative_ensemble_smoother** mainly implements the two classes `SIES` and `ESMDA`.
-Check out the examples section to see how to use them.
+**iterative_ensemble_smoother** mainly implements the class `ESMDA`.
+Check out the examples section to see how to use it.
 
 ## Building the documentation
 
