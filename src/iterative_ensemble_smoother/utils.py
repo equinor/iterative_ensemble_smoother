@@ -68,7 +68,7 @@ def adjust_for_missing(
     Now let us use our function. Notice that the entries match up to numerical
     accuracy:
 
-    >>> remove_missing(X, missing=missing) @ Y.T / (X.shape[1] - 1)
+    >>> adjust_for_missing(X, missing=missing) @ Y.T / (X.shape[1] - 1)
     array([[ 0.34063333,  0.47648333],
            [-0.0012    , -0.04215   ],
            [ 0.0276    ,  0.3036    ]])
