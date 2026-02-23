@@ -476,9 +476,6 @@ class LocalizedESMDA(BaseESMDA):
         if not (missing is None or np.issubdtype(missing.dtype, np.bool_)):
             raise TypeError("Argument `missing_mask` must contain booleans")
 
-        if missing is not None:
-            X = remove_missing(X, missing=missing)
-
         # The default localization is no localization (identity function)
         if localization_callback is None:
 
@@ -491,7 +488,7 @@ class LocalizedESMDA(BaseESMDA):
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)
         assert N_e == self.delta_D_inv_cov.shape[0], "Dimension mismatch"
 
-        # Center the parameters
+        # Center the parameters, accounting for possibly missing data
         if missing is not None:
             delta_M = remove_missing(X, missing=missing)
         else:
