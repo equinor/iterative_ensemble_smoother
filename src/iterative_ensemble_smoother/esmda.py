@@ -230,7 +230,7 @@ class ESMDA(BaseESMDA):
             responses when evaluating the model at X. In other words, Y = g(X),
             where g is the forward model.
         missing : np.ndarray or None
-            A boolean 2D array of shape (num_parameters_batch, ensemble_size).
+            A boolean 2D array of shape (num_parameters, ensemble_size).
             If an entry is True, then that value is assumed missing. This can
             happen if the ensemble members use different grids, where each
             ensemble member has a slightly different grid layout. If None,
