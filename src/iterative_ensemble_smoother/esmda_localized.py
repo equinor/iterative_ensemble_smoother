@@ -79,8 +79,8 @@ Comments
 """
 
 import numbers
-from abc import ABC
-from typing import Callable, Union
+from abc import ABC, abstractmethod
+from typing import Any, Callable, Union
 
 import numpy as np
 import numpy.typing as npt
@@ -267,6 +267,10 @@ class BatchedESMDA(BaseESMDA, ABC):
             delta_D=delta_D, C_D_L=self.C_D_L, alpha=alpha, truncation=truncation
         )
         self.iteration += 1
+
+    @abstractmethod
+    def assimilate_batch(self, *args: Any, **kwargs: Any) -> npt.NDArray[np.double]:
+        pass
 
 
 class LocalizedESMDA(BatchedESMDA):
