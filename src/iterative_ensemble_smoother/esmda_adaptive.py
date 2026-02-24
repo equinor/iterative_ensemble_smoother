@@ -54,13 +54,25 @@ class AdaptiveESMDA(BatchedESMDA):
     ...
     ...     def func(corr_XY, observations):
     ...         # Takes an array of shape (params_batch, obs)
-    ...         # and applies localization to each entry.
-    ...         return corr_XY # Here we do nothing
+    ...         # and an array representing number of non-missing observations
+    ...         # per parameter. Returns modified correlation matrix.
+    ...         return corr_XY
     ...
     ...     for param_idx in yield_param_indices():
     ...         X[param_idx, :] = smoother.assimilate_batch(X=X[param_idx, :],
-    ...                                                     correlation_callback=None)
+    ...                           correlation_callback=smoother.three_over_sqrt_n)
     """
+
+    @staticmethod
+    def three_over_sqrt_n(
+        corr_XY: npt.NDArray[np.double],
+        observations: npt.NDArray[np.int_],
+    ) -> npt.NDArray[np.double]:
+        """Use the correlation threshold 3 / sqrt(n)."""
+        threshold = np.clip(3 / np.sqrt(observations), a_min=0.0, a_max=1.0)
+        zero_out = np.abs(corr_XY) < threshold[:, None]
+        corr_XY[zero_out] = 0
+        return corr_XY
 
     def assimilate_batch(
         self,
@@ -117,9 +129,6 @@ class AdaptiveESMDA(BatchedESMDA):
                 corr_XY: npt.NDArray[np.double],
                 observations: npt.NDArray[np.int_],
             ) -> npt.NDArray[np.double]:
-                threshold = np.clip(3 / np.sqrt(observations), a_min=0.0, a_max=1.0)
-                zero_out = np.abs(corr_XY) < threshold[:, None]
-                corr_XY[zero_out] = 0
                 return corr_XY
 
         assert X.ndim == 2
