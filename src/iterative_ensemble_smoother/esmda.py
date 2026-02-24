@@ -210,6 +210,7 @@ class ESMDA(BaseESMDA):
         X: npt.NDArray[np.double],
         Y: npt.NDArray[np.double],
         *,
+        missing: Union[npt.NDArray[np.bool_], None] = None,
         overwrite: bool = False,
         truncation: float = 0.99,
         D: Union[npt.NDArray[np.double], None] = None,
@@ -228,6 +229,12 @@ class ESMDA(BaseESMDA):
             2D array of shape (num_observations, ensemble_size), containing
             responses when evaluating the model at X. In other words, Y = g(X),
             where g is the forward model.
+        missing : np.ndarray or None
+            A boolean 2D array of shape (num_parameters, ensemble_size).
+            If an entry is True, then that value is assumed missing. This can
+            happen if the ensemble members use different grids, where each
+            ensemble member has a slightly different grid layout. If None,
+            then all entries are assumed to be valid.
         overwrite : bool
             If True, then arguments X and Y may be overwritten and mutated.
             If False, then the method will not mutate inputs in any way.
@@ -291,6 +298,7 @@ class ESMDA(BaseESMDA):
             Y=Y,
             X=X,
             truncation=truncation,
+            missing=missing,
         )
 
         self.iteration += 1
@@ -307,6 +315,9 @@ class ESMDA(BaseESMDA):
 
         The purpose of this method is to facilitate row-by-row, or batch-by-batch,
         updates of X. This is useful if X is too large to fit in memory.
+
+        The user must deal with potential missing values in X.
+
 
         Parameters
         ----------
@@ -348,6 +359,7 @@ class ESMDA(BaseESMDA):
             X=None,  # We don't need X to compute the factor T
             truncation=truncation,
             return_T=True,  # Ensures that we don't need X
+            missing=None,
         )
 
 

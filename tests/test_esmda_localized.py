@@ -208,14 +208,12 @@ class TestLocalizedESMDA:
         num_realizations = rng.choice([5, 10, 15])
         alpha = rng.choice([1, 2, 3])  # Number of iterations
 
-        # IMPORTANT: if truncation is set to 1.0, then we do not get
-        # numerical equivalence between ESMDA and LocalizedESMDA, because
-        # small changes in implementation (e.g. order of operations), produce
-        # small numerical discrepancies that are multiplied and amplified.
-        # We need to 'regularize' a bit with truncation=0.99 (which is what
-        # Emerick recommends too), to get equivalent results
+        truncation = rng.choice([0.9, 0.99, 1.0])
 
-        truncation = 0.99
+        # Create some missing values to test that they propagate through
+        # both ESMDA and LocalizedESMDA and produce the same results
+        missing = rng.random(size=(num_params, num_realizations)) > 0.9
+        missing[:, :2] = False  # At least two realizations have all params
 
         # The linear forward map
         A = rng.normal(size=(num_obs, num_params), scale=0.1)
@@ -251,7 +249,7 @@ class TestLocalizedESMDA:
             Y = F(X)
 
             # Assimilate with ESMDA
-            X_1 = esmda.assimilate(X=X, Y=Y, truncation=truncation)
+            X_1 = esmda.assimilate(X=X, Y=Y, truncation=truncation, missing=missing)
 
             # Assimilate with localized ESMDA.
             # If the localization callback is the identity, and the truncation
@@ -259,7 +257,9 @@ class TestLocalizedESMDA:
             lesmda.prepare_assimilation(Y=Y, truncation=truncation)
 
             # Assimilate with LocalizedESMDA, using identity function as callback
-            X_2 = lesmda.assimilate_batch(X=X, localization_callback=None)
+            X_2 = lesmda.assimilate_batch(
+                X=X, localization_callback=None, missing=missing
+            )
             assert np.allclose(X_1, X_2), "LocalizedESMDA should match with ESMDA"
             X = X_1
 

@@ -109,9 +109,17 @@ class TestEsmdaInversion:
         Y = np.random.randn(num_outputs, ensemble_members)
         X = np.random.randn(num_inputs, ensemble_members)
 
+        # Create a missing mask
+        missing = np.random.random(size=(num_inputs, ensemble_members)) > 0.9
+        missing[:, :2] = False  # At least two realizations have all params
+
         # All non-subspace methods
-        K1 = inversion_exact_naive(alpha=alpha, C_D_L=C_D_L, D=D, Y=Y, X=X)
-        K2 = function(alpha=alpha, C_D_L=C_D_L, D=D, Y=Y, X=X, truncation=1.0)
+        K1 = inversion_exact_naive(
+            alpha=alpha, C_D_L=C_D_L, D=D, Y=Y, X=X, missing=missing
+        )
+        K2 = function(
+            alpha=alpha, C_D_L=C_D_L, D=D, Y=Y, X=X, truncation=1.0, missing=missing
+        )
         assert np.allclose(K1, K2)
 
     @pytest.mark.parametrize("function", [inversion_subspace])
