@@ -12,7 +12,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def masked_std(X, *, missing):
+def masked_std(
+    X: npt.NDArray[np.double], *, missing: npt.NDArray[np.bool_]
+) -> npt.NDArray[np.double]:
     """Computes a masked std for each row in X.
 
     Examples

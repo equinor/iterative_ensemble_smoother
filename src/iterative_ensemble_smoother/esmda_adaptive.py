@@ -10,7 +10,7 @@ from typing import Callable, TypeVar, Union
 import numpy as np
 import numpy.typing as npt
 
-from iterative_ensemble_smoother.esmda_localized import LocalizedESMDA
+from iterative_ensemble_smoother.esmda_localized import BatchedESMDA
 from iterative_ensemble_smoother.utils import adjust_for_missing, masked_std
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-class AdaptiveESMDA(LocalizedESMDA):
+class AdaptiveESMDA(BatchedESMDA):
     """
     Examples
     --------
@@ -67,7 +67,9 @@ class AdaptiveESMDA(LocalizedESMDA):
         *,
         X: npt.NDArray[np.double],
         missing: Union[npt.NDArray[np.bool_], None] = None,
-        correlation_callback: Callable[[npt.NDArray[np.double]], npt.NDArray[np.double]]
+        correlation_callback: Callable[
+            [npt.NDArray[np.double], npt.NDArray[np.int_]], npt.NDArray[np.double]
+        ]
         | None = None,
     ) -> npt.NDArray[np.double]:
         """Assimilate a batch of parameters against all observations.
@@ -113,7 +115,7 @@ class AdaptiveESMDA(LocalizedESMDA):
 
             def correlation_callback(
                 corr_XY: npt.NDArray[np.double],
-                observations: npt.NDArray[np.double],
+                observations: npt.NDArray[np.int_],
             ) -> npt.NDArray[np.double]:
                 threshold = np.clip(3 / np.sqrt(observations), a_min=0.0, a_max=1.0)
                 zero_out = np.abs(corr_XY) < threshold[:, None]

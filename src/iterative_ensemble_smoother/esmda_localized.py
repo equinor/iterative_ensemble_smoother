@@ -167,75 +167,7 @@ def invert_subspace(
     return (delta_D.T, term * diag, term.T)
 
 
-class LocalizedESMDA(BaseESMDA):
-    """
-    Localized Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
-
-    Parameters
-    ----------
-    covariance : np.ndarray
-        Either a 1D array of diagonal covariances, or a 2D covariance matrix.
-        The shape is either (num_observations,) or (num_observations, num_observations).
-        This is C_D in Emerick (2013), and represents observation or measurement
-        errors. We observe d from the real world, y from the model g(x), and
-        assume that d = y + e, where the error e is multivariate normal with
-        covariance given by `covariance`.
-    observations : np.ndarray
-        1D array of shape (num_observations,) representing real-world observations.
-        This is d_obs in Emerick (2013).
-    alpha : int or 1D np.ndarray, optional
-        Multiplicative factor for the covariance.
-        If an integer `alpha` is given, an array with length `alpha` and
-        elements `alpha` is constructed. If an 1D array is given, it is
-        normalized so sum_i 1/alpha_i = 1 and used. The default is 5, which
-        corresponds to np.array([5, 5, 5, 5, 5]).
-    seed : integer or numpy.random._generator.Generator, optional
-        A seed or numpy.random._generator.Generator used for random number
-        generation. The argument is passed to numpy.random.default_rng().
-        The default is None.
-
-    Examples
-    --------
-
-    A full example where the forward model maps 10 parameters to 3 outputs.
-    We will use 100 realizations. First we define the forward model:
-
-    >>> rng = np.random.default_rng(42)
-    >>> A = rng.normal(size=(3, 10))
-    >>> def forward_model(x):
-    ...     return A @ x
-
-    Then we set up the LocalizedESMDA instance and the prior realizations X:
-
-    >>> covariance = np.ones(3)  # Covariance of the observations / outputs
-    >>> observations = np.array([1, 2, 3])  # The observed data
-    >>> smoother = LocalizedESMDA(covariance=covariance,
-    ...                           observations=observations, alpha=3, seed=42)
-    >>> X = rng.normal(size=(10, 100))
-
-    To assimilate data, we iterate over the assimilation steps in an outer
-    loop, then over parameter batches:
-
-    >>> def yield_param_indices():
-    ...     yield [1, 2, 3, 4]
-    ...     yield [5, 6, 7, 8, 9]
-    >>> for iteration in range(smoother.num_assimilations()):
-    ...
-    ...     Y = np.array([forward_model(x) for x in X.T]).T
-    ...
-    ...     # Prepare for assimilation
-    ...     smoother.prepare_assimilation(Y=Y, truncation=0.99)
-    ...
-    ...     def func(K):
-    ...         # Takes an array of shape (params_batch, obs)
-    ...         # and applies localization to each entry.
-    ...         return K # Here we do nothing
-    ...
-    ...     for param_idx in yield_param_indices():
-    ...         X[param_idx, :] = smoother.assimilate_batch(X=X[param_idx, :],
-    ...                                                     localization_callback=func)
-    """
-
+class BatchedESMDA(BaseESMDA):
     def __init__(
         self,
         *,
@@ -334,6 +266,76 @@ class LocalizedESMDA(BaseESMDA):
             delta_D=delta_D, C_D_L=self.C_D_L, alpha=alpha, truncation=truncation
         )
         self.iteration += 1
+
+
+class LocalizedESMDA(BatchedESMDA):
+    """
+    Localized Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
+
+    Parameters
+    ----------
+    covariance : np.ndarray
+        Either a 1D array of diagonal covariances, or a 2D covariance matrix.
+        The shape is either (num_observations,) or (num_observations, num_observations).
+        This is C_D in Emerick (2013), and represents observation or measurement
+        errors. We observe d from the real world, y from the model g(x), and
+        assume that d = y + e, where the error e is multivariate normal with
+        covariance given by `covariance`.
+    observations : np.ndarray
+        1D array of shape (num_observations,) representing real-world observations.
+        This is d_obs in Emerick (2013).
+    alpha : int or 1D np.ndarray, optional
+        Multiplicative factor for the covariance.
+        If an integer `alpha` is given, an array with length `alpha` and
+        elements `alpha` is constructed. If an 1D array is given, it is
+        normalized so sum_i 1/alpha_i = 1 and used. The default is 5, which
+        corresponds to np.array([5, 5, 5, 5, 5]).
+    seed : integer or numpy.random._generator.Generator, optional
+        A seed or numpy.random._generator.Generator used for random number
+        generation. The argument is passed to numpy.random.default_rng().
+        The default is None.
+
+    Examples
+    --------
+
+    A full example where the forward model maps 10 parameters to 3 outputs.
+    We will use 100 realizations. First we define the forward model:
+
+    >>> rng = np.random.default_rng(42)
+    >>> A = rng.normal(size=(3, 10))
+    >>> def forward_model(x):
+    ...     return A @ x
+
+    Then we set up the LocalizedESMDA instance and the prior realizations X:
+
+    >>> covariance = np.ones(3)  # Covariance of the observations / outputs
+    >>> observations = np.array([1, 2, 3])  # The observed data
+    >>> smoother = LocalizedESMDA(covariance=covariance,
+    ...                           observations=observations, alpha=3, seed=42)
+    >>> X = rng.normal(size=(10, 100))
+
+    To assimilate data, we iterate over the assimilation steps in an outer
+    loop, then over parameter batches:
+
+    >>> def yield_param_indices():
+    ...     yield [1, 2, 3, 4]
+    ...     yield [5, 6, 7, 8, 9]
+    >>> for iteration in range(smoother.num_assimilations()):
+    ...
+    ...     Y = np.array([forward_model(x) for x in X.T]).T
+    ...
+    ...     # Prepare for assimilation
+    ...     smoother.prepare_assimilation(Y=Y, truncation=0.99)
+    ...
+    ...     def func(K):
+    ...         # Takes an array of shape (params_batch, obs)
+    ...         # and applies localization to each entry.
+    ...         return K # Here we do nothing
+    ...
+    ...     for param_idx in yield_param_indices():
+    ...         X[param_idx, :] = smoother.assimilate_batch(X=X[param_idx, :],
+    ...                                                     localization_callback=func)
+    """
 
     def assimilate_batch(
         self,
