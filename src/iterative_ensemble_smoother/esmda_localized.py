@@ -90,6 +90,7 @@ from iterative_ensemble_smoother.esmda_inversion import (
     normalize_alpha,
     singular_values_to_keep,
 )
+from iterative_ensemble_smoother.utils import adjust_for_missing
 
 # =============== Inversion methods ===============
 
@@ -341,6 +342,7 @@ class LocalizedESMDA(BaseESMDA):
         self,
         *,
         X: npt.NDArray[np.double],
+        missing: npt.NDArray[np.bool_] = None,
         localization_callback: Callable[
             [npt.NDArray[np.double]], npt.NDArray[np.double]
         ]
@@ -358,6 +360,12 @@ class LocalizedESMDA(BaseESMDA):
             A 2D array of shape (num_parameters_batch, ensemble_size). Each row
             corresponds to a parameter in the model, and each column corresponds
             to an ensemble member (realization).
+        missing : np.ndarray
+            A 2D array of shape (num_parameters_batch, ensemble_size). If an
+            entry is set to True, then that value is assumed missing. This can
+            happen if the ensemble members use different grids, where each
+            ensemble member has a slightly different grid layout. If None,
+            then all entries are assumed to be valid.
         localization_callback : callable, optional
             A callable that takes as input a Kalman gain 2D array of shape
             (num_parameters_batch, num_observations) and returns a 2D array of
@@ -377,6 +385,8 @@ class LocalizedESMDA(BaseESMDA):
         assert localization_callback is None or callable(localization_callback)
         if not np.issubdtype(X.dtype, np.floating):
             raise TypeError("Argument `X` must contain floats")
+        if not (missing is None or np.issubdtype(missing.dtype, np.bool_)):
+            raise TypeError("Argument `missing_mask` must contain booleans")
 
         # The default localization is no localization (identity function)
         if localization_callback is None:
@@ -390,8 +400,11 @@ class LocalizedESMDA(BaseESMDA):
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)
         assert N_e == self.delta_D_inv_cov.shape[0], "Dimension mismatch"
 
-        # Center the parameters
-        delta_M = X - np.mean(X, axis=1, keepdims=True)
+        # Center the parameters, possibly accounting for missing data
+        if missing is not None:
+            delta_M = adjust_for_missing(X, missing=missing)
+        else:
+            delta_M = X - np.mean(X, axis=1, keepdims=True)
 
         # Create Kalman gain of shape (num_parameters_batch, num_observations),
         # then apply the localization callback elementwise
