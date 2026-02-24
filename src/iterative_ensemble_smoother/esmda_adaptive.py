@@ -17,7 +17,7 @@ from iterative_ensemble_smoother.esmda_inversion import (
     empirical_cross_covariance,
 )
 from iterative_ensemble_smoother.esmda_localized import LocalizedESMDA
-from iterative_ensemble_smoother.utils import adjust_for_missing
+from iterative_ensemble_smoother.utils import adjust_for_missing, masked_std
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,49 @@ T = TypeVar("T")
 
 
 class AdaptiveESMDA(LocalizedESMDA):
+    """
+    Examples
+    --------
+
+    A full example where the forward model maps 10 parameters to 3 outputs.
+    We will use 100 realizations. First we define the forward model:
+
+    >>> rng = np.random.default_rng(42)
+    >>> A = rng.normal(size=(3, 10))
+    >>> def forward_model(x):
+    ...     return A @ x
+
+    Then we set up the LocalizedESMDA instance and the prior realizations X:
+
+    >>> covariance = np.ones(3)  # Covariance of the observations / outputs
+    >>> observations = np.array([1, 2, 3])  # The observed data
+    >>> smoother = AdaptiveESMDA(covariance=covariance,
+    ...                          observations=observations, alpha=3, seed=42)
+    >>> X = rng.normal(size=(10, 100))
+
+    To assimilate data, we iterate over the assimilation steps in an outer
+    loop, then over parameter batches:
+
+    >>> def yield_param_indices():
+    ...     yield [1, 2, 3, 4]
+    ...     yield [5, 6, 7, 8, 9]
+    >>> for iteration in range(smoother.num_assimilations()):
+    ...
+    ...     Y = np.array([forward_model(x) for x in X.T]).T
+    ...
+    ...     # Prepare for assimilation
+    ...     smoother.prepare_assimilation(Y=Y, truncation=0.99)
+    ...
+    ...     def func(corr_XY, observations):
+    ...         # Takes an array of shape (params_batch, obs)
+    ...         # and applies localization to each entry.
+    ...         return corr_XY # Here we do nothing
+    ...
+    ...     for param_idx in yield_param_indices():
+    ...         X[param_idx, :] = smoother.assimilate_batch(X=X[param_idx, :],
+    ...                                                     correlation_callback=None)
+    """
+
     def assimilate_batch(
         self,
         *,
@@ -75,13 +118,17 @@ class AdaptiveESMDA(LocalizedESMDA):
         if correlation_callback is None:
 
             def correlation_callback(
-                K: npt.NDArray[np.double],
+                corr_XY: npt.NDArray[np.double],
+                observations: npt.NDArray[np.double],
             ) -> npt.NDArray[np.double]:
-                return K
+                threshold = np.clip(3 / np.sqrt(observations), a_min=0.0, a_max=1.0)
+                zero_out = np.abs(corr_XY) < threshold[:, None]
+                corr_XY[zero_out] = 0
+                return corr_XY
 
         assert X.ndim == 2
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)
-        assert N_e == self.delta_D_inv_cov.shape[0], "Dimension mismatch"
+        assert N_e == self.delta_DT.shape[0], "Dimension mismatch"
 
         # Center the parameters, possibly accounting for missing data
         if missing is not None:
@@ -90,12 +137,30 @@ class AdaptiveESMDA(LocalizedESMDA):
             delta_M = X - np.mean(X, axis=1, keepdims=True)
 
         # Compute cross correlation matrix
-        cross_covar = delta_M @ self.delta_DT
+        cross_covar = (delta_M @ self.delta_DT) / (N_e - 1)
+        std_Y = np.std(self.delta_DT, axis=0, ddof=1)
+        if missing is not None:
+            std_X = masked_std(X, missing=missing)
+        else:
+            std_X = np.std(X, axis=1, ddof=1)
+
+        # Cross covariance to cross correlation (inplace)
+        cross_covar /= std_X[:, None]
+        cross_covar /= std_Y[None, :]
 
         # Apply localization function
-        cross_covar = correlation_callback(cross_covar)
+        observations = (
+            np.ones(N_m) * N_e
+            if missing is None
+            else np.sum(np.logical_not(missing), axis=1)
+        )
+        cross_covar = correlation_callback(cross_covar, observations)
 
-        # Transform back into cross covariance matrix
+        # Cross correlation to cross covariance (inplace)
+        cross_covar *= std_X[:, None]
+        cross_covar *= std_Y[None, :]
+
+        # TODO: Slice the product so all-zero rows (params) are not used
 
         # Return result
         return X + np.linalg.multi_dot(
