@@ -352,8 +352,8 @@ class TestLocalizedESMDA:
         delta_D_inv_cov1 = invert_naive(
             delta_D=delta_D, C_D_L=C_D_L, alpha=alpha, truncation=1.0
         )
-        delta_D_inv_cov2 = invert_subspace(
-            delta_D=delta_D, C_D_L=C_D_L, alpha=alpha, truncation=1.0
+        delta_D_inv_cov2 = np.linalg.multi_dot(
+            invert_subspace(delta_D=delta_D, C_D_L=C_D_L, alpha=alpha, truncation=1.0)
         )
 
         # These should be identical.

@@ -30,9 +30,7 @@ class AdaptiveESMDA(LocalizedESMDA):
         *,
         X: npt.NDArray[np.double],
         missing: Union[npt.NDArray[np.bool_], None] = None,
-        localization_callback: Callable[
-            [npt.NDArray[np.double]], npt.NDArray[np.double]
-        ]
+        correlation_callback: Callable[[npt.NDArray[np.double]], npt.NDArray[np.double]]
         | None = None,
     ) -> npt.NDArray[np.double]:
         """Assimilate a batch of parameters against all observations.
@@ -53,13 +51,11 @@ class AdaptiveESMDA(LocalizedESMDA):
             happen if the ensemble members use different grids, where each
             ensemble member has a slightly different grid layout. If None,
             then all entries are assumed to be valid.
-        localization_callback : callable, optional
-            A callable that takes as input a Kalman gain 2D array of shape
+        correlation_callback : callable, optional
+            A callable that takes as input a cross-correlation 2D array of shape
             (num_parameters_batch, num_observations) and returns a 2D array of
-            the same shape. The typical use-case is to associate with each
-            parameter and observation a localiation factor between 0 and 1,
-            and apply element multiplication. The default is None, which applies
-            the identity function (i.e. multiplication with 1 in every entry).
+            the same shape. The returned array represents any kind of correlation
+            thresholding or softening.
 
         Returns
         -------
@@ -69,16 +65,16 @@ class AdaptiveESMDA(LocalizedESMDA):
         """
         if not hasattr(self, "D_obs_minus_D"):
             raise Exception("The method `prepare_assmilation` must be called.")
-        assert localization_callback is None or callable(localization_callback)
+        assert correlation_callback is None or callable(correlation_callback)
         if not np.issubdtype(X.dtype, np.floating):
             raise TypeError("Argument `X` must contain floats")
         if not (missing is None or np.issubdtype(missing.dtype, np.bool_)):
             raise TypeError("Argument `missing_mask` must contain booleans")
 
         # The default localization is no localization (identity function)
-        if localization_callback is None:
+        if correlation_callback is None:
 
-            def localization_callback(
+            def correlation_callback(
                 K: npt.NDArray[np.double],
             ) -> npt.NDArray[np.double]:
                 return K
@@ -93,10 +89,18 @@ class AdaptiveESMDA(LocalizedESMDA):
         else:
             delta_M = X - np.mean(X, axis=1, keepdims=True)
 
-        # Create Kalman gain of shape (num_parameters_batch, num_observations),
-        # then apply the localization callback elementwise
-        K = localization_callback(delta_M @ self.delta_D_inv_cov)
-        return X + K @ self.D_obs_minus_D
+        # Compute cross correlation matrix
+        cross_covar = delta_M @ self.delta_DT
+
+        # Apply localization function
+        cross_covar = correlation_callback(cross_covar)
+
+        # Transform back into cross covariance matrix
+
+        # Return result
+        return X + np.linalg.multi_dot(
+            [cross_covar, self.term_diag, self.termT, self.D_obs_minus_D]
+        )
 
     @staticmethod
     def correlation_threshold(ensemble_size: int) -> float:

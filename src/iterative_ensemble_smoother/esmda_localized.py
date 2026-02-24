@@ -164,9 +164,7 @@ def invert_subspace(
 
     # Diagonal matrix represented as vector
     diag = w_r**2 / (w_r**2 + N_e - 1)
-    return np.linalg.multi_dot(  # type: ignore
-        [delta_D.T, term * diag, term.T]
-    )
+    return (delta_D.T, term * diag, term.T)
 
 
 class LocalizedESMDA(BaseESMDA):
@@ -332,10 +330,9 @@ class LocalizedESMDA(BaseESMDA):
         self.D_obs_minus_D = D_obs - D
 
         # Compute parts of the Kalman gain
-        self.delta_D_inv_cov = invert_subspace(
+        self.delta_DT, self.term_diag, self.termT = invert_subspace(
             delta_D=delta_D, C_D_L=self.C_D_L, alpha=alpha, truncation=truncation
         )
-
         self.iteration += 1
 
     def assimilate_batch(
@@ -398,7 +395,7 @@ class LocalizedESMDA(BaseESMDA):
 
         assert X.ndim == 2
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)
-        assert N_e == self.delta_D_inv_cov.shape[0], "Dimension mismatch"
+        assert N_e == self.delta_DT.shape[0], "Dimension mismatch"
 
         # Center the parameters, possibly accounting for missing data
         if missing is not None:
@@ -408,7 +405,9 @@ class LocalizedESMDA(BaseESMDA):
 
         # Create Kalman gain of shape (num_parameters_batch, num_observations),
         # then apply the localization callback elementwise
-        K = localization_callback(delta_M @ self.delta_D_inv_cov)
+        K = localization_callback(
+            np.linalg.multi_dot([delta_M, self.delta_DT, self.term_diag, self.termT])
+        )
         return X + K @ self.D_obs_minus_D
 
 
