@@ -79,6 +79,7 @@ Comments
 """
 
 import numbers
+from abc import ABC
 from typing import Callable, Union
 
 import numpy as np
@@ -167,7 +168,7 @@ def invert_subspace(
     return (delta_D.T, term * diag, term.T)
 
 
-class BatchedESMDA(BaseESMDA):
+class BatchedESMDA(BaseESMDA, ABC):
     def __init__(
         self,
         *,
