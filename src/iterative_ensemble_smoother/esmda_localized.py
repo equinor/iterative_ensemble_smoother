@@ -342,7 +342,7 @@ class LocalizedESMDA(BaseESMDA):
         self,
         *,
         X: npt.NDArray[np.double],
-        missing: npt.NDArray[np.bool_] = None,
+        missing: Union[npt.NDArray[np.bool_], None] = None,
         localization_callback: Callable[
             [npt.NDArray[np.double]], npt.NDArray[np.double]
         ]
@@ -360,9 +360,9 @@ class LocalizedESMDA(BaseESMDA):
             A 2D array of shape (num_parameters_batch, ensemble_size). Each row
             corresponds to a parameter in the model, and each column corresponds
             to an ensemble member (realization).
-        missing : np.ndarray
-            A 2D array of shape (num_parameters_batch, ensemble_size). If an
-            entry is set to True, then that value is assumed missing. This can
+        missing : np.ndarray or None
+            A boolean 2D array of shape (num_parameters_batch, ensemble_size).
+            If an entry is True, then that value is assumed missing. This can
             happen if the ensemble members use different grids, where each
             ensemble member has a slightly different grid layout. If None,
             then all entries are assumed to be valid.

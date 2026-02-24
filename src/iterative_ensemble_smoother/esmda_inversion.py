@@ -248,9 +248,13 @@ To summarize subspace inversion:
   are nearly identical. This can happen if columns are highly correlated.
 """
 
+from typing import Union
+
 import numpy as np
 import numpy.typing as npt
 import scipy as sp  # type: ignore
+
+from iterative_ensemble_smoother.utils import adjust_for_missing
 
 
 def empirical_covariance_upper(Y: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
@@ -409,6 +413,7 @@ def inversion_exact_naive(
     Y: npt.NDArray[np.double],
     X: npt.NDArray[np.double],
     truncation: float = 1.0,
+    missing: Union[npt.NDArray[np.bool_], None] = None,
 ) -> npt.NDArray[np.double]:
     """Naive inversion, used for testing only.
 
@@ -416,6 +421,9 @@ def inversion_exact_naive(
 
     C_D_L is the upper cholesky factor. C_D_L.T @ C_D_L = C_D
     """
+    if missing is not None:
+        X = adjust_for_missing(X, missing=missing)
+
     # Naive implementation of Equation (3) in Emerick (2013)
     C_MD = empirical_cross_covariance(X, Y)
     C_DD = empirical_cross_covariance(Y, Y)
@@ -431,6 +439,7 @@ def inversion_subspace(
     Y: npt.NDArray[np.double],
     X: npt.NDArray[np.double],
     truncation: float = 1.0,
+    missing: Union[npt.NDArray[np.bool_], None] = None,
     return_T: bool = False,
 ) -> npt.NDArray[np.double]:
     """Computes
@@ -488,6 +497,9 @@ def inversion_subspace(
         return np.linalg.multi_dot(  # type: ignore
             [D_delta.T, term * diag, term.T, (D - Y)]
         )
+
+    if missing is not None:
+        X = adjust_for_missing(X, missing=missing)
 
     assert X.shape[1] == Y.shape[1], "Number of ensemble members must match"
     return np.linalg.multi_dot(  # type: ignore
