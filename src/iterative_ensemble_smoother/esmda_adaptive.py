@@ -1,25 +1,17 @@
-"""
-Contains (publicly available, but not officially supported) experimental
-features of iterative_ensemble_smoother
-"""
-
-import logging
 import warnings
-from typing import Callable, TypeVar, Union
+from typing import Callable, Union
 
 import numpy as np
 import numpy.typing as npt
 
-from iterative_ensemble_smoother.esmda_localized import BatchedESMDA
-from iterative_ensemble_smoother.utils import adjust_for_missing, masked_std
-
-logger = logging.getLogger(__name__)
-
-T = TypeVar("T")
+from iterative_ensemble_smoother.esmda import BaseESMDA
+from iterative_ensemble_smoother.utils import masked_std
 
 
-class AdaptiveESMDA(BatchedESMDA):
+class AdaptiveESMDA(BaseESMDA):
     """
+    Adaptive Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
+
     Examples
     --------
 
@@ -116,11 +108,12 @@ class AdaptiveESMDA(BatchedESMDA):
         """
         if not hasattr(self, "D_obs_minus_D"):
             raise Exception("The method `prepare_assmilation` must be called.")
-        assert correlation_callback is None or callable(correlation_callback)
-        if not np.issubdtype(X.dtype, np.floating):
-            raise TypeError("Argument `X` must contain floats")
-        if not (missing is None or np.issubdtype(missing.dtype, np.bool_)):
-            raise TypeError("Argument `missing_mask` must contain booleans")
+
+        assert X.ndim == 2
+        N_m, N_e = X.shape  # (num_parameters, ensemble_size)
+        assert N_e == self.delta_DT.shape[0], "Dimension mismatch"
+
+        delta_M = self._compute_delta_M(X=X, missing=missing)
 
         # The default localization is no localization (identity function)
         if correlation_callback is None:
@@ -130,16 +123,6 @@ class AdaptiveESMDA(BatchedESMDA):
                 observations: npt.NDArray[np.int_],
             ) -> npt.NDArray[np.double]:
                 return corr_XY
-
-        assert X.ndim == 2
-        N_m, N_e = X.shape  # (num_parameters, ensemble_size)
-        assert N_e == self.delta_DT.shape[0], "Dimension mismatch"
-
-        # Center the parameters, possibly accounting for missing data
-        if missing is not None:
-            delta_M = adjust_for_missing(X, missing=missing)
-        else:
-            delta_M = X - np.mean(X, axis=1, keepdims=True)
 
         # Compute cross correlation matrix
         corr_XY = (delta_M @ self.delta_DT) / (N_e - 1)
