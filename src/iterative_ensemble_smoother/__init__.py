@@ -15,14 +15,8 @@ Classes
    :toctree: _autosummary
 
    ESMDA
-
-Functions
-=========
-
-.. autosummary::
-   :toctree: _autosummary
-
-    steplength_exponential
+   AdaptiveESMDA
+   LocalizedESMDA
 
 """
 
@@ -34,9 +28,7 @@ except ImportError:
     version_tuple = (0, 0, "unknown version", "unknown commit")
 
 from iterative_ensemble_smoother.esmda import ESMDA
-from iterative_ensemble_smoother.utils import steplength_exponential
+from iterative_ensemble_smoother.esmda_adaptive import AdaptiveESMDA
+from iterative_ensemble_smoother.esmda_localized import LocalizedESMDA
 
-__all__ = [
-    "ESMDA",
-    "steplength_exponential",
-]
+__all__ = ["ESMDA", "AdaptiveESMDA", "LocalizedESMDA"]

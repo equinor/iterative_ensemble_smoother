@@ -12,6 +12,59 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def masked_std(
+    X: npt.NDArray[np.double], *, missing: npt.NDArray[np.bool_]
+) -> npt.NDArray[np.double]:
+    """Computes a masked std for each row in X.
+
+    Examples
+    --------
+    >>> X = np.array([[ 0.65,  0.74,  0.54, -0.67],
+    ...               [ 0.23,  0.12,  0.22,  0.87],
+    ...               [ 0.22,  0.68,  0.07,  0.29]])
+
+    Let us encode some missing data:
+
+    >>> missing = np.array([[0, 0, 0, 0],
+    ...                     [0, 0, 0, 1],
+    ...                     [0, 0, 1, 1]], dtype=np.bool_)
+
+    For each row, the standard deviations are:
+
+
+    >>> for i in range(X.shape[0]):
+    ...     print(float(np.std(X[i, ~missing[i, :]], ddof=1)))
+    0.6617401302626281
+    0.060827625302982205
+    0.3252691193458119
+
+    This function computes the same standard deviations, but vectorized:
+
+    >>> masked_std(X, missing=missing)
+    array([0.66174013, 0.06082763, 0.32526912])
+    """
+
+    N_e = X.shape[1]  # Ensemble members / realizations
+    n_available = N_e - np.sum(missing, axis=1, keepdims=True)  # Non-missing params
+
+    # Need at least two observations per parameter
+    if np.any(n_available < 2):
+        msg = "One or several parameters have too few observations (need >=2)."
+        raise ValueError(msg)
+
+    X_masked = np.logical_not(missing) * X  # Set missing values to zero
+
+    # Compute mean values, taking missing into account
+    X_means = np.sum(X_masked, axis=1, keepdims=True) / n_available
+
+    # Center the matrix
+    X_centered = (X_masked - X_means) * np.logical_not(missing)
+
+    return np.sqrt(
+        np.sum(X_centered**2, axis=1, keepdims=True) / (n_available - 1)
+    ).ravel()
+
+
 def adjust_for_missing(
     X: npt.NDArray[np.double], *, missing: npt.NDArray[np.bool_]
 ) -> npt.NDArray[np.double]:
@@ -100,40 +153,6 @@ def adjust_for_missing(
     # Mask to zero in anticipation of C = X @ Y.T, so that in the product
     # zero values are accounted for in the sum-of-products in C_ij
     return X_centered * np.logical_not(missing)
-
-
-def steplength_exponential(
-    iteration: int,
-    min_steplength: float = 0.3,
-    max_steplength: float = 0.6,
-    halflife: float = 1.5,
-) -> float:
-    r"""
-    Compute a suitable step length for the update step.
-
-    This is an implementation of Eq. (49), which calculates a suitable step length for
-    the update step, from the book: \"Formulating the history matching problem with
-    consistent error statistics", written by :cite:t:`evensen2021formulating`.
-
-    Examples
-    --------
-    >>> [steplength_exponential(i) for i in [1, 2, 3, 4]]
-    [0.6, 0.48898815748423097, 0.41905507889761495, 0.375]
-    >>> [steplength_exponential(i, 0.0, 1.0, 1.0) for i in [1, 2, 3, 4]]
-    [1.0, 0.5, 0.25, 0.125]
-    >>> [steplength_exponential(i, 0.0, 1.0, 0.5) for i in [1, 2, 3, 4]]
-    [1.0, 0.25, 0.0625, 0.015625]
-    >>> [steplength_exponential(i, 0.5, 1.0, 1.0) for i in [1, 2, 3]]
-    [1.0, 0.75, 0.625]
-
-    """
-    assert max_steplength > min_steplength
-    assert iteration >= 1
-    assert halflife > 0
-
-    delta = max_steplength - min_steplength
-    exponent = -(iteration - 1) / halflife
-    return min_steplength + delta * 2**exponent
 
 
 def _validate_inputs(

@@ -248,43 +248,9 @@ To summarize subspace inversion:
   are nearly identical. This can happen if columns are highly correlated.
 """
 
-from typing import Union
-
 import numpy as np
 import numpy.typing as npt
 import scipy as sp  # type: ignore
-
-from iterative_ensemble_smoother.utils import adjust_for_missing
-
-
-def empirical_covariance_upper(Y: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
-    """Compute the upper triangular part of the empirical covariance matrix Y
-    with shape (parameters, ensemble_size).
-
-    Examples
-    --------
-    >>> Y = np.array([[-2.4, -0.3,  0.7,  0.2,  1.1],
-    ...               [-1.5,  0.4, -0.4, -0.9,  1. ],
-    ...               [-0.1, -0.4, -0. , -0.5,  1.1]])
-    >>> empirical_covariance_upper(Y)
-    array([[1.873, 0.981, 0.371],
-           [0.   , 0.997, 0.392],
-           [0.   , 0.   , 0.407]])
-
-    Naive computation:
-
-    >>> empirical_cross_covariance(Y, Y)
-    array([[1.873, 0.981, 0.371],
-           [0.981, 0.997, 0.392],
-           [0.371, 0.392, 0.407]])
-    """
-    _, num_observations = Y.shape
-    if num_observations <= 1:
-        raise ValueError("Need at least two observations to compute covariance")
-    Y = (Y - np.mean(Y, axis=1, keepdims=True)) / np.sqrt(num_observations - 1)
-    # https://www.math.utah.edu/software/lapack/lapack-blas/dsyrk.html
-    YYT: npt.NDArray[np.double] = sp.linalg.blas.dsyrk(alpha=1.0, a=Y)
-    return YYT
 
 
 def empirical_cross_covariance(
@@ -405,75 +371,104 @@ def singular_values_to_keep(
 # =============================================================================
 
 
-def inversion_exact_naive(
+def invert_naive(
     *,
-    alpha: float,
+    delta_D: npt.NDArray[np.double],
     C_D_L: npt.NDArray[np.double],
-    D: npt.NDArray[np.double],
-    Y: npt.NDArray[np.double],
-    X: npt.NDArray[np.double],
-    truncation: float = 1.0,
-    missing: Union[npt.NDArray[np.bool_], None] = None,
+    alpha: float,
+    truncation: float,
 ) -> npt.NDArray[np.double]:
-    """Naive inversion, used for testing only.
+    r"""Naive implementation of the equation:
 
-    Computes C_MD @ inv(C_DD + alpha * C_D) @ (D - Y) naively.
+    (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
 
-    C_D_L is the upper cholesky factor. C_D_L.T @ C_D_L = C_D
+    This function should only be used for testing and verification.
     """
-    if missing is not None:
-        X = adjust_for_missing(X, missing=missing)
+    _, N_e = delta_D.shape  # Number of ensemble members
 
-    # Naive implementation of Equation (3) in Emerick (2013)
-    C_MD = empirical_cross_covariance(X, Y)
-    C_DD = empirical_cross_covariance(Y, Y)
-    C_D = np.diag(C_D_L**2) if C_D_L.ndim == 1 else C_D_L.T @ C_D_L
-    return C_MD @ sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)  # type: ignore
+    covariance = np.diag(C_D_L**2) if C_D_L.ndim == 1 else C_D_L.T @ C_D_L
+    return delta_D.T @ np.linalg.inv(
+        delta_D @ delta_D.T + alpha * (N_e - 1) * covariance
+    )
 
 
-def inversion_subspace(
+def invert_subspace(
     *,
-    alpha: float,
+    delta_D: npt.NDArray[np.double],
     C_D_L: npt.NDArray[np.double],
-    D: npt.NDArray[np.double],
-    Y: npt.NDArray[np.double],
-    X: npt.NDArray[np.double],
-    truncation: float = 1.0,
-    missing: Union[npt.NDArray[np.bool_], None] = None,
-    return_T: bool = False,
+    alpha: float,
+    truncation: float,
 ) -> npt.NDArray[np.double]:
-    """Computes
+    r"""Subspace inversion implementation of the equation:
 
-        C_MD @ inv(C_DD + alpha * C_D) @ (D - Y)
+    (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
 
-    by taking a single SVD. See Appendix A.2 and comments in code.
+    See the appendix in the 2016 Emerick paper for details:
+    https://doi.org/10.1016/j.petrol.2016.01.029
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import scipy as sp
+    >>> rng = np.random.default_rng(42)
+
+    Create matrix delta_D (centered responses)
+
+    >>> Y = rng.normal(size=(5, 3))
+    >>> delta_D = Y - np.mean(Y, axis=1, keepdims=True)
+
+    Create matrix C_D_L (Cholesky of covariance C_D)
+
+    >>> F = rng.normal(size=(5, 5))
+    >>> C_D = F.T @ F
+    >>> C_D_L = sp.linalg.cholesky(C_D, lower=False)
+
+    Now compute delta_D.T @ inv(delta_D @ delta_D.T + alpha (N_1 - 1) C_D)
+    naively:
+
+    >>> N_e = Y.shape[1]
+    >>> alpha = 1/3
+    >>> delta_D.T @ np.linalg.inv(delta_D @ delta_D.T + alpha * (N_e - 1) * C_D)
+    array([[-0.08790298,  0.19940823, -0.00894643, -0.26919301, -0.07465476],
+           [-0.31262364, -0.21350368, -0.04888574, -0.26139685,  0.35487784],
+           [ 0.40052661,  0.01409545,  0.05783217,  0.53058986, -0.28022308]])
+
+    Using this function. Notice that it returns matrices that the user
+    must multiply together:
+
+    >>> delta_DT, factor1, factor2 = invert_subspace(delta_D=delta_D, C_D_L=C_D_L,
+    ...                                              alpha=alpha, truncation=1.0)
+    >>> np.linalg.multi_dot([delta_DT, factor1, factor2])
+    array([[-0.08790298,  0.19940823, -0.00894643, -0.26919301, -0.07465476],
+           [-0.31262364, -0.21350368, -0.04888574, -0.26139685,  0.35487784],
+           [ 0.40052661,  0.01409545,  0.05783217,  0.53058986, -0.28022308]])
+
+
     """
     # Quick verification of shapes
     assert alpha >= 0, "Alpha must be non-negative"
-    assert C_D_L.shape[0] == Y.shape[0], "Number of observations must match"
-    assert D.shape == Y.shape, "Y must match D in shape"
-
-    # This method is based on Appendix A.2 in "History Matching Time-lapse
-    # Seismic Data Using ..." by Emerick. We start with the equation:
-    #   X @ D_delta.T @ inv(D_delta @ D_delta.T + (N_e - 1) * alpha * C_D) @ (D - Y)
-    # Then we whiten the middle factor with S = cholesky(alpha * C_D) to obtain:
-    #   S^-1 @ [G @ G.T + (N_e - 1) * I]^-1 S^-T,  where G = S^-T @ D_delta
-    # Now take SVD of G, then follow the steps outlined at the top in this module.
 
     # Shapes
-    N_n, N_e = Y.shape
-    D_delta = Y - np.mean(Y, axis=1, keepdims=True)  # Subtract average
+    N_n, N_e = delta_D.shape
+
+    # The LAPACK routine trtrs is the one called by sp.linalg.solve_triangular.
+    # However, solve_triangular will always upcast to float64, even if inputs
+    # are float32. Here we get the correct LAPACK routine based on inputs.
+    # (To avoid float64 cast, we use alpha**0.5 instead of np.sqrt(alpha))
+    dtrtrs = sp.linalg.get_lapack_funcs("trtrs", arrays=(C_D_L, delta_D))
 
     # If the matrix C_D is 2D, then C_D_L is the (upper) Cholesky factor
     if C_D_L.ndim == 2:
         # Computes G := inv(sqrt(alpha) * C_D_L.T) @ D_delta
-        G = sp.linalg.solve_triangular(
-            np.sqrt(alpha) * C_D_L, D_delta, lower=False, trans=1
-        )
+        # G = sp.linalg.solve_triangular(
+        #     alpha**0.5 * C_D_L, delta_D, lower=False, trans=1
+        # )
+        G, info = dtrtrs(alpha**0.5 * C_D_L, delta_D, lower=0, trans=1)
+        assert info == 0
 
     # If the matrix C_D is 1D, then C_D_L is the square-root of C_D
     else:
-        G = D_delta / (np.sqrt(alpha) * C_D_L[:, np.newaxis])
+        G = delta_D / (alpha**0.5 * C_D_L[:, np.newaxis])
 
     # Take the SVD and truncate it. N_r is the number of values to keep
     U, w, _ = sp.linalg.svd(G, overwrite_a=True, full_matrices=False)
@@ -484,27 +479,19 @@ def inversion_subspace(
     # Compute the symmetric terms
     if C_D_L.ndim == 2:
         # Computes term := np.linalg.inv(np.sqrt(alpha) * C_D_L) @ U_r @ np.diag(1/w_r)
-        term = sp.linalg.solve_triangular(
-            np.sqrt(alpha) * C_D_L, (U_r / w_r[np.newaxis, :]), lower=False
+        # term = sp.linalg.solve_triangular(
+        #     np.sqrt(alpha) * C_D_L, (U_r / w_r[np.newaxis, :]), lower=False
+        # )
+        term, info = dtrtrs(
+            alpha**0.5 * C_D_L, (U_r / w_r[np.newaxis, :]), lower=0, trans=0
         )
+        assert info == 0
     else:
-        term = (U_r / w_r[np.newaxis, :]) / (np.sqrt(alpha) * C_D_L)[:, np.newaxis]
+        term = (U_r / w_r[np.newaxis, :]) / (alpha**0.5 * C_D_L)[:, np.newaxis]
 
     # Diagonal matrix represented as vector
     diag = w_r**2 / (w_r**2 + N_e - 1)
-
-    if return_T:  # Return transition matrix without X at the start
-        return np.linalg.multi_dot(  # type: ignore
-            [D_delta.T, term * diag, term.T, (D - Y)]
-        )
-
-    if missing is not None:
-        X = adjust_for_missing(X, missing=missing)
-
-    assert X.shape[1] == Y.shape[1], "Number of ensemble members must match"
-    return np.linalg.multi_dot(  # type: ignore
-        [X, D_delta.T, term * diag, term.T, (D - Y)]
-    )
+    return (delta_D.T, term * diag, term.T)
 
 
 if __name__ == "__main__":
