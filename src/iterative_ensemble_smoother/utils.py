@@ -155,40 +155,6 @@ def adjust_for_missing(
     return X_centered * np.logical_not(missing)
 
 
-def steplength_exponential(
-    iteration: int,
-    min_steplength: float = 0.3,
-    max_steplength: float = 0.6,
-    halflife: float = 1.5,
-) -> float:
-    r"""
-    Compute a suitable step length for the update step.
-
-    This is an implementation of Eq. (49), which calculates a suitable step length for
-    the update step, from the book: \"Formulating the history matching problem with
-    consistent error statistics", written by :cite:t:`evensen2021formulating`.
-
-    Examples
-    --------
-    >>> [steplength_exponential(i) for i in [1, 2, 3, 4]]
-    [0.6, 0.48898815748423097, 0.41905507889761495, 0.375]
-    >>> [steplength_exponential(i, 0.0, 1.0, 1.0) for i in [1, 2, 3, 4]]
-    [1.0, 0.5, 0.25, 0.125]
-    >>> [steplength_exponential(i, 0.0, 1.0, 0.5) for i in [1, 2, 3, 4]]
-    [1.0, 0.25, 0.0625, 0.015625]
-    >>> [steplength_exponential(i, 0.5, 1.0, 1.0) for i in [1, 2, 3]]
-    [1.0, 0.75, 0.625]
-
-    """
-    assert max_steplength > min_steplength
-    assert iteration >= 1
-    assert halflife > 0
-
-    delta = max_steplength - min_steplength
-    exponent = -(iteration - 1) / halflife
-    return min_steplength + delta * 2**exponent
-
-
 def _validate_inputs(
     parameters: npt.NDArray[np.double],
     covariance: npt.NDArray[np.double],
