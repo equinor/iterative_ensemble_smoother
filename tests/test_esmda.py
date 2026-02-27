@@ -620,6 +620,8 @@ def test_row_by_row_assimilation_order():
 
 
 def test_that_mixing_float32_and_float64_fails():
+    """Passing mixed floats, like one array of float16 and another float32 is
+    likely a user error. Better to raise than silently upcast."""
     rng = np.random.default_rng(42)
 
     num_outputs = 4
@@ -644,7 +646,7 @@ def test_that_mixing_float32_and_float64_fails():
             observations=observations.astype(np.float64),
         )
 
-    # Test that we cannot initialize with different dtypes
+    # Test that integer dtypes are not allowed
     with pytest.raises(ValueError, match="unsupported dtype"):
         ESMDA(
             covariance=np.arange(num_outputs) + 1,  # <- Integer
@@ -655,12 +657,12 @@ def test_that_mixing_float32_and_float64_fails():
         covariance=covariance,
         observations=observations,
     )
-    with pytest.raises(ValueError, match="dtype mismatch"):
+    with pytest.raises(ValueError, match="class was initialized with dtype"):
         smoother.prepare_assimilation(Y=g(X_prior).astype(np.float32))
 
     smoother.prepare_assimilation(Y=g(X_prior))
 
-    with pytest.raises(ValueError, match="dtype mismatch"):
+    with pytest.raises(ValueError, match="class was initialized with dtype"):
         smoother.assimilate_batch(X=X_prior.astype(np.float16))
 
 
