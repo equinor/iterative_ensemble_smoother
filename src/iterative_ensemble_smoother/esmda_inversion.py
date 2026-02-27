@@ -405,6 +405,45 @@ def invert_subspace(
 
     See the appendix in the 2016 Emerick paper for details:
     https://doi.org/10.1016/j.petrol.2016.01.029
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import scipy as sp
+    >>> rng = np.random.default_rng(42)
+
+    Create matrix delta_D (centered responses)
+
+    >>> Y = rng.normal(size=(5, 3))
+    >>> delta_D = Y - np.mean(Y, axis=1, keepdims=True)
+
+    Create matrix C_D_L (Cholesky of covariance C_D)
+
+    >>> F = rng.normal(size=(5, 5))
+    >>> C_D = F.T @ F
+    >>> C_D_L = sp.linalg.cholesky(C_D, lower=False)
+
+    Now compute delta_D.T @ inv(delta_D @ delta_D.T + alpha (N_1 - 1) C_D)
+    naively:
+
+    >>> N_e = Y.shape[1]
+    >>> alpha = 1/3
+    >>> delta_D.T @ np.linalg.inv(delta_D @ delta_D.T + alpha * (N_e - 1) * C_D)
+    array([[-0.08790298,  0.19940823, -0.00894643, -0.26919301, -0.07465476],
+           [-0.31262364, -0.21350368, -0.04888574, -0.26139685,  0.35487784],
+           [ 0.40052661,  0.01409545,  0.05783217,  0.53058986, -0.28022308]])
+
+    Using this function. Notice that it returns matrices that the user
+    must multiply together:
+
+    >>> delta_DT, factor1, factor2 = invert_subspace(delta_D=delta_D, C_D_L=C_D_L,
+    ...                                              alpha=alpha, truncation=1.0)
+    >>> np.linalg.multi_dot([delta_DT, factor1, factor2])
+    array([[-0.08790298,  0.19940823, -0.00894643, -0.26919301, -0.07465476],
+           [-0.31262364, -0.21350368, -0.04888574, -0.26139685,  0.35487784],
+           [ 0.40052661,  0.01409545,  0.05783217,  0.53058986, -0.28022308]])
+
+
     """
     # Quick verification of shapes
     assert alpha >= 0, "Alpha must be non-negative"

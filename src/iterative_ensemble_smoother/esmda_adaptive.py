@@ -53,7 +53,7 @@ class AdaptiveESMDA(BaseESMDA):
     ...     # Prepare for assimilation
     ...     smoother.prepare_assimilation(Y=Y, truncation=0.99)
     ...
-    ...     def func(corr_XY, observations):
+    ...     def func(corr_XY, observations_per_parameter):
     ...         # Takes an array of shape (params_batch, obs)
     ...         # and an array representing number of non-missing observations
     ...         # per parameter. Returns modified correlation matrix.
@@ -67,10 +67,12 @@ class AdaptiveESMDA(BaseESMDA):
     @staticmethod
     def three_over_sqrt_n(
         corr_XY: npt.NDArray[np.double],
-        observations: npt.NDArray[np.int_],
+        observations_per_parameter: npt.NDArray[np.int_],
     ) -> npt.NDArray[np.double]:
         """Use the correlation threshold 3 / sqrt(n)."""
-        threshold = np.clip(3 / np.sqrt(observations), a_min=0.0, a_max=1.0)
+        threshold = np.clip(
+            3 / np.sqrt(observations_per_parameter), a_min=0.0, a_max=1.0
+        )
         zero_out = np.abs(corr_XY) < threshold[:, None]
         corr_XY[zero_out] = 0
         return corr_XY
@@ -129,12 +131,13 @@ class AdaptiveESMDA(BaseESMDA):
 
             def correlation_callback(
                 corr_XY: npt.NDArray[np.double],
-                observations: npt.NDArray[np.int_],
+                observations_per_parameter: npt.NDArray[np.int_],
             ) -> npt.NDArray[np.double]:
                 return corr_XY
 
         # Compute cross correlation matrix
         corr_XY = (delta_M @ self.delta_DT) / (N_e - 1)
+
         std_Y = np.std(self.delta_DT, axis=0, ddof=1)
         if missing is not None:
             std_X = masked_std(X, missing=missing)
@@ -144,23 +147,26 @@ class AdaptiveESMDA(BaseESMDA):
         # Cross covariance to cross correlation (inplace)
         corr_XY /= std_X[:, None]
         corr_XY /= std_Y[None, :]
-        corr_XY = self._clip_correlation_matrix(corr_XY)
+        # corr_XY = self._clip_correlation_matrix(corr_XY)
 
         # Number of observations each entry in corr_XY is based on.
         # The source of missing data is only missing values in X, not Y.
-        observations = (
+        observations_per_parameter = (
             np.ones(N_m) * N_e
             if missing is None
             else np.sum(np.logical_not(missing), axis=1)
         )
         # Apply localization function
-        corr_XY = correlation_callback(corr_XY, observations)
+        corr_XY = correlation_callback(corr_XY, observations_per_parameter)
 
         # Cross correlation to cross covariance (inplace)
-        corr_XY *= std_X[:, None]
         corr_XY *= std_Y[None, :]
+        corr_XY *= std_X[:, None] * (N_e - 1)  # Multiply back
 
-        # TODO: Slice the product so all-zero rows (params) are not used
+        # TODO: Here an important part of the algorithm is missing.
+        # For each parameter in X, we should only use information
+        # from correlated responses Y when we do the update.
+        # This means updating inv(Y @ Y.T + C_D) for those responses.
 
         # Return result
         return X + np.linalg.multi_dot(
