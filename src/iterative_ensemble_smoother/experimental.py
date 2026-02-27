@@ -23,6 +23,27 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+class RowScaledESMDA(ESMDA):
+    def assimilate_batch(
+        self,
+        *,
+        X: npt.NDArray[np.double],
+        missing: Union[npt.NDArray[np.bool_], None] = None,
+        alpha: float = 1.0,
+    ) -> npt.NDArray[np.double]:
+        """Apply a scaling `alpha` to the update."""
+        if not hasattr(self, "delta_DT"):
+            raise Exception("The method `prepare_assmilation` must be called.")
+        N_m, N_e = X.shape  # (num_parameters, ensemble_size)
+        assert N_e == self.delta_DT.shape[0], "Dimension mismatch"
+        delta_M = self._compute_delta_M(X=X, missing=missing)
+
+        # Mutate in place
+        X[:, :] += alpha * np.linalg.multi_dot(
+            [delta_M, self.delta_DT, self.term_diag, self.termT, self.D_obs_minus_D]
+        )
+
+
 class RowScaling:
     # Illustration of how row scaling works, `multiply` is the important part
     # For the actual implementation, which is more involved, see:
@@ -32,11 +53,11 @@ class RowScaling:
         assert 0 <= alpha <= 1.0
         self.alpha = alpha
 
-    def multiply(self, X, K):
+    def multiply(self, X, smoother):
         """Takes a matrix X and a matrix K and performs alpha * X @ K."""
         # This implementation merely mimics how RowScaling::multiply behaves
         # in the C++ code. It mutates the input argument X instead of returning.
-        X[:, :] = X @ (K * self.alpha)
+        smoother.assimilate_batch(X=X, alpha=self.alpha)
 
 
 def ensemble_smoother_update_step_row_scaling(
@@ -80,39 +101,22 @@ def ensemble_smoother_update_step_row_scaling(
     """
 
     # Create ESMDA instance and set alpha=1 => run single assimilation (ES)
-    smoother = ESMDA(
+    smoother = RowScaledESMDA(
         covariance=covariance,
         observations=observations,
         seed=seed,
         alpha=1,
     )
 
-    # Create transition matrix - common to all parameters in X
-    transition_matrix = smoother.compute_transition_matrix(
-        Y=Y, alpha=1, truncation=truncation
-    )
-
-    # The transition matrix K is a matrix such that
-    #     X_posterior = X_prior + X_prior @ K
-    # but the C++ code in ERT requires a transition matrix F that obeys
-    #     X_posterior = X_prior @ F
-    # To accomplish this, we add the identity to the transition matrix in place
-    np.fill_diagonal(transition_matrix, transition_matrix.diagonal() + 1)
+    smoother.prepare_assimilation(Y=Y, truncation=truncation)
 
     # Loop over groups of rows (parameters)
     for X, row_scale in X_with_row_scaling:
-        # In the C++ code, multiply() will transform the transition matrix F as
-        #    F_new = F * alpha + I * (1 - alpha)
-        # but the transition matrix F that we pass below is F := K + I, so:
-        #    F_new = (K + I) * alpha + I * (1 - alpha)
-        #    F_new = K * alpha + I * alpha + I - I * alpha
-        #    F_new = K * alpha + I
-        # And the update becomes : X_posterior = X_prior @ F_new
-        # The update in the C++ code is equivalent to
-        #    X_posterior = X_prior + alpha * X_prior @ K
-        # if we had used the original transition matrix K that is returned from
-        # ESMDA.compute_transition_matrix
-        row_scale.multiply(X, transition_matrix)
+        # ESMDA computes:
+        # X_posterior = X_prior + X_prior @ ... @ (D- Y)
+        # Here we compute
+        # X_prior += X_prior @ ... @ (D- Y)
+        row_scale.multiply(X, smoother)
 
     return X_with_row_scaling
 
