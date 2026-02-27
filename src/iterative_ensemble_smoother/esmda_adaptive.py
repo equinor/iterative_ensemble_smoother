@@ -12,6 +12,15 @@ class AdaptiveESMDA(BaseESMDA):
     """
     Adaptive Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
 
+    Reference
+    ---------
+
+    - Adaptive Correlation- and Distance-Based Localization for Iterative
+      Ensemble Smoothers in a Coupled Nonlinear Multiscale Model.
+      Vossepoel, Femke & Evensen, Geir & Van Leeuwen, Peter Jan. (2025)
+      http://doi.org/10.1175/MWR-D-24-0269.1
+
+
     Examples
     --------
 
