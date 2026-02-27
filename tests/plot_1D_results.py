@@ -1,15 +1,15 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-nparam = 3000
+nparam = 100
 xinc = 1.0
 #nparam = 2000
 local = True
 dist = True
 global_update = True
-Nlist = [39]
-N = 40
-nobs_in_file = 500
+Nlist = [40]
+N = 41
+nobs_in_file = 25
 # realizations = [100, 100, 100, 100, 100, 100, 100]
 case = [
 #     "Nreal_100_std_0.2_rel_obsrange_0.001",
@@ -64,6 +64,7 @@ case = [
     "N_40000_std_0.01_rel_obsrange_0.5_nobs_2500_L_0.1",
     "N_40000_std_0.01_rel_obsrange_0.5_nobs_100_L_0.1",
     "N_40000_std_0.01_rel_obsrange_0.5_nobs_500_L_0.1",
+    "N_40000_std_0.01_obsrange_1.0_nobs_25_general_exponential",
 #    "N_40000_std_0.3_rel_obsrange_0.3",
 
 #     "Nreal_100_relstd_0.05",
@@ -131,6 +132,7 @@ refcase = [
     "Rel.std_0.01_rel_obsrange_0.5_nobs_2500_L_0.1",
     "Rel.std_0.01_rel_obsrange_0.5_nobs_100_L_0.1",
     "Rel.std_0.01_rel_obsrange_0.5_nobs_500_L_0.1",
+    "std_0.01_obsrange_1.0_nobs_25",
 #    "Rel.std_0.3_rel_obsrange_0.3",
 
 ]
@@ -205,7 +207,8 @@ nobs = obs_vector.shape[0]
 print(f"nobs: {nobs}")
 #bs_vector = np.zeros(nobs, dtype=np.float64)
 xpositions = np.linspace(-1.0,1.0, nobs, endpoint=True)
-obs_index_vector = np.linspace(10, nparam -10, nobs, dtype=np.int32)
+obs_index_vector = np.linspace(1, nparam - 1, nobs, dtype=np.int32)
+#obs_index_vector = np.linspace(10, nparam -10, nobs, dtype=np.int32)
 # fig,ax = plt.subplots()
 # ax.plot(x,y_prior[0],label="Prior nreal=100")
 # ax.plot(x,y_prior[1],label="Prior nreal=500")

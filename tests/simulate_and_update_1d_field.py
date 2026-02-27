@@ -495,11 +495,13 @@ def test_distance_based_localization_on_1D_corr_field(
     nparam: int,
     nreal: int,
     nobs: int,
-    corr_func_name: str,
+    field_corr_func_name: str,
     relative_corr_range: float,
     relative_localization_radius: float,
+    obs_corr_func_name: str,
     relative_obs_corr_range: float,
     obs_err_std: float,
+    nu:float,
     seed: int,
     use_localization: bool,
     case: str,
@@ -522,7 +524,6 @@ def test_distance_based_localization_on_1D_corr_field(
     # Prior field mean and stdev
     mean = 0.0
     stdev = 1.0
-    nu = 1.6
     xinc = 1.0
 
     # If this flag is set to True, a set of files with csv files useful to
@@ -546,7 +547,7 @@ def test_distance_based_localization_on_1D_corr_field(
         mean,
         stdev,
         xinc,
-        corr_func_name,
+        field_corr_func_name,
         corr_range,
         nparam,
         1,
@@ -555,15 +556,16 @@ def test_distance_based_localization_on_1D_corr_field(
 
     obs_index_vector = np.linspace(1, nparam - 1, nobs, dtype=np.int32)
     obs_vector = X_obs[obs_index_vector, 0]
-    # print(f"nobs: {obs_vector.shape[0]}")
-    # print(f"obs_values: {obs_vector}")
-    # print(f"obs index vector: {obs_index_vector}")
+    print(f"nobs: {obs_vector.shape[0]}")
+#    print(f"obs_values: {obs_vector}")
+#    print(f"obs index vector: {obs_index_vector}")
 
     alpha = np.array([1.0])
     obs_std_vector = obs_err_std * np.ones(nobs, dtype=np.float64)
-    xpos = (obs_index_vector + 0.5) * xinc
+    #xpos = (obs_index_vector + 0.5) * xinc
+    xpos = (obs_index_vector) * xinc
     print("Calculate covariance matrix for observations")
-    C_D = calc_obs_error_cov(obs_std_vector, xpos, corr_func_name, obs_corr_range, nu)
+    C_D = calc_obs_error_cov(obs_std_vector, xpos, obs_corr_func_name, obs_corr_range, nu)
 
     # Draw prior ensemble with specified spatial correlation function
     #    rng = np.random.default_rng(seed)
@@ -573,7 +575,7 @@ def test_distance_based_localization_on_1D_corr_field(
         mean,
         stdev,
         xinc,
-        corr_func_name,
+        field_corr_func_name,
         corr_range,
         nparam,
         nreal,
@@ -940,19 +942,23 @@ if __name__ == "__main__":
     # USE_LOCALIZATION = True
     # CASE = "N_40000_std_0.001_rel_obsrange_0.5_nobs_50"
 
-    NPARAM = 3000
+    NPARAM = 100
     NREAL = 40000
-    NOBS = 500
+    NOBS = 25
 #    FIELD_CORR_FUNC_NAME = "gen_exponential"
     FIELD_CORR_FUNC_NAME = "exponential"
-    FIELD_RELATIVE_CORR_RANGE = 0.3
-#    FIELD_RELATIVE_LOCALIZATION_RANGE = 0.3
+    OBS_CORR_FUNC_NAME = "general_exponential"
+    OBS_CORR_EXPONENT = 1.99
+    FIELD_RELATIVE_CORR_RANGE = 0.01
     FIELD_RELATIVE_LOCALIZATION_RANGE = 0.1
-    OBS_RELATIVE_CORR_RANGE = 0.5
+    OBS_RELATIVE_CORR_RANGE = 1.0
     OBS_STD_ERR = 0.01
     SEED = 987654321
-    USE_LOCALIZATION = True
-    CASE = "N_40000_std_0.01_rel_obsrange_0.5_nobs_500_L_0.1"
+    USE_LOCALIZATION = False
+    if  USE_LOCALIZATION:
+        CASE = f"N_{NREAL}_std_{OBS_STD_ERR}_obsrange_{OBS_RELATIVE_CORR_RANGE}_nobs_{NOBS}_{OBS_CORR_FUNC_NAME}_L_{FIELD_RELATIVE_LOCALIZATION_RANGE}"
+    else:
+        CASE = f"N_{NREAL}_std_{OBS_STD_ERR}_obsrange_{OBS_RELATIVE_CORR_RANGE}_nobs_{NOBS}_{OBS_CORR_FUNC_NAME}"
 
     print(f"Case: {CASE}")
     test_distance_based_localization_on_1D_corr_field(
@@ -962,8 +968,10 @@ if __name__ == "__main__":
         FIELD_CORR_FUNC_NAME,
         FIELD_RELATIVE_CORR_RANGE,
         FIELD_RELATIVE_LOCALIZATION_RANGE,
+        OBS_CORR_FUNC_NAME,
         OBS_RELATIVE_CORR_RANGE,
         OBS_STD_ERR,
+        OBS_CORR_EXPONENT,
         SEED,
         USE_LOCALIZATION,
         CASE,
