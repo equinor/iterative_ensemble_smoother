@@ -412,16 +412,24 @@ def invert_subspace(
     # Shapes
     N_n, N_e = delta_D.shape
 
+    # The LAPACK routine trtrs is the one called by sp.linalg.solve_triangular.
+    # However, solve_triangular will always upcast to float64, even if inputs
+    # are float32. Here we get the correct LAPACK routine based on inputs.
+    # (To avoid float64 cast, we use alpha**0.5 instead of np.sqrt(alpha))
+    dtrtrs = sp.linalg.get_lapack_funcs("trtrs", arrays=(C_D_L, delta_D))
+
     # If the matrix C_D is 2D, then C_D_L is the (upper) Cholesky factor
     if C_D_L.ndim == 2:
         # Computes G := inv(sqrt(alpha) * C_D_L.T) @ D_delta
-        G = sp.linalg.solve_triangular(
-            np.sqrt(alpha) * C_D_L, delta_D, lower=False, trans=1
-        )
+        # G = sp.linalg.solve_triangular(
+        #     alpha**0.5 * C_D_L, delta_D, lower=False, trans=1
+        # )
+        G, info = dtrtrs(alpha**0.5 * C_D_L, delta_D, lower=0, trans=1)
+        assert info == 0
 
     # If the matrix C_D is 1D, then C_D_L is the square-root of C_D
     else:
-        G = delta_D / (np.sqrt(alpha) * C_D_L[:, np.newaxis])
+        G = delta_D / (alpha**0.5 * C_D_L[:, np.newaxis])
 
     # Take the SVD and truncate it. N_r is the number of values to keep
     U, w, _ = sp.linalg.svd(G, overwrite_a=True, full_matrices=False)
@@ -432,11 +440,15 @@ def invert_subspace(
     # Compute the symmetric terms
     if C_D_L.ndim == 2:
         # Computes term := np.linalg.inv(np.sqrt(alpha) * C_D_L) @ U_r @ np.diag(1/w_r)
-        term = sp.linalg.solve_triangular(
-            np.sqrt(alpha) * C_D_L, (U_r / w_r[np.newaxis, :]), lower=False
+        # term = sp.linalg.solve_triangular(
+        #     np.sqrt(alpha) * C_D_L, (U_r / w_r[np.newaxis, :]), lower=False
+        # )
+        term, info = dtrtrs(
+            alpha**0.5 * C_D_L, (U_r / w_r[np.newaxis, :]), lower=0, trans=0
         )
+        assert info == 0
     else:
-        term = (U_r / w_r[np.newaxis, :]) / (np.sqrt(alpha) * C_D_L)[:, np.newaxis]
+        term = (U_r / w_r[np.newaxis, :]) / (alpha**0.5 * C_D_L)[:, np.newaxis]
 
     # Diagonal matrix represented as vector
     diag = w_r**2 / (w_r**2 + N_e - 1)

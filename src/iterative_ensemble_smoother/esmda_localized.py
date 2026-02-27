@@ -103,8 +103,8 @@ class LocalizedESMDA(BaseESMDA):
 
     Then we set up the LocalizedESMDA instance and the prior realizations X:
 
-    >>> covariance = np.ones(3)  # Covariance of the observations / outputs
-    >>> observations = np.array([1, 2, 3])  # The observed data
+    >>> covariance = np.ones(3, dtype=float)  # Covariance of the observations
+    >>> observations = np.array([1, 2, 3], dtype=float)  # The observed data
     >>> smoother = LocalizedESMDA(covariance=covariance,
     ...                           observations=observations, alpha=3, seed=42)
     >>> X = rng.normal(size=(10, 100))

@@ -45,6 +45,8 @@ class BaseESMDA(ABC):
 
     """
 
+    ALLOWED_DTYPES = (np.float16, np.float32, np.float64)
+
     def __init__(
         self,
         covariance: npt.NDArray[np.double],
@@ -100,6 +102,20 @@ class BaseESMDA(ABC):
                 "or numpy.random._generator.Generator."
             )
 
+        if observations.dtype not in self.ALLOWED_DTYPES:
+            raise ValueError(
+                f"'observations' has unsupported dtype {observations.dtype}"
+            )
+        if covariance.dtype not in self.ALLOWED_DTYPES:
+            raise ValueError(f"'covariance' has unsupported dtype {covariance.dtype}")
+        if observations.dtype != covariance.dtype:
+            raise ValueError(
+                f"dtype mismatch: 'observations' is {observations.dtype}"
+                "'covariance' is {covariance.dtype}"
+            )
+
+        self._dtype = observations.dtype
+
         # Store data
         self.observations = observations
         self.iteration = 0
@@ -130,6 +146,8 @@ class BaseESMDA(ABC):
         else:
             raise TypeError("Alpha must be integer or 1D array.")
 
+        self.alpha = self.alpha.astype(self._dtype)  # Convert to same dtype
+
     def num_assimilations(self) -> int:
         return len(self.alpha)
 
@@ -156,17 +174,19 @@ class BaseESMDA(ABC):
         D : np.ndarray
             Each column consists of perturbed observations,
             observation std is scaled by sqrt(alpha).
-
         """
         # Draw samples from zero-centered multivariate normal with cov=alpha * C_D,
         # and add them to the observations. Notice that
         # if C_D = L @ L.T by the cholesky factorization, then drawing y from
         # a zero cented normal means that y := L @ z, where z ~ norm(0, 1).
         # Therefore, scaling C_D by alpha is equivalent to scaling L with sqrt(alpha).
+        samples = sample_mvnormal(
+            C_dd_cholesky=self.C_D_L, rng=self.rng, size=ensemble_size
+        ).astype(self.C_D_L.dtype)
 
-        D: npt.NDArray[np.double] = self.observations[:, np.newaxis] + np.sqrt(
-            alpha
-        ) * sample_mvnormal(C_dd_cholesky=self.C_D_L, rng=self.rng, size=ensemble_size)
+        D: npt.NDArray[np.double] = (
+            self.observations[:, np.newaxis] + (alpha**0.5) * samples
+        )
         assert D.shape == (len(self.observations), ensemble_size)
         return D
 
@@ -222,6 +242,12 @@ class BaseESMDA(ABC):
         if not np.issubdtype(Y.dtype, np.floating):
             raise TypeError("Argument `Y` must contain floats")
 
+        if Y.dtype != self._dtype:
+            raise ValueError(
+                f"'Y' has dtype {Y.dtype}, but class was "
+                "initialized with dtype {self._dtype}"
+            )
+
         if self.iteration >= self.num_assimilations():
             raise Exception("No more assimilation steps to run.")
 
@@ -261,6 +287,12 @@ class BaseESMDA(ABC):
         assert X.ndim == 2
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)
 
+        if X.dtype != self._dtype:
+            raise ValueError(
+                f"'X' has dtype {X.dtype}, but class was "
+                "initialized with dtype {self._dtype}"
+            )
+
         # Center the parameters, possibly accounting for missing data
         if missing is not None:
             return adjust_for_missing(X, missing=missing)
@@ -286,8 +318,8 @@ class ESMDA(BaseESMDA):
 
     Then we set up the ESMDA instance and the prior realizations X:
 
-    >>> covariance = np.ones(3)  # Covariance of the observations / outputs
-    >>> observations = np.array([1, 2, 3])  # The observed data
+    >>> covariance = np.ones(3, dtype=float)  # Covariance of the observations / outputs
+    >>> observations = np.array([1, 2, 3], dtype=float)  # The observed data
     >>> esmda = ESMDA(covariance, observations, alpha=3, seed=42)
     >>> X = rng.normal(size=(10, 100))
 
