@@ -619,6 +619,51 @@ def test_row_by_row_assimilation_order():
     assert np.allclose(X1, X2)
 
 
+def test_that_mixing_float32_and_float64_fails():
+    rng = np.random.default_rng(42)
+
+    num_outputs = 4
+    num_inputs = 5
+    num_ensemble = 3
+
+    A = rng.normal(size=(num_outputs, num_inputs))
+
+    def g(X):
+        return A @ X
+
+    X_prior = rng.normal(size=(num_inputs, num_ensemble))
+    covariance = np.exp(rng.normal(size=num_outputs))
+    observations = A @ np.linspace(0, 1, num=num_inputs) + rng.normal(
+        size=num_outputs, scale=0.01
+    )
+
+    # Test that we cannot initialize with different dtypes
+    with pytest.raises(ValueError, match="dtype mismatch"):
+        ESMDA(
+            covariance=covariance.astype(np.float32),
+            observations=observations.astype(np.float64),
+        )
+
+    # Test that we cannot initialize with different dtypes
+    with pytest.raises(ValueError, match="unsupported dtype"):
+        ESMDA(
+            covariance=np.arange(num_outputs) + 1,  # <- Integer
+            observations=observations,
+        )
+
+    smoother = ESMDA(
+        covariance=covariance,
+        observations=observations,
+    )
+    with pytest.raises(ValueError, match="dtype mismatch"):
+        smoother.prepare_assimilation(Y=g(X_prior).astype(np.float32))
+
+    smoother.prepare_assimilation(Y=g(X_prior))
+
+    with pytest.raises(ValueError, match="dtype mismatch"):
+        smoother.assimilate_batch(X=X_prior.astype(np.float16))
+
+
 if __name__ == "__main__":
     import pytest
 

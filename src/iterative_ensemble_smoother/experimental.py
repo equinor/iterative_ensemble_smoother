@@ -24,6 +24,8 @@ T = TypeVar("T")
 
 
 class RowScaledESMDA(ESMDA):
+    """Subclass ESMDA to apply strength "alpha" to row updates."""
+
     def assimilate_batch(
         self,
         *,
