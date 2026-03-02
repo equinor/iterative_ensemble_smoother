@@ -1,11 +1,44 @@
+"""
+
+Adaptive Ensemble Smoother with Multiple Data Assimilation
+----------------------------------------------------------
+
+The idea behind AdaptiveESMDA is to use correlations between parameters
+and responses to modify the update equation. Recall the equation:
+
+    C_MD @ inv(Y @ Y.T + alpha * C_D) @ (D - Y)
+
+where C_MD is the cross-covariance matrix with shape (parameters, responses).
+
+1. We first compute C_MD and normalize it so it becomes a cross-correlation matrix
+2. Then we apply an element-wise thresholding function to it.
+   This is a callback function and can in principle be anything at all,
+   but the function must take in the cross-covariance and return a modified
+   cross-covariance
+3. We then loop over every parameter, check what responses have correlation
+   to the parameter, and update only those parameters. Suppose for a parameter
+   `i` the responses that are correlated have indices `idx`, then we apply:
+
+       callback(C_MD[i, idx]) @
+       inv(Y[idx, :] @ Y[idx, :].T + alpha * C_D[idx, idx])
+       @ (D - Y)[idx, :]
+
+
+Since forming the full C_MD matrix is often prohibitive, it is often better to
+loop over parameter groups. Internally, the class also vectorizes over parameters
+that share the same correlation pattern with the responses.
+"""
+
 import warnings
 from typing import Callable, Union
 
 import numpy as np
 import numpy.typing as npt
+import scipy as sp
 
 from iterative_ensemble_smoother.esmda import BaseESMDA
-from iterative_ensemble_smoother.utils import masked_std
+from iterative_ensemble_smoother.esmda_inversion import invert_subspace
+from iterative_ensemble_smoother.utils import groupby_nonzero_rows, masked_std
 
 
 class AdaptiveESMDA(BaseESMDA):
@@ -135,9 +168,13 @@ class AdaptiveESMDA(BaseESMDA):
             ) -> npt.NDArray[np.double]:
                 return corr_XY
 
+        # Step 1: COMPUTE THE CROSS-COVARIANCE/CORRELATION AND APPLY CALLBACK
+        # ===================================================================
+
         # Compute cross correlation matrix
         corr_XY = (delta_M @ self.delta_DT) / (N_e - 1)
 
+        # Deal with potentially missing values in the parameters
         std_Y = np.std(self.delta_DT, axis=0, ddof=1)
         if missing is not None:
             std_X = masked_std(X, missing=missing)
@@ -147,7 +184,7 @@ class AdaptiveESMDA(BaseESMDA):
         # Cross covariance to cross correlation (inplace)
         corr_XY /= std_X[:, None]
         corr_XY /= std_Y[None, :]
-        # corr_XY = self._clip_correlation_matrix(corr_XY)
+        corr_XY = self._clip_correlation_matrix(corr_XY)
 
         # Number of observations each entry in corr_XY is based on.
         # The source of missing data is only missing values in X, not Y.
@@ -163,15 +200,48 @@ class AdaptiveESMDA(BaseESMDA):
         corr_XY *= std_Y[None, :]
         corr_XY *= std_X[:, None] * (N_e - 1)  # Multiply back
 
-        # TODO: Here an important part of the algorithm is missing.
-        # For each parameter in X, we should only use information
-        # from correlated responses Y when we do the update.
-        # This means updating inv(Y @ Y.T + C_D) for those responses.
+        # Step 2: APPLY UPDATES TO EACH PARAMETER, USING CORRELATED RESPONSES
+        # ===================================================================
+        result = np.zeros_like(X, dtype=X.dtype)
 
-        # Return result
-        return X + np.linalg.multi_dot(
-            [corr_XY, self.term_diag, self.termT, self.D_obs_minus_D]
-        )
+        alpha = self.alpha[self.iteration]
+        delta_D = self.delta_DT.T
+        # Loop over observation indices (integer mask) and param idx (bool mask)
+        for param_idx, response_idx in groupby_nonzero_rows(corr_XY):
+            # Skip these parameters if no responses have correlations
+            if not np.any(response_idx):
+                continue
+
+            # Centered responses for this param group
+            delta_D_i = delta_D[response_idx, :]
+
+            # Index on the responses in this param group
+            if self.covariance.ndim == 1:
+                C_D_L_i = np.sqrt(self.covariance[response_idx])
+            else:
+                cov_mark = np.ix_(response_idx, response_idx)
+                C_D_L_i = sp.linalg.cholesky(self.covariance[cov_mark], lower=False)
+
+            # Compute (Y[idx, :] @ Y[idx, :].T + C_D[idx, idx])^-1
+            _, factor1, factor2 = invert_subspace(
+                delta_D=delta_D_i,
+                C_D_L=C_D_L_i,
+                alpha=alpha,
+                truncation=self.truncation,
+            )
+
+            # Multiply together and store results
+            corr_mask = np.ix_(param_idx, response_idx)
+            result[param_idx, :] = np.linalg.multi_dot(
+                [
+                    corr_XY[corr_mask],
+                    factor1,
+                    factor2,
+                    self.D_obs_minus_D[response_idx, :],
+                ]
+            )
+
+        return X + result
 
     @staticmethod
     def _clip_correlation_matrix(
@@ -201,3 +271,38 @@ if __name__ == "__main__":
             "-v",
         ]
     )
+
+# if True:
+#     rng = np.random.default_rng(42)
+#     A = rng.normal(size=(3, 10))
+
+#     def forward_model(x):
+#         return A @ x
+
+#     covariance = np.ones(3, dtype=float)  # Covariance of the observations / outputs
+#     observations = np.array([1, 2, 3], dtype=float)  # The observed data
+#     smoother = AdaptiveESMDA(
+#         covariance=covariance, observations=observations, alpha=3, seed=42
+#     )
+#     X = rng.normal(size=(10, 100))
+
+#     def yield_param_indices():
+#         yield [1, 2, 3, 4]
+#         yield [5, 6, 7, 8, 9]
+
+#     for iteration in range(smoother.num_assimilations()):
+#         Y = np.array([forward_model(x) for x in X.T]).T
+
+#         # Prepare for assimilation
+#         smoother.prepare_assimilation(Y=Y, truncation=0.99)
+
+#         def func(corr_XY, observations_per_parameter):
+#             # Takes an array of shape (params_batch, obs)
+#             # and an array representing number of non-missing observations
+#             # per parameter. Returns modified correlation matrix.
+#             return corr_XY
+
+#         for param_idx in yield_param_indices():
+#             X[param_idx, :] = smoother.assimilate_batch(
+#                 X=X[param_idx, :], correlation_callback=smoother.three_over_sqrt_n
+#             )

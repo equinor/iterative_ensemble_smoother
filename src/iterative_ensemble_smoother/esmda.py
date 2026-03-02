@@ -118,12 +118,13 @@ class BaseESMDA(ABC):
 
         # Store data
         self.observations = observations
-        self.iteration = 0
+        self.iteration = -1
         self.rng = np.random.default_rng(seed)
 
         # Only compute the covariance factorization once
         # If it's a full matrix, we gain speedup by only computing cholesky once
         # If it's a diagonal, we gain speedup by never having to compute cholesky
+        self.covariance = covariance
         if isinstance(covariance, np.ndarray) and covariance.ndim == 2:
             self.C_D_L = sp.linalg.cholesky(covariance, lower=False)
         elif isinstance(covariance, np.ndarray) and covariance.ndim == 1:
@@ -251,8 +252,12 @@ class BaseESMDA(ABC):
         if self.iteration >= self.num_assimilations():
             raise Exception("No more assimilation steps to run.")
 
+        self.truncation = truncation
+        self.iteration += 1
+
         D = Y  # Switch from API notation to paper notation
         N_d, N_e = D.shape  # (num_observations, ensemble_size)
+        assert N_e >= 2, "Must have at least two ensemble members"
         assert N_d == self.observations.shape[0], "Shape mismatch"
         delta_D = D - np.mean(D, axis=1, keepdims=True)  # Center observations
 
@@ -265,7 +270,6 @@ class BaseESMDA(ABC):
         self.delta_DT, self.term_diag, self.termT = invert_subspace(
             delta_D=delta_D, C_D_L=self.C_D_L, alpha=alpha, truncation=truncation
         )
-        self.iteration += 1
 
     def _compute_delta_M(
         self,

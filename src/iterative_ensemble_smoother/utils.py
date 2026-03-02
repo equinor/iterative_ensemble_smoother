@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import collections
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterator
 
 import numpy as np
 import psutil
@@ -10,6 +11,41 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
 logger = logging.getLogger(__name__)
+
+
+def groupby_nonzero_rows(
+    A: npt.NDArray[np.double],
+) -> Iterator[tuple[npt.NDArray[np.int_], npt.NDArray[np.bool_]]]:
+    """Yields pairs (row_indices, nonzero_columns).
+
+    The usage is that A is a correlation matrix with shape (params, responses)
+    and we wish to update parameters using non-zero responses. This function
+    tells us, for each group of parameters, which responses to update.
+
+    Examples
+    --------
+    >>> A = np.array([[ 1.6,  -1.57,  0.0],
+    ...               [ 0.0,   0.0,  -2.5 ],
+    ...               [-0.56, -0.03,  0.0],
+    ...               [ 0.0,   0.0,   0.2 ],
+    ...               [ 0.02,  0.66, -0.71]])
+    >>> for param_idx, response_idx in groupby_nonzero_rows(A):
+    ...     print(param_idx, response_idx)
+    (array([0, 2]), array([ True,  True, False]))
+    (array([1, 3]), array([False, False,  True]))
+    (array([4]), array([ True,  True,  True]))
+    """
+    nonzeros = np.logical_not(np.isclose(A, 0))
+    unique_rows, inverse = np.unique(nonzeros, axis=0, return_inverse=True)
+
+    # Group each non-zero pattern by its row
+    groups = collections.defaultdict(list)
+    for row_idx, group in enumerate(inverse):
+        groups[group].append(row_idx)
+
+    for indices in groups.values():
+        first_idx, *_ = indices
+        yield np.array(indices, dtype=np.int_), nonzeros[first_idx, :]
 
 
 def masked_std(
