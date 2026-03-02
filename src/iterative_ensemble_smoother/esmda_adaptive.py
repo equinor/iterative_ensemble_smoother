@@ -45,8 +45,8 @@ class AdaptiveESMDA(BaseESMDA):
     """
     Adaptive Ensemble Smoother with Multiple Data Assimilation (ES-MDA).
 
-    Reference
-    ---------
+    References
+    ----------
 
     - Adaptive Correlation- and Distance-Based Localization for Iterative
       Ensemble Smoothers in a Coupled Nonlinear Multiscale Model.
@@ -271,38 +271,3 @@ if __name__ == "__main__":
             "-v",
         ]
     )
-
-# if True:
-#     rng = np.random.default_rng(42)
-#     A = rng.normal(size=(3, 10))
-
-#     def forward_model(x):
-#         return A @ x
-
-#     covariance = np.ones(3, dtype=float)  # Covariance of the observations / outputs
-#     observations = np.array([1, 2, 3], dtype=float)  # The observed data
-#     smoother = AdaptiveESMDA(
-#         covariance=covariance, observations=observations, alpha=3, seed=42
-#     )
-#     X = rng.normal(size=(10, 100))
-
-#     def yield_param_indices():
-#         yield [1, 2, 3, 4]
-#         yield [5, 6, 7, 8, 9]
-
-#     for iteration in range(smoother.num_assimilations()):
-#         Y = np.array([forward_model(x) for x in X.T]).T
-
-#         # Prepare for assimilation
-#         smoother.prepare_assimilation(Y=Y, truncation=0.99)
-
-#         def func(corr_XY, observations_per_parameter):
-#             # Takes an array of shape (params_batch, obs)
-#             # and an array representing number of non-missing observations
-#             # per parameter. Returns modified correlation matrix.
-#             return corr_XY
-
-#         for param_idx in yield_param_indices():
-#             X[param_idx, :] = smoother.assimilate_batch(
-#                 X=X[param_idx, :], correlation_callback=smoother.three_over_sqrt_n
-#             )
