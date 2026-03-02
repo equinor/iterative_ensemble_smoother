@@ -31,9 +31,9 @@ def groupby_nonzero_rows(
     ...               [ 0.02,  0.66, -0.71]])
     >>> for param_idx, response_idx in groupby_nonzero_rows(A):
     ...     print(param_idx, response_idx)
-    (array([0, 2]), array([ True,  True, False]))
-    (array([1, 3]), array([False, False,  True]))
-    (array([4]), array([ True,  True,  True]))
+    [0 2] [ True  True False]
+    [1 3] [False False  True]
+    [4] [ True  True  True]
     """
     nonzeros = np.logical_not(np.isclose(A, 0))
     unique_rows, inverse = np.unique(nonzeros, axis=0, return_inverse=True)
