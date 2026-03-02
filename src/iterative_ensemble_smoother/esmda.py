@@ -4,21 +4,38 @@ Ensemble Smoother with Multiple Data Assimilation (ES-MDA)
 
 Implementation of the 2013 paper "Ensemble smoother with multiple data assimilation"
 
+This implementation follows the paper, but with some additions:
+
+- Allows batching the parameters. This is useful if you have many parameters
+  that you need to update, e.g. 10 million. In that case you might want to
+  read 1 million from disk, update those, then write them back to disk, assimilate
+  the next 1 million, etc.
+- Deals with missing combinations of parameters in ensembles.
+
+We take a layered approach:
+
+1. Computations that need to be done once are performed in class initialization.
+   Example: computing the Cholesky factor of the observation covariance
+2. Computations that are done once per smoothing iteration are performed in the
+   method `.prepare_assimilation()`.
+   Example: computing the inversion of (Y @ Y.T + C_D)
+3. Computations that are done done once per parameter group are performed in the
+   method `.assimilate_batch()`. If you wish to assimilate all parameters in
+   one batch, then just pass all parameters to this method.
+   Example: computing the full product C_MD @ inv(C_DD + alpha * C_D) @ (D - Y)
+
 References
 ----------
 
-Emerick, A.A., Reynolds, A.C. History matching time-lapse seismic data using
-the ensemble Kalman filter with multiple data assimilations.
-Comput Geosci 16, 639–659 (2012). https://doi.org/10.1007/s10596-012-9275-5
-
-Alexandre A. Emerick, Albert C. Reynolds.
-Ensemble smoother with multiple data assimilation.
-Computers & Geosciences, Volume 55, 2013, Pages 3-15, ISSN 0098-3004,
-https://doi.org/10.1016/j.cageo.2012.03.011
-
-https://gitlab.com/antoinecollet5/pyesmda
-
-https://helper.ipam.ucla.edu/publications/oilws3/oilws3_14147.pdf
+- Emerick, A.A., Reynolds, A.C. History matching time-lapse seismic data using
+  the ensemble Kalman filter with multiple data assimilations.
+  Comput Geosci 16, 639–659 (2012). https://doi.org/10.1007/s10596-012-9275-5
+- Alexandre A. Emerick, Albert C. Reynolds.
+  Ensemble smoother with multiple data assimilation.
+  Computers & Geosciences, Volume 55, 2013, Pages 3-15, ISSN 0098-3004,
+  https://doi.org/10.1016/j.cageo.2012.03.011
+- https://gitlab.com/antoinecollet5/pyesmda
+- https://helper.ipam.ucla.edu/publications/oilws3/oilws3_14147.pdf
 
 """
 
@@ -42,7 +59,6 @@ class BaseESMDA(ABC):
 
     This class defines every method, apart from `assimilate_batch()`,
     which each subclass implements in their own way.
-
     """
 
     ALLOWED_DTYPES = (np.float16, np.float32, np.float64)

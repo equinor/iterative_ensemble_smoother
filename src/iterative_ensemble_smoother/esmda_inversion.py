@@ -387,9 +387,8 @@ def invert_naive(
     _, N_e = delta_D.shape  # Number of ensemble members
 
     covariance = np.diag(C_D_L**2) if C_D_L.ndim == 1 else C_D_L.T @ C_D_L
-    return delta_D.T @ np.linalg.inv(
-        delta_D @ delta_D.T + alpha * (N_e - 1) * covariance
-    )
+    inner = delta_D @ delta_D.T + alpha * (N_e - 1) * covariance
+    return delta_D.T @ np.linalg.inv(inner)
 
 
 def invert_subspace(
@@ -497,13 +496,10 @@ def invert_subspace(
 if __name__ == "__main__":
     import pytest
 
-    # --durations=10  <- May be used to show potentially slow tests
     pytest.main(
         args=[
             __file__,
             "--doctest-modules",
             "-v",
-            "-v",
-            # "-k simple",
         ]
     )
