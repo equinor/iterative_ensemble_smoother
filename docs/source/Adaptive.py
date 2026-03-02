@@ -281,7 +281,7 @@ def corr_true(array):
     return sp.stats.pearsonr(x_true, array).statistic
 
 
-ENSEMBLE_SIZES = list(range(2, 51))
+ENSEMBLE_SIZES = list(range(2, 51, 5))
 NUM_SEEDS = 25
 
 # Store average correlation coefficients
