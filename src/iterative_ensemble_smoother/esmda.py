@@ -140,11 +140,11 @@ class BaseESMDA(ABC):
         # Only compute the covariance factorization once
         # If it's a full matrix, we gain speedup by only computing cholesky once
         # If it's a diagonal, we gain speedup by never having to compute cholesky
-        self.covariance = covariance
-        if isinstance(covariance, np.ndarray) and covariance.ndim == 2:
-            self.C_D_L = sp.linalg.cholesky(covariance, lower=False)
-        elif isinstance(covariance, np.ndarray) and covariance.ndim == 1:
-            self.C_D_L = np.sqrt(covariance)
+        self.C_M = covariance.copy()
+        if covariance.ndim == 2:
+            self.C_D_L = sp.linalg.cholesky(self.C_M, lower=False)
+        elif covariance.ndim == 1:
+            self.C_D_L = np.sqrt(self.C_M)
         else:
             raise TypeError("Argument `covariance` must be 1D or 2D array")
 

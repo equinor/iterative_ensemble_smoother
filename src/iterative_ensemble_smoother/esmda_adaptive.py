@@ -215,12 +215,12 @@ class AdaptiveESMDA(BaseESMDA):
             # Centered responses for this param group
             delta_D_i = delta_D[response_idx, :]
 
-            # Index on the responses in this param group
-            if self.covariance.ndim == 1:
-                C_D_L_i = np.sqrt(self.covariance[response_idx])
+            # Index on the responses in this param group, then factor covariance
+            if self.C_M.ndim == 1:
+                C_D_L_i = np.sqrt(self.C_M[response_idx])
             else:
                 cov_mark = np.ix_(response_idx, response_idx)
-                C_D_L_i = sp.linalg.cholesky(self.covariance[cov_mark], lower=False)
+                C_D_L_i = sp.linalg.cholesky(self.C_M[cov_mark], lower=False)
 
             # Compute (Y[idx, :] @ Y[idx, :].T + C_D[idx, idx])^-1
             _, factor1, factor2 = invert_subspace(
