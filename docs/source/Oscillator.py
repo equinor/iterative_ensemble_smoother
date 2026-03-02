@@ -232,7 +232,8 @@ smoother = ies.ESMDA(
 )
 
 for _ in range(smoother.num_assimilations()):
-    new_A = smoother.assimilate(A, Y, truncation=1.0)
+    smoother.prepare_assimilation(Y=Y, truncation=1.0)
+    new_A = smoother.assimilate_batch(X=A)
 
 
 plot_result(standard_normal_to_prior(new_A), response_x_axis, title="ES")
@@ -266,7 +267,8 @@ for iteration in range(smoother.num_assimilations()):
     Y = responses_before[observation_x_axis]
 
     # Assimilate data
-    A_current = smoother.assimilate(A_current, Y)
+    smoother.prepare_assimilation(Y=Y, truncation=1.0)
+    A_current = smoother.assimilate_batch(X=A_current)
 
     # Plot
     plot_result(
