@@ -1555,8 +1555,6 @@ def draw_3D_field(
     perp_corr_range: float,
     vert_corr_range: float,
     start_seed: int = 42,
-    corr_func_name: str = "matern32",
-    power: float = 1.9,
     azimuth: float = 0.0,
     dip: float = 0.0,
     write_progress: bool = False,
@@ -1572,25 +1570,14 @@ def draw_3D_field(
 
     # Define spatial correlation function for gaussian fields
     # to be simulated.
-    if corr_func_name == "general_exponential":
-        variogram = grf.variogram(
-            corr_func_name,
-            main_corr_range,
-            perp_corr_range,
-            vert_corr_range,
-            azimuth,
-            dip,
-            power,
-        )
-    else:
-        variogram = grf.variogram(
-            corr_func_name,
-            main_corr_range,
-            perp_corr_range,
-            vert_corr_range,
-            azimuth,
-            dip,
-        )
+    variogram = grf.variogram(
+        "gaussian",
+        main_corr_range,
+        perp_corr_range,
+        vert_corr_range,
+        azimuth,
+        dip,
+    )
 
     nparam = nx * ny * nz
     if use_4_byte_float:
@@ -1811,7 +1798,6 @@ def test_update_params_3D(
         corr_range,
         vert_range,
         seed,
-        corr_func_name="gaussian",
     )
 
     X_prior_3D = X_prior.reshape((nx, ny, nz, nreal))
