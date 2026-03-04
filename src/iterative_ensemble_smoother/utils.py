@@ -311,6 +311,16 @@ def gaspari_cohn(
     used as elements in the localization matrix (rho).
     For d >= 2 the value is 0.
 
+    This is an implementation of Eq. (4.10) in Section 4.3
+    ("Compactly supported 5th-order piecewise rational functions") of
+    :cite:t:`gaspari1999construction`.
+
+    References
+    ----------
+    Gaspari, G. and Cohn, S.E. (1999), Construction of correlation functions
+    in two and three dimensions. Q.J.R. Meteorol. Soc., 125: 723-757.
+    https://doi.org/10.1002/qj.49712555417
+
     Parameters
     ----------
     distances : np.ndarray
@@ -320,28 +330,48 @@ def gaspari_cohn(
     -------
     np.ndarray
         Values of scaling factors for each value of input distance.
+
+    Examples
+    --------
+    The function equals 1 at d=0, 5/24 at d=1, and 0 for d>=2:
+
+    >>> import numpy as np
+    >>> gaspari_cohn(np.array([0.0, 1.0, 2.0, 3.0]))
+    array([1.        , 0.20833333, 0.        , 0.        ])
+
+    The input array is not modified:
+
+    >>> d = np.array([0.5, 1.5])
+    >>> _ = gaspari_cohn(d)
+    >>> d
+    array([0.5, 1.5])
     """
-    scaling_factor = distances
+    scaling_factor = np.zeros_like(distances)
+
     d2 = distances**2
     d3 = d2 * distances
     d4 = d3 * distances
     d5 = d4 * distances
-    s = -1 / 4 * d5 + 1 / 2 * d4 + 5 / 8 * d3 - 5 / 3 * d2 + 1
-    scaling_factor[distances <= 1] = s[distances <= 1]
-    s = (
-        1 / 12 * d5
-        - 1 / 2 * d4
-        + 5 / 8 * d3
-        + 5 / 3 * d2
-        - 5 * distances
-        + 4
-        - 2 / 3 * 1 / distances
-    )
-    scaling_factor[(distances > 1) & (distances <= 2)] = s[
-        (distances > 1) & (distances <= 2)
-    ]
-    scaling_factor[distances > 2] = 0.0
 
+    near = distances <= 1
+    scaling_factor[near] = (
+        -1 / 4 * d5[near] + 1 / 2 * d4[near] + 5 / 8 * d3[near] - 5 / 3 * d2[near] + 1
+    )
+
+    mid = (distances > 1) & (distances <= 2)
+    scaling_factor[mid] = (
+        1 / 12 * d5[mid]
+        - 1 / 2 * d4[mid]
+        + 5 / 8 * d3[mid]
+        + 5 / 3 * d2[mid]
+        - 5 * distances[mid]
+        + 4
+        - 2 / 3 / distances[mid]
+    )
+
+    # Clip to [0, 1] to suppress tiny negative artefacts from
+    # floating-point arithmetic at the d=2 boundary.
+    np.clip(scaling_factor, 0.0, 1.0, out=scaling_factor)
     return scaling_factor
 
 
