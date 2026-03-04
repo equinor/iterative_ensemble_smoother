@@ -1,5 +1,4 @@
 import functools
-import sys
 import time
 from copy import deepcopy
 
@@ -1441,11 +1440,14 @@ def test_calc_max_number_of_layers_per_batch_for_distance_localization(
     # that can be update in one update. No expected number of layers can be defined
     # in advance since this depends on the available memory of the computer that run
     # the test.
-    max_nlayer_per_batch = (
-        calc_max_number_of_layers_per_batch_for_distance_localization(
-            nx, ny, nz, num_obs, nreal, bytes_per_float=bytes_per_float
+    try:
+        max_nlayer_per_batch = (
+            calc_max_number_of_layers_per_batch_for_distance_localization(
+                nx, ny, nz, num_obs, nreal, bytes_per_float=bytes_per_float
+            )
         )
-    )
+    except MemoryError:
+        pytest.skip("Not enough available memory for this test parametrization")
 
     memory_used = max_nlayer_per_batch * nx * ny * num_obs * 2 * bytes_per_float / 10**9
     if max_nlayer_per_batch == nz:
@@ -1657,10 +1659,6 @@ def draw_random_obs(rng, nobs, nx, ny, nz, obs_err_std):
     )
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 13),
-    reason="gaussianfft not available on Python >= 3.13",
-)
 @pytest.mark.parametrize(
     (
         "nx",
