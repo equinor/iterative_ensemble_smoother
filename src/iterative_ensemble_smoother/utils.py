@@ -421,7 +421,6 @@ def calc_rho_for_2d_grid_layer(
     else:
         # y coordinate increases from min to max
         y_local = (np.arange(ny) + 0.5) * yinc
-    mesh_x_coord, mesh_y_coord = np.meshgrid(x_local, y_local, indexing="ij")
 
     # Number of observations
     nobs = len(obs_xpos)
@@ -444,9 +443,12 @@ def calc_rho_for_2d_grid_layer(
         "All range values for all observations must be positive"
     )
 
-    # Expand grid coordinates to match observations
-    mesh_x_coord_flat = mesh_x_coord.flatten()[:, np.newaxis]  # (nx * ny, 1)
-    mesh_y_coord_flat = mesh_y_coord.flatten()[:, np.newaxis]  # (nx * ny, 1)
+    # Build flattened grid coordinates directly, avoiding intermediate (nx, ny) arrays.
+    # With "ij" indexing, meshgrid followed by flatten is equivalent to:
+    #   x repeated ny times per x-value: [x0,x0,...,x1,x1,...,xn,xn,...]
+    #   y tiled nx times:                [y0,y1,...,y0,y1,...,y0,y1,...]
+    mesh_x_coord_flat = np.repeat(x_local, ny).reshape(-1, 1)  # (nx * ny, 1)
+    mesh_y_coord_flat = np.tile(y_local, nx).reshape(-1, 1)  # (nx * ny, 1)
 
     # Observation coordinates and parameters
     obs_xpos = obs_xpos[np.newaxis, :]  # (1, nobs)
