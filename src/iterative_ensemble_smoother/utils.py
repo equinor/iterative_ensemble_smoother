@@ -414,13 +414,13 @@ def calc_rho_for_2d_grid_layer(
         Rho matrix values for one layer of the 3D ertbox grid or for a 2D surface grid.
     """
     # Center points of each grid cell in field parameter grid
-    x_local = (np.arange(nx, dtype=np.float64) + 0.5) * xinc
+    x_local = (np.arange(nx) + 0.5) * xinc
     if right_handed_grid_indexing:
         # y coordinate decreases from max to min
-        y_local = (np.arange(ny - 1, -1, -1, dtype=np.float64) + 0.5) * yinc
+        y_local = (np.arange(ny - 1, -1, -1) + 0.5) * yinc
     else:
         # y coordinate increases from min to max
-        y_local = (np.arange(ny, dtype=np.float64) + 0.5) * yinc
+        y_local = (np.arange(ny) + 0.5) * yinc
     mesh_x_coord, mesh_y_coord = np.meshgrid(x_local, y_local, indexing="ij")
 
     # Number of observations
