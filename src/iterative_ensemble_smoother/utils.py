@@ -302,15 +302,14 @@ def calc_max_number_of_layers_per_batch_for_distance_localization(
     return max_nlayer_per_batch
 
 
-def localization_scaling_function(
+def gaspari_cohn(
     distances: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
-    """Calculate scaling factor to be used as values in RHO matrix.
+    """Gaspari--Cohn distance-based localization scaling function.
 
-    Calculate scaling factor to be used as values in RHO matrix in distance-based
-    localization. The scaling function implements the commonly used function
-    published by Gaspari and Cohn. For input normalized distance >= 2,
-    the value will be 0.
+    For each normalised distance d, returns a scaling factor in [0, 1]
+    used as elements in the localization matrix (rho).
+    For d >= 2 the value is 0.
 
     Parameters
     ----------
@@ -322,9 +321,6 @@ def localization_scaling_function(
     np.ndarray
         Values of scaling factors for each value of input distance.
     """
-    # "gaspari-cohn"
-    # Commonly used in distance-based localization
-    # Is exact 0 for normalized distance > 2.
     scaling_factor = distances
     d2 = distances**2
     d3 = d2 * distances
@@ -487,7 +483,7 @@ def calc_rho_for_2d_grid_layer(
     # Compute distances in the elliptical coordinate system
     distances = np.hypot(dX_ellipse, dY_ellipse)  # (nx * ny, nobs)
     # Apply the scaling function
-    return localization_scaling_function(distances).reshape((nx, ny, nobs))
+    return gaspari_cohn(distances).reshape((nx, ny, nobs))
 
 
 if __name__ == "__main__":
