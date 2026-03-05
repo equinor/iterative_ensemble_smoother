@@ -16,13 +16,34 @@ Let's set up a system with **1 parameter** (state variable $x$) and **2 observat
 
 Let's define the terms in your matrices:
 
-* **Innovations:** $\Delta = \begin{pmatrix} \delta_1 \\ \delta_2 \end{pmatrix}$
-* **State-Obs Covariance ($XY^T$):** $\begin{pmatrix} c_1 & c_2 \end{pmatrix}$ where $c_1 = Cov(x,y_1)$ and $c_2 = Cov(x,y_2)$.
-* **Obs-Obs Covariance ($YY^T$):** $\begin{pmatrix} v_1 & c_{12} \\ c_{12} & v_2 \end{pmatrix}$ where $v_1, v_2$ are variances, and $c_{12} = Cov(y_1, y_2)$. Because of limited ensemble size, $c_{12}$ is usually non-zero (spurious correlation).
-* **Obs Error ($R$):** $\begin{pmatrix} r_1 & 0 \\ 0 & r_2 \end{pmatrix}$
-* **Localization ($\rho$):** Because we want to cut off $y_2$, our localization array for the state variable $x$ is $\rho = \begin{pmatrix} 1 & 0 \end{pmatrix}$.
+* **Innovations:**
 
-Let $S = YY^T + R = \begin{pmatrix} v_1 + r_1 & c_{12} \\ c_{12} & v_2 + r_2 \end{pmatrix}$.
+$$\Delta = \begin{pmatrix} \delta_1 \\ \delta_2 \end{pmatrix}$$
+
+* **State-Obs Covariance** ($XY^T$):
+
+$$\begin{pmatrix} c_1 & c_2 \end{pmatrix}$$
+
+  where $c_1 = Cov(x,y_1)$ and $c_2 = Cov(x,y_2)$.
+
+* **Obs-Obs Covariance** ($YY^T$):
+
+$$\begin{pmatrix} v_1 & c_{12} \\ c_{12} & v_2 \end{pmatrix}$$
+
+  where $v_1, v_2$ are variances, and $c_{12} = Cov(y_1, y_2)$. Because of limited ensemble size, $c_{12}$ is usually non-zero (spurious correlation).
+
+* **Obs Error** ($R$):
+
+$$\begin{pmatrix} r_1 & 0 \\ 0 & r_2 \end{pmatrix}$$
+
+* **Localization** ($\rho$): Because we want to cut off $y_2$, our localization array for the state variable $x$ is:
+
+$$\rho = \begin{pmatrix} 1 & 0 \end{pmatrix}$$
+
+Let:
+
+$$S = YY^T + R = \begin{pmatrix} v_1 + r_1 & c_{12} \\ c_{12} & v_2 + r_2 \end{pmatrix}$$
+
 The determinant of this matrix is $\lvert S \rvert = (v_1+r_1)(v_2+r_2) - c_{12}^2$.
 
 ---
@@ -33,18 +54,21 @@ The update formula is: **$\Delta x = (\rho \circ XY^T) S^{-1} \Delta$**
 
 **Step 1: Localize the State-Obs Covariance**
 We multiply $XY^T$ by $\rho$ element-wise:
-$\rho \circ XY^T = \begin{pmatrix} 1 \cdot c_1 & 0 \cdot c_2 \end{pmatrix} = \begin{pmatrix} c_1 & 0 \end{pmatrix}$
+
+$$\rho \circ XY^T = \begin{pmatrix} 1 \cdot c_1 & 0 \cdot c_2 \end{pmatrix} = \begin{pmatrix} c_1 & 0 \end{pmatrix}$$
+
 *(Notice how we successfully zeroed out the direct link to $y_2$)*.
 
 **Step 2: Invert the Global $S$ Matrix**
 Using the analytical formula for a 2x2 inverse:
-$S^{-1} = \frac{1}{\lvert S \rvert} \begin{pmatrix} v_2 + r_2 & -c_{12} \\ -c_{12} & v_1 + r_1 \end{pmatrix}$
+
+$$S^{-1} = \frac{1}{\lvert S \rvert} \begin{pmatrix} v_2 + r_2 & -c_{12} \\ -c_{12} & v_1 + r_1 \end{pmatrix}$$
 
 **Step 3: Multiply $(\rho \circ XY^T)$ by $S^{-1}$**
-$\begin{pmatrix} c_1 & 0 \end{pmatrix} \frac{1}{\lvert S \rvert} \begin{pmatrix} v_2 + r_2 & -c_{12} \\ -c_{12} & v_1 + r_1 \end{pmatrix} = \frac{1}{\lvert S \rvert} \begin{pmatrix} c_1(v_2+r_2) & -c_1 c_{12} \end{pmatrix}$
+$$\begin{pmatrix} c_1 & 0 \end{pmatrix} \frac{1}{\lvert S \rvert} \begin{pmatrix} v_2 + r_2 & -c_{12} \\ -c_{12} & v_1 + r_1 \end{pmatrix} = \frac{1}{\lvert S \rvert} \begin{pmatrix} c_1(v_2+r_2) & -c_1 c_{12} \end{pmatrix}$$
 
 **Step 4: Multiply by the Innovations to get the final update**
-$\Delta x = \frac{1}{\lvert S \rvert} \begin{pmatrix} c_1(v_2+r_2) & -c_1 c_{12} \end{pmatrix} \begin{pmatrix} \delta_1 \\ \delta_2 \end{pmatrix}$
+$$\Delta x = \frac{1}{\lvert S \rvert} \begin{pmatrix} c_1(v_2+r_2) & -c_1 c_{12} \end{pmatrix} \begin{pmatrix} \delta_1 \\ \delta_2 \end{pmatrix}$$
 
 **Analytical Result (No Indexing):**
 
