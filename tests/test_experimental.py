@@ -1,4 +1,3 @@
-import sys
 from copy import deepcopy
 
 import numpy as np
@@ -940,11 +939,14 @@ def test_calc_max_number_of_layers_per_batch_for_distance_localization(
     # that can be update in one update. No expected number of layers can be defined
     # in advance since this depends on the available memory of the computer that run
     # the test.
-    max_nlayer_per_batch = (
-        calc_max_number_of_layers_per_batch_for_distance_localization(
-            nx, ny, nz, num_obs, nreal, bytes_per_float=bytes_per_float
+    try:
+        max_nlayer_per_batch = (
+            calc_max_number_of_layers_per_batch_for_distance_localization(
+                nx, ny, nz, num_obs, nreal, bytes_per_float=bytes_per_float
+            )
         )
-    )
+    except MemoryError:
+        pytest.skip("Not enough available memory for this test parametrization")
 
     memory_used = max_nlayer_per_batch * nx * ny * num_obs * 2 * bytes_per_float / 10**9
     if max_nlayer_per_batch == nz:
@@ -1054,8 +1056,6 @@ def draw_3D_field(
     perp_corr_range: float,
     vert_corr_range: float,
     start_seed: int = 42,
-    corr_func_name: str = "matern32",
-    power: float = 1.9,
     azimuth: float = 0.0,
     dip: float = 0.0,
     write_progress: bool = False,
@@ -1071,25 +1071,14 @@ def draw_3D_field(
 
     # Define spatial correlation function for gaussian fields
     # to be simulated.
-    if corr_func_name == "general_exponential":
-        variogram = grf.variogram(
-            corr_func_name,
-            main_corr_range,
-            perp_corr_range,
-            vert_corr_range,
-            azimuth,
-            dip,
-            power,
-        )
-    else:
-        variogram = grf.variogram(
-            corr_func_name,
-            main_corr_range,
-            perp_corr_range,
-            vert_corr_range,
-            azimuth,
-            dip,
-        )
+    variogram = grf.variogram(
+        "gaussian",
+        main_corr_range,
+        perp_corr_range,
+        vert_corr_range,
+        azimuth,
+        dip,
+    )
 
     nparam = nx * ny * nz
     if use_4_byte_float:
@@ -1169,10 +1158,6 @@ def draw_random_obs(rng, nobs, nx, ny, nz, obs_err_std):
     )
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 13),
-    reason="gaussianfft not available on Python >= 3.13",
-)
 @pytest.mark.parametrize(
     (
         "nx",
@@ -1310,7 +1295,6 @@ def test_update_params_3D(
         corr_range,
         vert_range,
         seed,
-        corr_func_name="gaussian",
     )
 
     X_prior_3D = X_prior.reshape((nx, ny, nz, nreal))

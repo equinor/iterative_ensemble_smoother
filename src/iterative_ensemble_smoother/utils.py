@@ -357,15 +357,24 @@ def calc_max_number_of_layers_per_batch_for_distance_localization(
     return max_nlayer_per_batch
 
 
-def localization_scaling_function(
+def gaspari_cohn(
     distances: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
-    """Calculate scaling factor to be used as values in RHO matrix.
+    """Gaspari--Cohn distance-based localization scaling function.
 
-    Calculate scaling factor to be used as values in RHO matrix in distance-based
-    localization. The scaling function implements the commonly used function
-    published by Gaspari and Cohn. For input normalized distance >= 2,
-    the value will be 0.
+    For each normalised distance d, returns a scaling factor in [0, 1]
+    used as elements in the localization matrix (rho).
+    For d >= 2 the value is 0.
+
+    This is an implementation of Eq. (4.10) in Section 4.3
+    ("Compactly supported 5th-order piecewise rational functions") of
+    :cite:t:`gaspari1999construction`.
+
+    References
+    ----------
+    Gaspari, G. and Cohn, S.E. (1999), Construction of correlation functions
+    in two and three dimensions. Q.J.R. Meteorol. Soc., 125: 723-757.
+    https://doi.org/10.1002/qj.49712555417
 
     Parameters
     ----------
@@ -376,31 +385,48 @@ def localization_scaling_function(
     -------
     np.ndarray
         Values of scaling factors for each value of input distance.
+
+    Examples
+    --------
+    The function equals 1 at d=0, 5/24 at d=1, and 0 for d>=2:
+
+    >>> import numpy as np
+    >>> gaspari_cohn(np.array([0.0, 1.0, 2.0, 3.0]))
+    array([1.        , 0.20833333, 0.        , 0.        ])
+
+    The input array is not modified:
+
+    >>> d = np.array([0.5, 1.5])
+    >>> _ = gaspari_cohn(d)
+    >>> d
+    array([0.5, 1.5])
     """
-    # "gaspari-cohn"
-    # Commonly used in distance-based localization
-    # Is exact 0 for normalized distance > 2.
-    scaling_factor = distances
+    scaling_factor = np.zeros_like(distances)
+
     d2 = distances**2
     d3 = d2 * distances
     d4 = d3 * distances
     d5 = d4 * distances
-    s = -1 / 4 * d5 + 1 / 2 * d4 + 5 / 8 * d3 - 5 / 3 * d2 + 1
-    scaling_factor[distances <= 1] = s[distances <= 1]
-    s = (
-        1 / 12 * d5
-        - 1 / 2 * d4
-        + 5 / 8 * d3
-        + 5 / 3 * d2
-        - 5 * distances
-        + 4
-        - 2 / 3 * 1 / distances
-    )
-    scaling_factor[(distances > 1) & (distances <= 2)] = s[
-        (distances > 1) & (distances <= 2)
-    ]
-    scaling_factor[distances > 2] = 0.0
 
+    near = distances <= 1
+    scaling_factor[near] = (
+        -1 / 4 * d5[near] + 1 / 2 * d4[near] + 5 / 8 * d3[near] - 5 / 3 * d2[near] + 1
+    )
+
+    mid = (distances > 1) & (distances <= 2)
+    scaling_factor[mid] = (
+        1 / 12 * d5[mid]
+        - 1 / 2 * d4[mid]
+        + 5 / 8 * d3[mid]
+        + 5 / 3 * d2[mid]
+        - 5 * distances[mid]
+        + 4
+        - 2 / 3 / distances[mid]
+    )
+
+    # Clip to [0, 1] to suppress tiny negative artefacts from
+    # floating-point arithmetic at the d=2 boundary.
+    np.clip(scaling_factor, 0.0, 1.0, out=scaling_factor)
     return scaling_factor
 
 
@@ -416,29 +442,33 @@ def calc_rho_for_2d_grid_layer(
     obs_anisotropy_angle: npt.NDArray[np.float64],
     right_handed_grid_indexing: bool = True,
 ) -> npt.NDArray[np.float64]:
-    """Calculate scaling values (RHO matrix elements) for a set of observations
-    with associated localization ellipse. The method will first
-    calculate the distances from each observation position to each grid cell
-    center point of all grid cells for a 2D grid.
-    The localization method will only consider lateral distances, and it is
-    therefore sufficient to calculate the distances in 2D.
-    All input observation positions are in the local grid coordinate system
-    to simplify the calculation of the distances.
+    """Calculate elements of the localization matrix (rho) for a 2D grid layer.
 
-    The position: xpos[n], ypos[n] and
-    localization ellipse defined by obs_main_range[n],obs_perp_range[n],
-    obs_anisotropy_angle[n]) refers to observation[n].
+    For each observation, the distance to every grid cell centre is computed
+    and passed through the Gaspari--Cohn scaling function to obtain rho.
+    Only lateral distances (horizontal distances in the (x, y) plane,
+    ignoring depth) are considered, so every depth layer of a 3D grid
+    shares the same cell centres and produces identical rho values;
+    a single 2D calculation therefore covers all depth layers.
+    All observation positions are given in the local grid coordinate
+    system.
 
-    The distance between an observation with index n and a grid cell (i,j) is
-    d[m,n] = dist((xpos_obs[n],ypos_obs[n]),(xpos_field[i,j],ypos_field[i,j]))
+    Each observation n is described by its position
+    (obs_xpos[n], obs_ypos[n]) and its localization ellipse
+    (obs_main_range[n], obs_perp_range[n], obs_anisotropy_angle[n]).
 
-    RHO[[m,n] = scaling(d)
-    where m = j + i * ny for left-handed grid index origo and
-          m = (ny - j - 1) + i * ny for right-handed grid index origo
-    Note that since d[m,n] does only depend on observation index n and
-    grid cell index (i,j). The values for RHO is
-    calculated for the combination ((i,j), n) and this covers
-    one grid layer in ertbox grid or a 2D surface grid.
+    Grid cells are addressed by a flat index m that encodes the 2D cell index (i, j):
+        m = j + i * ny                (left-handed grid indexing)
+        m = (ny - j - 1) + i * ny    (right-handed grid indexing)
+
+    The 2D distance from observation n to grid cell m = (i, j) is:
+        d[m, n] = dist((obs_xpos[n], obs_ypos[n]), ((i + 0.5) * xinc, (j + 0.5) * yinc))
+
+    where (i + 0.5) * xinc and (j + 0.5) * yinc are the x- and y-coordinates
+    of the centre of grid cell (i, j) in the local coordinate system.
+
+    The localization matrix element for cell m and observation n is:
+        rho[m, n] = gaspari_cohn(d[m, n])
 
     Parameters
     ----------
@@ -455,28 +485,33 @@ def calc_rho_for_2d_grid_layer(
     obs_ypos : np.ndarray
         Observations y coordinates in local coordinates.
     obs_main_range : np.ndarray
-        Localization ellipse first range.
+        Semi-axis length of the localization ellipse along the principal axis
+        (the axis oriented at ``obs_anisotropy_angle`` relative to the local x-axis).
     obs_perp_range : np.ndarray
-        Localization ellipse second range.
+        Semi-axis length of the localization ellipse perpendicular to the principal
+        axis. Equal to ``obs_main_range`` gives a circle; smaller gives an elongated
+        ellipse.
     obs_anisotropy_angle : np.ndarray
-        Localization ellipse orientation relative to local coordinate system in degrees.
+        Orientation of the principal axis of the localization ellipse in degrees
+        relative to the local x-axis. An angle of 0 aligns the principal axis with
+        the x-axis of the local coordinate system.
     right_handed_grid_indexing : bool, optional
         Whether to use right-handed grid indexing. Default is True.
 
     Returns
     -------
     np.ndarray
-        Rho matrix values for one layer of the 3D ertbox grid or for a 2D surface grid.
+        Localization matrix (rho) of shape ``(nx, ny, nobs)`` for one
+        layer of a 3D grid or for a 2D surface grid.
     """
     # Center points of each grid cell in field parameter grid
-    x_local = (np.arange(nx, dtype=np.float64) + 0.5) * xinc
+    x_local = (np.arange(nx) + 0.5) * xinc
     if right_handed_grid_indexing:
         # y coordinate decreases from max to min
-        y_local = (np.arange(ny - 1, -1, -1, dtype=np.float64) + 0.5) * yinc
+        y_local = (np.arange(ny - 1, -1, -1) + 0.5) * yinc
     else:
         # y coordinate increases from min to max
-        y_local = (np.arange(ny, dtype=np.float64) + 0.5) * yinc
-    mesh_x_coord, mesh_y_coord = np.meshgrid(x_local, y_local, indexing="ij")
+        y_local = (np.arange(ny) + 0.5) * yinc
 
     # Number of observations
     nobs = len(obs_xpos)
@@ -499,9 +534,12 @@ def calc_rho_for_2d_grid_layer(
         "All range values for all observations must be positive"
     )
 
-    # Expand grid coordinates to match observations
-    mesh_x_coord_flat = mesh_x_coord.flatten()[:, np.newaxis]  # (nx * ny, 1)
-    mesh_y_coord_flat = mesh_y_coord.flatten()[:, np.newaxis]  # (nx * ny, 1)
+    # Build flattened grid coordinates directly, avoiding intermediate (nx, ny) arrays.
+    # With "ij" indexing, meshgrid followed by flatten is equivalent to:
+    #   x repeated ny times per x-value: [x0,x0,...,x1,x1,...,xn,xn,...]
+    #   y tiled nx times:                [y0,y1,...,y0,y1,...,y0,y1,...]
+    mesh_x_coord_flat = np.repeat(x_local, ny).reshape(-1, 1)  # (nx * ny, 1)
+    mesh_y_coord_flat = np.tile(y_local, nx).reshape(-1, 1)  # (nx * ny, 1)
 
     # Observation coordinates and parameters
     obs_xpos = obs_xpos[np.newaxis, :]  # (1, nobs)
@@ -530,7 +568,7 @@ def calc_rho_for_2d_grid_layer(
     # Compute distances in the elliptical coordinate system
     distances = np.hypot(dX_ellipse, dY_ellipse)  # (nx * ny, nobs)
     # Apply the scaling function
-    return localization_scaling_function(distances).reshape((nx, ny, nobs))
+    return gaspari_cohn(distances).reshape((nx, ny, nobs))
 
 
 if __name__ == "__main__":

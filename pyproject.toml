@@ -70,7 +70,7 @@ dev = [
     "pandas",
     "p_tqdm",
     "pylint",
-    "gaussianfft; python_version < '3.13'",
+    "gaussianfft"
 ]
 # setuptools_scm also writes the version to a file so that one can use the
 # __version__ attribute from the package
