@@ -23,7 +23,7 @@ Let's define the terms in your matrices:
 * **Localization ($\rho$):** Because we want to cut off $y_2$, our localization array for the state variable $x$ is $\rho = \begin{pmatrix} 1 & 0 \end{pmatrix}$.
 
 Let $S = YY^T + R = \begin{pmatrix} v_1 + r_1 & c_{12} \\ c_{12} & v_2 + r_2 \end{pmatrix}$.
-The determinant of this matrix is $|S| = (v_1+r_1)(v_2+r_2) - c_{12}^2$.
+The determinant of this matrix is $\lvert S \rvert = (v_1+r_1)(v_2+r_2) - c_{12}^2$.
 
 ---
 
@@ -38,20 +38,20 @@ $\rho \circ XY^T = \begin{pmatrix} 1 \cdot c_1 & 0 \cdot c_2 \end{pmatrix} = \be
 
 **Step 2: Invert the Global $S$ Matrix**
 Using the analytical formula for a 2x2 inverse:
-$S^{-1} = \frac{1}{|S|} \begin{pmatrix} v_2 + r_2 & -c_{12} \\ -c_{12} & v_1 + r_1 \end{pmatrix}$
+$S^{-1} = \frac{1}{\lvert S \rvert} \begin{pmatrix} v_2 + r_2 & -c_{12} \\ -c_{12} & v_1 + r_1 \end{pmatrix}$
 
 **Step 3: Multiply $(\rho \circ XY^T)$ by $S^{-1}$**
-$\begin{pmatrix} c_1 & 0 \end{pmatrix} \frac{1}{|S|} \begin{pmatrix} v_2 + r_2 & -c_{12} \\ -c_{12} & v_1 + r_1 \end{pmatrix} = \frac{1}{|S|} \begin{pmatrix} c_1(v_2+r_2) & -c_1 c_{12} \end{pmatrix}$
+$\begin{pmatrix} c_1 & 0 \end{pmatrix} \frac{1}{\lvert S \rvert} \begin{pmatrix} v_2 + r_2 & -c_{12} \\ -c_{12} & v_1 + r_1 \end{pmatrix} = \frac{1}{\lvert S \rvert} \begin{pmatrix} c_1(v_2+r_2) & -c_1 c_{12} \end{pmatrix}$
 
 **Step 4: Multiply by the Innovations to get the final update**
-$\Delta x = \frac{1}{|S|} \begin{pmatrix} c_1(v_2+r_2) & -c_1 c_{12} \end{pmatrix} \begin{pmatrix} \delta_1 \\ \delta_2 \end{pmatrix}$
+$\Delta x = \frac{1}{\lvert S \rvert} \begin{pmatrix} c_1(v_2+r_2) & -c_1 c_{12} \end{pmatrix} \begin{pmatrix} \delta_1 \\ \delta_2 \end{pmatrix}$
 
 **Analytical Result (No Indexing):**
 
 
 Here is the simplified version:
 
-$$\Delta x = \frac{c_1(v_2+r_2)}{|S|} \delta_1 - \frac{c_1 c_{12}}{|S|} \delta_2$$
+$$\Delta x = \frac{c_1(v_2+r_2)}{\lvert S \rvert} \delta_1 - \frac{c_1 c_{12}}{\lvert S \rvert} \delta_2$$
 
 **The Problem:** The update still depends on the far observation's innovation ($\delta_2$) and variance ($v_2$), which it should not. This happens because the spurious correlation ($c_{12}$) in the unlocalized $YY^T$ matrix allows their influence to leak into the local update.
 
@@ -81,7 +81,7 @@ $$\Delta x = c_1 (v_1 + r_1)^{-1} \delta_1 = \frac{c_1}{v_1 + r_1} \delta_1$$
 
 Compare the two results:
 
-1. **No Indexing:** $\Delta x = \frac{c_1(v_2+r_2)}{|S|} \delta_1 - \frac{c_1 c_{12}}{|S|} \delta_2$
+1. **No Indexing:** $\Delta x = \frac{c_1(v_2+r_2)}{\lvert S \rvert} \delta_1 - \frac{c_1 c_{12}}{\lvert S \rvert} \delta_2$
 2. **Indexing:** $\Delta x = \frac{c_1}{v_1 + r_1} \delta_1$
 
 By extracting the subset of local observations (indexing), $y_2$ is completely removed. There is no $\delta_2$, and the spurious correlation $c_{12}$ vanishes.
