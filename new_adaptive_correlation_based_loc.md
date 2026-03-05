@@ -65,9 +65,11 @@ Using the analytical formula for a 2x2 inverse:
 $$S^{-1} = \frac{1}{\lvert S \rvert} \begin{pmatrix} v_2 + r_2 & -c_{12} \\\\ -c_{12} & v_1 + r_1 \end{pmatrix}$$
 
 **Step 3: Multiply $(\rho \circ XY^T)$ by $S^{-1}$**
+
 $$\begin{pmatrix} c_1 & 0 \end{pmatrix} \frac{1}{\lvert S \rvert} \begin{pmatrix} v_2 + r_2 & -c_{12} \\\\ -c_{12} & v_1 + r_1 \end{pmatrix} = \frac{1}{\lvert S \rvert} \begin{pmatrix} c_1(v_2+r_2) & -c_1 c_{12} \end{pmatrix}$$
 
 **Step 4: Multiply by the Innovations to get the final update**
+
 $$\Delta x = \frac{1}{\lvert S \rvert} \begin{pmatrix} c_1(v_2+r_2) & -c_1 c_{12} \end{pmatrix} \begin{pmatrix} \delta_1 \\\\ \delta_2 \end{pmatrix}$$
 
 **Analytical Result (No Indexing):**
