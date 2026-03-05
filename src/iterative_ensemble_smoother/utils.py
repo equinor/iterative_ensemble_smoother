@@ -401,6 +401,8 @@ def gaspari_cohn(
     >>> d
     array([0.5, 1.5])
     """
+    if not np.all(distances >= 0):
+        return ValueError(f"Distances must be positive. Min: {np.min(distances)}")
     scaling_factor = np.zeros_like(distances)
 
     d2 = distances**2
