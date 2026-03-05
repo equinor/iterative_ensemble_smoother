@@ -37,8 +37,7 @@ import numpy as np
 import scipy as sp
 from matplotlib import pyplot as plt
 
-from iterative_ensemble_smoother import ESMDA
-from iterative_ensemble_smoother.experimental import AdaptiveESMDA
+from iterative_ensemble_smoother import ESMDA, AdaptiveESMDA
 
 # %% [markdown]
 # ## Create problem data
@@ -167,12 +166,10 @@ smoother = ESMDA(
 )
 
 X_i = np.copy(X)
-for i, alpha_i in enumerate(smoother.alpha, 1):
-    print(
-        f"ESMDA iteration {i}/{smoother.num_assimilations()}"
-        f" with inflation factor alpha_i={alpha_i}"
-    )
-    X_i = smoother.assimilate(X_i, Y=g(X_i))
+for i in range(smoother.num_assimilations()):
+    print(f"ESMDA iteration {i + 1}/{smoother.num_assimilations()}")
+    smoother.prepare_assimilation(Y=g(X_i))
+    X_i = smoother.assimilate_batch(X=X_i)
 
 
 X_posterior = np.copy(X_i)
@@ -204,34 +201,24 @@ plt.show()
 
 # %%
 adaptive_smoother = AdaptiveESMDA(
-    covariance=covariance,
-    observations=observations,
-    seed=1,
+    covariance=covariance, observations=observations, seed=1, alpha=alpha
 )
 
 X_i = np.copy(X)
 
-# Loop over alpha defined in ESMDA instance,
-# the vector of inflation values alpha is then
-# of the same size in AdaptiveESMDA and ESMDA,
-# and it's correctly scaled
-assert np.isclose(np.sum(1 / smoother.alpha), 1), "Incorrect scaling"
-for i, alpha_i in enumerate(smoother.alpha, 1):
-    print(
-        f"AdaptiveESMDA iteration {i}/{len(smoother.alpha)}"
-        f" with inflation factor alpha_i={alpha_i}"
-    )
+
+num_assimilations = adaptive_smoother.num_assimilations()
+for i in range(adaptive_smoother.num_assimilations()):
+    print(f"AdaptiveESMDA iteration {i + 1}/{num_assimilations}")
 
     # Run forward model
     Y_i = g(X_i)
 
-    # Perturb observations
-    D_i = adaptive_smoother.perturb_observations(
-        ensemble_size=X_i.shape[1], alpha=alpha_i
-    )
-
     # Assimilate data
-    X_i = adaptive_smoother.assimilate(X=X_i, Y=Y_i, D=D_i, alpha=alpha_i)
+    adaptive_smoother.prepare_assimilation(Y=Y_i)
+    X_i = adaptive_smoother.assimilate_batch(
+        X=X_i, correlation_callback=AdaptiveESMDA.three_over_sqrt_n
+    )
 
 
 X_adaptive_posterior = np.copy(X_i)
@@ -294,7 +281,7 @@ def corr_true(array):
     return sp.stats.pearsonr(x_true, array).statistic
 
 
-ENSEMBLE_SIZES = list(range(2, 51))
+ENSEMBLE_SIZES = list(range(2, 51, 5))
 NUM_SEEDS = 25
 
 # Store average correlation coefficients
@@ -325,8 +312,9 @@ for ensemble_size in ENSEMBLE_SIZES:
         )
 
         X_i = np.copy(X)
-        for i, alpha_i in enumerate(smoother.alpha, 1):
-            X_i = smoother.assimilate(X_i, Y=g(X_i))
+        for _ in range(smoother.num_assimilations()):
+            smoother.prepare_assimilation(Y=g(X_i))
+            X_i = smoother.assimilate_batch(X=X_i)
 
         ESMDA_means.append(np.mean(X_i, axis=1))
 
@@ -339,14 +327,11 @@ for ensemble_size in ENSEMBLE_SIZES:
 
         X_i = np.copy(X)
 
-        for i, alpha_i in enumerate(smoother.alpha, 1):
-            # Perturb observations
-            D_i = adaptive_smoother.perturb_observations(
-                ensemble_size=X_i.shape[1], alpha=alpha_i
+        for _ in range(adaptive_smoother.num_assimilations()):
+            adaptive_smoother.prepare_assimilation(Y=g(X_i))
+            X_i = adaptive_smoother.assimilate_batch(
+                X=X_i, correlation_callback=AdaptiveESMDA.three_over_sqrt_n
             )
-
-            # Assimilate data
-            X_i = adaptive_smoother.assimilate(X=X_i, Y=g(X_i), D=D_i, alpha=alpha_i)
 
         AdaptiveESMDA_means.append(np.mean(X_i, axis=1))
 

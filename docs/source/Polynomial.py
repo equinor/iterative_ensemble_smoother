@@ -147,7 +147,8 @@ smoother = ies.ESMDA(
 
 for _ in range(smoother.num_assimilations()):
     # Assimilation step
-    X_ESMDA = smoother.assimilate(X_ESMDA, Y_ESMDA, truncation=1.0)
+    smoother.prepare_assimilation(Y=Y_ESMDA, truncation=1.0)
+    X_ESMDA = smoother.assimilate_batch(X=X_ESMDA)
 
     # Apply forward model again
     _coeff_a, _coeff_b, _coeff_c = X_ESMDA
