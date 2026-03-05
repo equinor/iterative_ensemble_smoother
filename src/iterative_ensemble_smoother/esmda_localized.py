@@ -4,9 +4,9 @@ Localized ESMDA
 
 This module implements localized ESMDA, following the paper:
 
-    - "Analysis of the performance of ensemble-based assimilation
-       of production and seismic data", Alexandre A. Emerick
-       https://doi.org/10.1016/j.petrol.2016.01.029
+- "Analysis of the performance of ensemble-based assimilation
+   of production and seismic data", Alexandre A. Emerick
+   https://doi.org/10.1016/j.petrol.2016.01.029
 
 
 What is localized ESMDA and what are the performance tradeoffs?

@@ -12,7 +12,7 @@ This implementation follows the paper, but with some additions:
   the next 1 million, etc.
 - Deals with missing combinations of parameters in ensembles.
 
-We take a layered approach:
+We take a layered approach in the implementation:
 
 1. Computations that need to be done once are performed in class initialization.
    Example: computing the Cholesky factor of the observation covariance

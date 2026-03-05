@@ -1,5 +1,4 @@
 """
-
 Adaptive Ensemble Smoother with Multiple Data Assimilation
 ----------------------------------------------------------
 
@@ -102,7 +101,11 @@ class AdaptiveESMDA(BaseESMDA):
         corr_XY: npt.NDArray[np.double],
         observations_per_parameter: npt.NDArray[np.int_],
     ) -> npt.NDArray[np.double]:
-        """Use the correlation threshold 3 / sqrt(n)."""
+        """Use the correlation threshold 3 / sqrt(n).
+
+        This simple thresholding rule is equation (6) in the adaptive localization
+        paper: http://doi.org/10.1175/MWR-D-24-0269.1
+        """
         threshold = np.clip(
             3 / np.sqrt(observations_per_parameter), a_min=0.0, a_max=1.0
         )
@@ -247,7 +250,7 @@ class AdaptiveESMDA(BaseESMDA):
     def _clip_correlation_matrix(
         corr_XY: npt.NDArray[np.double],
     ) -> npt.NDArray[np.double]:
-        """Clip correlation matrix to range [-1, 1]."""
+        """Clip correlation array to range [-1, 1]."""
 
         # Perform checks and clip values to [-1, 1]
         eps = 1e-8
