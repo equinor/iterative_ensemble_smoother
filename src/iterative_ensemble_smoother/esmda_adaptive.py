@@ -221,7 +221,7 @@ class AdaptiveESMDA(BaseESMDA):
                 continue
 
             logger.debug(
-                f"Assimilating {len(param_idx)} parameters that share"
+                f"Assimilating {len(param_idx)} parameters that share "
                 "the same correlation structure with observations."
             )
 
