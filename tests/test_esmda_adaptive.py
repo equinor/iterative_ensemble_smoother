@@ -62,7 +62,7 @@ class TestAdaptiveESMDA:
             # cross-correlation matrix contains all correlations,
             # even those deemed insignificant.
             assert corr_XY.shape == (num_params, num_observations)
-            return np.zeros_like(corr_XY)  # Cut off all
+            return np.zeros_like(corr_XY, dtype=np.bool_)  # Cut off all
 
         X_i = np.copy(X)
         for _ in range(smoother.num_assimilations()):
@@ -95,7 +95,8 @@ class TestAdaptiveESMDA:
         )
 
         def correlation_callback(corr_XY, observations):
-            return corr_XY  # Do nothing
+            # Cutoff 0 means we keep everything, so return True in all entries
+            return np.ones_like(corr_XY, dtype=np.bool_)
 
         X_i = np.copy(X)
         for _ in range(smoother.num_assimilations()):
@@ -153,8 +154,9 @@ class TestAdaptiveESMDA:
         )
 
         def correlation_callback(corr_XY, observations_per_parameter, cutoff):
-            corr_XY[np.abs(corr_XY) <= cutoff] = 0
-            return corr_XY
+            mask = np.ones_like(corr_XY, dtype=np.bool_)
+            mask[np.abs(corr_XY) <= cutoff] = 0
+            return mask
 
         X_i = np.copy(X)
 

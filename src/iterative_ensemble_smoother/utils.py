@@ -13,30 +13,31 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def groupby_nonzero_rows(
+def groupby_rows(
     A: npt.NDArray[np.double],
 ) -> Iterator[tuple[npt.NDArray[np.int_], npt.NDArray[np.bool_]]]:
-    """Yields pairs (row_indices, nonzero_columns).
+    """Yields pairs (row_indices, columns).
 
-    The usage is that A is a correlation matrix with shape (params, responses)
-    and we wish to update parameters using non-zero responses. This function
+    The usage is that A is a boolean matrix with shape (params, responses)
+    indicating for each parameter which responses to keep. This function
     tells us, for each group of parameters, which responses to update.
 
     Examples
     --------
-    >>> A = np.array([[ 1.6,  -1.57,  0.0],
-    ...               [ 0.0,   0.0,  -2.5 ],
-    ...               [-0.56, -0.03,  0.0],
-    ...               [ 0.0,   0.0,   0.2 ],
-    ...               [ 0.02,  0.66, -0.71]])
-    >>> for param_idx, response_idx in groupby_nonzero_rows(A):
+    >>> A = np.array([[ True, False,  True],
+    ...               [False,  True, False],
+    ...               [False,  True, False],
+    ...               [ True, False,  True],
+    ...               [ True,  True, False]])
+    >>> for param_idx, response_idx in groupby_rows(A):
     ...     print(param_idx, response_idx)
-    [0 2] [ True  True False]
-    [1 3] [False False  True]
-    [4] [ True  True  True]
+    [0 3] [ True False  True]
+    [1 2] [False  True False]
+    [4] [ True  True False]
     """
-    nonzeros = np.logical_not(np.isclose(A, 0))
-    unique_rows, inverse = np.unique(nonzeros, axis=0, return_inverse=True)
+    if not np.issubdtype(A.dtype, np.bool_):
+        raise ValueError(f"A must be a boolean array, got dtype: {A.dtype}")
+    unique_rows, inverse = np.unique(A, axis=0, return_inverse=True)
 
     # Group each non-zero pattern by its row
     groups = collections.defaultdict(list)
@@ -45,7 +46,7 @@ def groupby_nonzero_rows(
 
     for indices in groups.values():
         first_idx, *_ = indices
-        yield np.array(indices, dtype=np.int_), nonzeros[first_idx, :]
+        yield np.array(indices, dtype=np.int_), A[first_idx, :]
 
 
 def masked_std(
