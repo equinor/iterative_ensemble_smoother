@@ -337,6 +337,7 @@ def draw_1D_field(
     corr_func_name: str,
     corr_range: float,
     nparam: int,
+    nsim_param: int,
     nreal: int,
     nu: float = 1.5,
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
@@ -344,17 +345,18 @@ def draw_1D_field(
     # Returns prior ensemble drawn and covariance matrix
 
     variance = stdev**2
-
+    assert corr_func_name in ["exponential", "general_exponential", "gaussian", "spherical","matern32","matern72"]
     # Generate distance matrix
     x_coords = (np.arange(nparam) + 0.5) * xinc
     distances = np.abs(x_coords[:, None] - x_coords[None, :]) / corr_range
-
+    print(f"corr_range:  {corr_range=}")
+    print(f"distances:  {distances=}")
     # Compute covariance matrix based on correlation function
     if corr_func_name == "exponential":
         cov_matrix = variance * np.exp(-3.0 * distances)
     elif corr_func_name == "gaussian":
         cov_matrix = variance * np.exp(-3.0 * distances**2)
-    elif corr_func_name == "gen_exponential":
+    elif corr_func_name == "general_exponential":
         cov_matrix = variance * np.exp(-3.0 * np.power(distances, nu))
     else:
         raise ValueError("Unsupported correlation function")
@@ -379,12 +381,16 @@ def draw_1D_field(
             corr_func_name,
             corr_range,
         )
+    assert nsim_param >= nparam
+    start_index = int((nsim_param -nparam)/2)
+    end_index = int(start_index + nparam)
+    print(f"start_index: {start_index}  end_index: {end_index}")
     X_prior = np.zeros((nparam, nreal), dtype=np.double)
     for real_number in range(nreal):
         if real_number % 2000 == 0:
             print(f"Real number: {real_number}")
-        field_values = grf.simulate(variogram, nparam, xinc)
-        X_prior[:, real_number] = field_values * stdev + mean
+        field_values = grf.simulate(variogram, nsim_param, xinc)
+        X_prior[:, real_number] = field_values[start_index:end_index] * stdev + mean
     
 
     return X_prior, cov_matrix
@@ -466,10 +472,12 @@ def calc_obs_error_cov(
     nu: float = 1.5,
 ) -> npt.NDArray[np.float64]:
     nobs = obs_error_std.shape[0]
-    cov = np.zeros((nobs, nobs), dtype=np.float64)
 
+
+    assert corr_func_name in ["gaussian", "exponential","general_exponential"]
     if obs_corr_range == 0:
         # Diagonal covariance matrix
+        cov = np.zeros((nobs, nobs), dtype=np.float64)
         np.fill_diagonal(cov, obs_error_std**2)
     else:
         # Precompute pairwise distances divided by obs_corr_range
@@ -487,109 +495,131 @@ def calc_obs_error_cov(
 
         # Element-wise multiplication to get covariance matrix
         cov = outer_std * corr
-
+    print(f"Obs covariance: {cov=}")
     return cov
 
 
-def test_distance_based_localization_on_1D_corr_field(
-    nparam: int,
-    nreal: int,
-    nobs: int,
-    field_corr_func_name: str,
-    relative_corr_range: float,
-    relative_localization_radius: float,
-    obs_corr_func_name: str,
-    relative_obs_corr_range: float,
-    obs_err_std: float,
-    nu:float,
-    seed: int,
-    use_localization: bool,
-    case: str,
-) -> None:
-    # This test will check that Distance based ESMDA of the posterior mean
-    # converge to a value close to the theoretical limit for an experiment
-    # where observation errors are small and there are no trends in the
-    # prior gaussian field. The theorietical limit when using ESMDA
-    # should be exactly the same as the simple kriging estimate,
-    # but the theoretical limit when using Distancebased localization
-    # will depend on the ratio between the spatial correlation length
-    # of the prior field and the localization range.
-    # The expected result for distance based localization with ESMDA
-    # when number of realizations approach a very large number
-    # will correspond to gaussian field with a prior with shorter
-    # correlation length than what is specified due to the downscaling
-    # of the effect of the observations with distance. (Reduced value
-    # of Kalman Gain matrix elements)
-
-    # Prior field mean and stdev
-    mean = 0.0
-    stdev = 1.0
-    xinc = 1.0
-
-    # If this flag is set to True, a set of files with csv files useful to
-    # verify and compare DL-ESMDA with ESMDA and with simple kriging estimate
-    # is created.
-    write_csv_files = True
-    corr_range = nparam * xinc * relative_corr_range
-    obs_corr_range = nparam * xinc * relative_obs_corr_range
-    localization_radius = nparam * xinc * relative_localization_radius
-
-    # obs_vector = np.zeros(nobs, dtype=np.float64)
-    # xpos = np.linspace(-1.0,1.0, nobs, endpoint=True)
-    # i = 0
-    # for x in xpos:
-    #     obs_vector[i] = 0.5 -x**2
-    #     i += 1
+def draw_prior_ensemble(
+        seed: int,
+        mean:float,
+        stdev: float,
+        xinc:float,
+        field_corr_func_name: str,
+        nparam: int,
+        nreal: int,
+        field_corr_rel_range: float,
+        nu: float,
+):
     # Draw observations from same distriution as the gaussian field
-    rng = np.random.default_rng(seed)
+    length = xinc * nparam
+    field_corr_range = length * field_corr_rel_range
     grf.seed(seed)  # Seed is global to the class 
-    X_obs, _ = draw_1D_field(
-        mean,
-        stdev,
-        xinc,
-        field_corr_func_name,
-        corr_range,
-        nparam,
-        1,
-        nu,
-    )
-
-    obs_index_vector = np.linspace(1, nparam - 1, nobs, dtype=np.int32)
-    obs_vector = X_obs[obs_index_vector, 0]
-    print(f"nobs: {obs_vector.shape[0]}")
-#    print(f"obs_values: {obs_vector}")
-#    print(f"obs index vector: {obs_index_vector}")
-
-    alpha = np.array([1.0])
-    obs_std_vector = obs_err_std * np.ones(nobs, dtype=np.float64)
-    #xpos = (obs_index_vector + 0.5) * xinc
-    xpos = (obs_index_vector) * xinc
-    print("Calculate covariance matrix for observations")
-    C_D = calc_obs_error_cov(obs_std_vector, xpos, obs_corr_func_name, obs_corr_range, nu)
-
-    # Draw prior ensemble with specified spatial correlation function
-    #    rng = np.random.default_rng(seed)
-
+    nsim_param = int(1.5*nparam)
     print("Simulate Gaussian fields")
     X_prior, field_cov_matrix = draw_1D_field(
         mean,
         stdev,
         xinc,
         field_corr_func_name,
-        corr_range,
+        field_corr_range,
         nparam,
+        nsim_param,
         nreal,
         nu,
     )
+    return X_prior, field_cov_matrix
 
+def draw_obs(
+        mean:float,
+        stdev: float,
+        xinc:float,
+        field_corr_func_name: str,
+        nparam: int,
+        nobs: int,
+        field_corr_rel_range: float,
+        nu: float,
+        draw_position: bool = False,
+):
+    # Draw observations from same distriution as the gaussian field
+    length = xinc * nparam
+    field_corr_range = length * field_corr_rel_range
+
+    print(f"Draw observations")
+    nsim_param = int(1.5*nparam)
+    X_obs, _ = draw_1D_field(
+        mean,
+        stdev,
+        xinc,
+        field_corr_func_name,
+        field_corr_range,
+        nparam,
+        nsim_param,
+        1,
+        nu,
+    )
+    
+    # Draw position of observations
+    if draw_position:
+        obs_index_vector = np.random.choice(nparam, size=nobs)
+    else:
+        obs_index_vector = np.linspace(1, nparam - 1, nobs, dtype=np.int32)
+    obs_vector = X_obs[obs_index_vector, 0]
+    print(f"nobs: {obs_vector.shape[0]}")
+    return  obs_vector, obs_index_vector
+
+def calculate_obs_covariance(
+        nparam: int,
+        nobs: int,
+        xinc:float,
+        obs_corr_func_name: str,
+        obs_index_vector: npt.NDArray[np.int32],
+        obs_corr_rel_range:float,
+        obs_err_std: float,
+        nu: float,
+):
+    length = xinc * nparam
+    obs_corr_range = length * obs_corr_rel_range
+    obs_std_vector = obs_err_std * np.ones(nobs, dtype=np.float64)
+    xpos = (obs_index_vector) * xinc
+
+    print("Calculate covariance matrix for observations")
+    C_D = calc_obs_error_cov(obs_std_vector, xpos, obs_corr_func_name, obs_corr_range, nu)
+    return  C_D
+
+
+def test_distance_based_localization_on_1D_corr_field(
+    X_prior: npt.NDArray[np.double],
+    field_cov_matrix: npt.NDArray[np.double],
+    xinc: float,
+    obs_vector: npt.NDArray[np.double],
+    obs_index_vector: npt.NDArray[np.int32],
+    C_D: npt.NDArray[np.double],
+    relative_localization_radius: float,
+    seed: int,
+    use_localization: bool,
+    case: str,
+    use_esmda: bool = False,
+    use_esmda_dist: bool = False,
+    use_esmda_local: bool = True,
+    calc_simple_kriging:bool = False,
+) -> None:
+    write_csv_files = True
+    nparam =X_prior.shape[0]
+    nreal = X_prior.shape[1]
+    nobs = obs_vector.shape[0]
+    localization_radius = nparam * xinc * relative_localization_radius
+
+
+    alpha = np.array([1.0])
     # Calculate theoretical posterior mean
     # assuming prior mean equal 0.
     # Assume forward model is identity  X = g(X)
     # Use simple kriging estimate for theoretical posterior mean
-    print("Calculate Simple Kriging estimate")
-    mean_predicted_field = predicted_mean_field_values(
-        obs_vector, obs_index_vector, field_cov_matrix, C_D
-    )
+    if calc_simple_kriging:
+        print("Calculate Simple Kriging estimate")
+        mean_predicted_field = predicted_mean_field_values(
+            obs_vector, obs_index_vector, field_cov_matrix, C_D
+        )
 
     # Predict observations `Y` using the identity model `g(x) = x`
     Y = X_prior[obs_index_vector, :]
@@ -617,49 +647,59 @@ def test_distance_based_localization_on_1D_corr_field(
         assert K.shape == rho_matrix.shape
         return K * rho_matrix
 
-    start_time = time.time()
-    print("Use ESMDA")
-    esmda = ESMDA(covariance=C_D, observations=obs_vector, alpha=alpha, seed=seed)
-    X_posterior_global = esmda.assimilate(X=X_prior, Y=Y)
-    end_time = time.time()
-    print(f"Time elapsed: {end_time - start_time:.3f}")
+    if use_esmda:
+        start_time = time.time()
+        print("Use ESMDA")
+        esmda = ESMDA(covariance=C_D, observations=obs_vector, alpha=alpha, seed=seed)
+        X_posterior_global = esmda.assimilate(X=X_prior, Y=Y)
+        end_time = time.time()
+        print(f"Time elapsed: {end_time - start_time:.3f}")
 
-    start_time = time.time()
-    print("Use LocalizedESMDA")
-    esmda_local = LocalizedESMDA(
-        covariance=C_D,
-        observations=obs_vector,
-        alpha=alpha,
-        seed=seed,
-    )
-    esmda_local.prepare_assimilation(Y=Y, truncation=0.999)
-    X_posterior_local = esmda_local.assimilate_batch(
-        X=X_prior,
-        localization_callback=localization_callback,
-    )
-    end_time = time.time()
-    print(f"Time elapsed: {end_time - start_time:.3f}")
+        # Mean and stdev of ensemble of posterior field
+        print("Calculate mean and stdev of ensembles")
+        X_post_mean_global = X_posterior_global.mean(axis=1)
+        X_post_std_global = X_posterior_global.std(axis=1)
 
+    if use_esmda_local:
+        start_time = time.time()
+        print("Use LocalizedESMDA")
+        esmda_local = LocalizedESMDA(
+            covariance=C_D,
+            observations=obs_vector,
+            alpha=alpha,
+            seed=seed,
+        )
 
-    start_time = time.time()
-    print("Use DistanceESMDA")
-    esmda_distance = DistanceESMDA(
-        covariance=C_D, observations=obs_vector, alpha=alpha, seed=seed
-    )
-    X_posterior = esmda_distance.assimilate(
-        X=X_prior, Y=Y, rho=rho_matrix, truncation=0.999
-    )
-    end_time = time.time()
-    print(f"Time elapsed: {end_time - start_time:.3f}")
+        esmda_local.prepare_assimilation(Y=Y, truncation=0.99999)
+        X_posterior_local = esmda_local.assimilate_batch(
+            X=X_prior,
+            localization_callback=localization_callback,
+        )
+        end_time = time.time()
+        print(f"Time elapsed: {end_time - start_time:.3f}")
 
-    # Mean and stdev of ensemble of posterior field
-    print("Calculate mean and stdev of ensembles")
-    X_post_mean_dist = X_posterior.mean(axis=1)
-    X_post_mean_global = X_posterior_global.mean(axis=1)
-    X_post_mean_local = X_posterior_local.mean(axis=1)
-    X_post_std_dist = X_posterior.std(axis=1)
-    X_post_std_global = X_posterior_global.std(axis=1)
-    X_post_std_local = X_posterior_local.std(axis=1)
+        # Mean and stdev of ensemble of posterior field
+        print("Calculate mean and stdev of ensembles")
+        X_post_mean_local = X_posterior_local.mean(axis=1)
+        X_post_std_local = X_posterior_local.std(axis=1)
+
+    if use_esmda_dist:
+        start_time = time.time()
+        print("Use DistanceESMDA")
+        esmda_distance = DistanceESMDA(
+            covariance=C_D, observations=obs_vector, alpha=alpha, seed=seed
+        )
+        X_posterior = esmda_distance.assimilate(
+            X=X_prior, Y=Y, rho=rho_matrix, truncation=0.999
+        )
+        end_time = time.time()
+        print(f"Time elapsed: {end_time - start_time:.3f}")
+
+        # Mean and stdev of ensemble of posterior field
+        print("Calculate mean and stdev of ensembles")
+        X_post_mean_dist = X_posterior.mean(axis=1)
+        X_post_std_dist = X_posterior.std(axis=1)
+
     # Difference with theoretical mean based on simple kriging is calculated.
     # Note that ESMDA in this test should approach the kriging estimate
     # which is the theoretical limit of the posterior mean when nreal -> infinity
@@ -672,73 +712,79 @@ def test_distance_based_localization_on_1D_corr_field(
     # estimate is less than the tolerances. Note that when nreal increases, the
     # tolerances can be reduced, but will never approach 0 as long as
     # localization range is finite. However, for ESMDA, the tolerance
-    # could in theory approach 0 when nreal approach infinity
-    X_diff_dist_sk = X_post_mean_dist - mean_predicted_field
-    X_diff_global_sk = X_post_mean_global - mean_predicted_field
-    X_diff_local_sk = X_post_mean_local - mean_predicted_field
+    # could in theory approach 0 when nreal approach infinity2
 
-    X_diff_dist_abs = np.abs(X_diff_dist_sk)
-    X_diff_global_abs = np.abs(X_diff_global_sk)
-    X_diff_local_abs = np.abs(X_diff_local_sk)
+    # X_diff_dist_sk = X_post_mean_dist - mean_predicted_field
+    # X_diff_global_sk = X_post_mean_global - mean_predicted_field
+    # X_diff_local_sk = X_post_mean_local - mean_predicted_field
 
-    est_std_diff_global = X_diff_global_abs.std()
-    est_std_diff_dist = X_diff_dist_abs.std()
-    est_std_diff_local = X_diff_local_abs.std()
+    # X_diff_dist_abs = np.abs(X_diff_dist_sk)
+    # X_diff_global_abs = np.abs(X_diff_global_sk)
+    # X_diff_local_abs = np.abs(X_diff_local_sk)
 
-    X_dist_diff_max = np.max(X_diff_dist_abs)
-    X_local_diff_max = np.max(X_diff_local_abs)
-    X_global_diff_max = np.max(X_diff_global_abs)
+    # est_std_diff_global = X_diff_global_abs.std()
+    # est_std_diff_dist = X_diff_dist_abs.std()
+    # est_std_diff_local = X_diff_local_abs.std()
+
+    # X_dist_diff_max = np.max(X_diff_dist_abs)
+    # X_local_diff_max = np.max(X_diff_local_abs)
+    # X_global_diff_max = np.max(X_diff_global_abs)
 
     print(f"Number of real: {nreal}")
-    print(f"Max difference using DL ESMDA : {X_dist_diff_max}")
-    print(f"Max difference using LOCAL ESMDA : {X_local_diff_max}")
-    print(f"Max difference using ordinary ESMDA: {X_global_diff_max}")
-    print(
-        "Estimated std of difference between DL and simple kriging: "
-        f"{est_std_diff_dist}"
-    )
-    print(
-        "Estimated std of difference between LOCAL and simple kriging: "
-        f"{est_std_diff_local}"
-    )
-    print(
-        "Estimated std of difference between Global and simple kriging: "
-        f"{est_std_diff_global}"
-    )
+    # print(f"Max difference using DL ESMDA : {X_dist_diff_max}")
+    # print(f"Max difference using LOCAL ESMDA : {X_local_diff_max}")
+    # print(f"Max difference using ordinary ESMDA: {X_global_diff_max}")
+    # print(
+    #     "Estimated std of difference between DL and simple kriging: "
+    #     f"{est_std_diff_dist}"
+    # )
+    # print(
+    #     "Estimated std of difference between LOCAL and simple kriging: "
+    #     f"{est_std_diff_local}"
+    # )
+    # print(
+    #     "Estimated std of difference between Global and simple kriging: "
+    #     f"{est_std_diff_global}"
+    # )
     if write_csv_files:
         # To verify convergence to simple kriging estimate,
         # various csv files are created
         filename = "obs_" + str(nobs) + ".csv"
         print(f"Write file: {filename}")
         np.savetxt(filename, obs_vector, delimiter=",", fmt="%.6f")
-
-        filename = "X_post_mean_dist_" + case + ".csv"
+        print(f"obs: {obs_vector}")
+        filename = "obs_index_" + str(nobs) + ".csv"
         print(f"Write file: {filename}")
-        np.savetxt(filename, X_post_mean_dist, delimiter=",", fmt="%.6f")
+        np.savetxt(filename, obs_index_vector, delimiter=",", fmt="%d")
+        print(f"obs_index: {obs_index_vector}")
+        if use_esmda_dist:
+            filename = "X_post_mean_dist_" + case + ".csv"
+            print(f"Write file: {filename}")
+            np.savetxt(filename, X_post_mean_dist, delimiter=",", fmt="%.6f")
 
-        filename = "X_post_std_dist_" + case + ".csv"
-        print(f"Write file: {filename}")
-        np.savetxt(filename, X_post_std_dist, delimiter=",", fmt="%.6f")
+            filename = "X_post_std_dist_" + case + ".csv"
+            print(f"Write file: {filename}")
+            np.savetxt(filename, X_post_std_dist, delimiter=",", fmt="%.6f")
+        if use_esmda_local:
+            filename = "X_post_mean_local_" + case + ".csv"
+            print(f"Write file: {filename}")
+            np.savetxt(filename, X_post_mean_local, delimiter=",", fmt="%.6f")
 
-        filename = "X_post_mean_local_" + case + ".csv"
-        print(f"Write file: {filename}")
-        np.savetxt(filename, X_post_mean_local, delimiter=",", fmt="%.6f")
+            filename = "X_post_std_local_" + case + ".csv"
+            print(f"Write file: {filename}")
+            np.savetxt(filename, X_post_std_local, delimiter=",", fmt="%.6f")
+        if use_esmda:
+            filename = "X_post_mean_global_" + case + ".csv"
+            print(f"Write file: {filename}")
+            np.savetxt(filename, X_post_mean_global, delimiter=",", fmt="%.6f")
 
-        filename = "X_post_std_local_" + case + ".csv"
-        print(f"Write file: {filename}")
-        np.savetxt(filename, X_post_std_local, delimiter=",", fmt="%.6f")
-
-        filename = "X_post_mean_global_" + case + ".csv"
-        print(f"Write file: {filename}")
-        np.savetxt(filename, X_post_mean_global, delimiter=",", fmt="%.6f")
-
-        filename = "X_post_std_global_" + case + ".csv"
-        print(f"Write file: {filename}")
-        np.savetxt(filename, X_post_std_global, delimiter=",", fmt="%.6f")
-
-        filename = "X_post_SK_" + case + ".csv"
-        print(f"Write file: {filename}")
-        np.savetxt(filename, mean_predicted_field, delimiter=",", fmt="%.6f")
+            filename = "X_post_std_global_" + case + ".csv"
+            print(f"Write file: {filename}")
+            np.savetxt(filename, X_post_std_global, delimiter=",", fmt="%.6f")
+        if calc_simple_kriging:
+            filename = "X_post_SK_" + case + ".csv"
+            print(f"Write file: {filename}")
+            np.savetxt(filename, mean_predicted_field, delimiter=",", fmt="%.6f")
 
         # Mean and stdev of ensemble of prior field
         X_prior_mean = X_prior.mean(axis=1)
@@ -747,232 +793,109 @@ def test_distance_based_localization_on_1D_corr_field(
         np.savetxt(filename, X_prior_mean, delimiter=",", fmt="%.6f")
         print(f"Max abs of X_prior_mean: {np.max(np.abs(X_prior_mean))}")
 
-        # Diff between prior and posterior
-        X_diff_dist_prior_post_mean = X_post_mean_dist - X_prior_mean
-        filename = "X_diff_dist_prior_post_mean_" + case + ".csv"
-        print(f"Write file: {filename}")
-        np.savetxt(filename, X_diff_dist_prior_post_mean, delimiter=",", fmt="%.6f")
+        # # Diff between prior and posterior
+        # X_diff_dist_prior_post_mean = X_post_mean_dist - X_prior_mean
+        # filename = "X_diff_dist_prior_post_mean_" + case + ".csv"
+        # print(f"Write file: {filename}")
+        # np.savetxt(filename, X_diff_dist_prior_post_mean, delimiter=",", fmt="%.6f")
 
-        X_diff_local_prior_post_mean = X_post_mean_local - X_prior_mean
-        filename = "X_diff_local_prior_post_mean_" + case + ".csv"
-        print(f"Write file: {filename}")
-        np.savetxt(filename, X_diff_local_prior_post_mean, delimiter=",", fmt="%.6f")
+        # X_diff_local_prior_post_mean = X_post_mean_local - X_prior_mean
+        # filename = "X_diff_local_prior_post_mean_" + case + ".csv"
+        # print(f"Write file: {filename}")
+        # np.savetxt(filename, X_diff_local_prior_post_mean, delimiter=",", fmt="%.6f")
 
-        X_diff_prior_post_mean_global = X_post_mean_global - X_prior_mean
-        filename = "X_diff_mean_global_" + case + ".csv"
-        print(f"Write file: {filename}")
-        np.savetxt(filename, X_diff_prior_post_mean_global, delimiter=",", fmt="%.6f")
+        # X_diff_prior_post_mean_global = X_post_mean_global - X_prior_mean
+        # filename = "X_diff_mean_global_" + case + ".csv"
+        # print(f"Write file: {filename}")
+        # np.savetxt(filename, X_diff_prior_post_mean_global, delimiter=",", fmt="%.6f")
 
-        # Diff between posterior and simple kriging estimate
-        filename = "X_diff_mean_sk_" + case + ".csv"
-        print(f"Write file: {filename}")
-        np.savetxt(filename, X_diff_local_sk, delimiter=",", fmt="%.6f")
+        # # Diff between posterior and simple kriging estimate
+        # filename = "X_diff_mean_sk_" + case + ".csv"
+        # print(f"Write file: {filename}")
+        # np.savetxt(filename, X_diff_local_sk, delimiter=",", fmt="%.6f")
 
-        filename = "X_diff_mean_global_sk_" + case + ".csv"
-        print(f"Write file: {filename}")
-        np.savetxt(filename, X_diff_global_sk, delimiter=",", fmt="%.6f")
+        # filename = "X_diff_mean_global_sk_" + case + ".csv"
+        # print(f"Write file: {filename}")
+        # np.savetxt(filename, X_diff_global_sk, delimiter=",", fmt="%.6f")
 
 
 if __name__ == "__main__":
-    # NPARAM = 2100
-    # NREAL = 40000
-    # NOBS = 550
-    # FIELD_CORR_FUNC_NAME = "gen_exponential"
-    # FIELD_RELATIVE_CORR_RANGE = 0.3
-    # FIELD_RELATIVE_LOCALIZATION_RANGE = 0.3
-    # OBS_RELATIVE_CORR_RANGE = 0.001
-    # OBS_STD_ERR = 0.3
-    # SEED = 987654321
-    # USE_LOCALIZATION = True
-    # CASE = "N_40000_std_0.3_rel_obsrange_0.001"
-
-    # NPARAM = 2100
-    # NREAL = 40000
-    # NOBS = 550
-    # FIELD_CORR_FUNC_NAME = "gen_exponential"
-    # FIELD_RELATIVE_CORR_RANGE = 0.3
-    # FIELD_RELATIVE_LOCALIZATION_RANGE = 0.3
-    # OBS_RELATIVE_CORR_RANGE = 0.001
-    # OBS_STD_ERR = 0.3
-    # SEED = 987654321
-    # USE_LOCALIZATION = True
-    # CASE = "N_40000_std_0.3_rel_obsrange_0.001"
-
-    # NPARAM = 2100
-    # NREAL = 40000
-    # NOBS = 550
-    # FIELD_CORR_FUNC_NAME = "gen_exponential"
-    # FIELD_RELATIVE_CORR_RANGE = 0.3
-    # FIELD_RELATIVE_LOCALIZATION_RANGE = 0.3
-    # OBS_RELATIVE_CORR_RANGE = 0.5
-    # OBS_STD_ERR = 0.3
-    # SEED = 987654321
-    # USE_LOCALIZATION = True
-    # CASE = "N_40000_std_0.3_rel_obsrange_0.5"
-
-    # NPARAM = 2100
-    # NREAL = 40000
-    # NOBS = 550
-    # FIELD_CORR_FUNC_NAME = "gen_exponential"
-    # FIELD_RELATIVE_CORR_RANGE = 0.3
-    # FIELD_RELATIVE_LOCALIZATION_RANGE = 0.3
-    # OBS_RELATIVE_CORR_RANGE = 0.5
-    # OBS_STD_ERR = 0.05
-    # SEED = 987654321
-    # USE_LOCALIZATION = True
-    # CASE = "N_40000_std_0.05_rel_obsrange_0.5"
-
-    # NPARAM = 2100
-    # NREAL = 40000
-    # NOBS = 550
-    # FIELD_CORR_FUNC_NAME = "gen_exponential"
-    # FIELD_RELATIVE_CORR_RANGE = 0.3
-    # FIELD_RELATIVE_LOCALIZATION_RANGE = 0.3
-    # OBS_RELATIVE_CORR_RANGE = 0.5
-    # OBS_STD_ERR = 0.01
-    # SEED = 987654321
-    # USE_LOCALIZATION = True
-    # CASE = "N_40000_std_0.01_rel_obsrange_0.5"
-
-    # NPARAM = 2100
-    # NREAL = 40000
-    # NOBS = 550
-    # FIELD_CORR_FUNC_NAME = "gen_exponential"
-    # FIELD_RELATIVE_CORR_RANGE = 0.3
-    # FIELD_RELATIVE_LOCALIZATION_RANGE = 0.3
-    # OBS_RELATIVE_CORR_RANGE = 0.5
-    # OBS_STD_ERR = 0.001
-    # SEED = 987654321
-    # USE_LOCALIZATION = True
-    # CASE = "N_40000_std_0.001_rel_obsrange_0.5"
-
-    # NPARAM = 3000
-    # NREAL = 40000
-    # NOBS = 55
-    # FIELD_CORR_FUNC_NAME = "gen_exponential"
-    # FIELD_RELATIVE_CORR_RANGE = 0.3
-    # FIELD_RELATIVE_LOCALIZATION_RANGE = 0.3
-    # OBS_RELATIVE_CORR_RANGE = 0.0001
-    # OBS_STD_ERR = 0.001
-    # SEED = 987654321
-    # USE_LOCALIZATION = True
-    # CASE = "N_40000_std_0.001_rel_obsrange_0.0001"
-
-    # NPARAM = 3000
-    # NREAL = 40000
-    # NOBS = 55
-    # FIELD_CORR_FUNC_NAME = "gen_exponential"
-    # FIELD_RELATIVE_CORR_RANGE = 0.3
-    # FIELD_RELATIVE_LOCALIZATION_RANGE = 0.3
-    # OBS_RELATIVE_CORR_RANGE = 0.1
-    # OBS_STD_ERR = 0.001
-    # SEED = 987654321
-    # USE_LOCALIZATION = True
-    # CASE = "N_40000_std_0.001_rel_obsrange_0.1"
-
-    # NPARAM = 3000
-    # NREAL = 40000
-    # NOBS = 55
-    # FIELD_CORR_FUNC_NAME = "gen_exponential"
-    # FIELD_RELATIVE_CORR_RANGE = 0.3
-    # FIELD_RELATIVE_LOCALIZATION_RANGE = 0.3
-    # OBS_RELATIVE_CORR_RANGE = 0.2
-    # OBS_STD_ERR = 0.001
-    # SEED = 987654321
-    # USE_LOCALIZATION = True
-    # CASE = "N_40000_std_0.001_rel_obsrange_0.2"
-
-    # NPARAM = 3000
-    # NREAL = 40000
-    # NOBS = 55
-    # FIELD_CORR_FUNC_NAME = "gen_exponential"
-    # FIELD_RELATIVE_CORR_RANGE = 0.3
-    # FIELD_RELATIVE_LOCALIZATION_RANGE = 0.3
-    # OBS_RELATIVE_CORR_RANGE = 0.3
-    # OBS_STD_ERR = 0.001
-    # SEED = 987654321
-    # USE_LOCALIZATION = True
-    # CASE = "N_40000_std_0.001_rel_obsrange_0.3"
-
-    # NPARAM = 3000
-    # NREAL = 40000
-    # NOBS = 55
-    # FIELD_CORR_FUNC_NAME = "gen_exponential"
-    # FIELD_RELATIVE_CORR_RANGE = 0.3
-    # FIELD_RELATIVE_LOCALIZATION_RANGE = 0.3
-    # OBS_RELATIVE_CORR_RANGE = 0.4
-    # OBS_STD_ERR = 0.001
-    # SEED = 987654321
-    # USE_LOCALIZATION = True
-    # CASE = "N_40000_std_0.001_rel_obsrange_0.4"
-
-    # NPARAM = 3000
-    # NREAL = 40000
-    # NOBS = 55
-    # FIELD_CORR_FUNC_NAME = "gen_exponential"
-    # FIELD_RELATIVE_CORR_RANGE = 0.3
-    # FIELD_RELATIVE_LOCALIZATION_RANGE = 0.3
-    # OBS_RELATIVE_CORR_RANGE = 0.45
-    # OBS_STD_ERR = 0.001
-    # SEED = 987654321
-    # USE_LOCALIZATION = True
-    # CASE = "N_40000_std_0.001_rel_obsrange_0.45"
-
-    # NPARAM = 3000
-    # NREAL = 40000
-    # NOBS = 55
-    # FIELD_CORR_FUNC_NAME = "gen_exponential"
-    # FIELD_RELATIVE_CORR_RANGE = 0.3
-    # FIELD_RELATIVE_LOCALIZATION_RANGE = 0.3
-    # OBS_RELATIVE_CORR_RANGE = 0.49
-    # OBS_STD_ERR = 0.001
-    # SEED = 987654321
-    # USE_LOCALIZATION = True
-    # CASE = "N_40000_std_0.001_rel_obsrange_0.49"
-
-    # NPARAM = 3000
-    # NREAL = 40000
-    # NOBS = 50
-    # FIELD_CORR_FUNC_NAME = "gen_exponential"
-    # FIELD_RELATIVE_CORR_RANGE = 0.3
-    # FIELD_RELATIVE_LOCALIZATION_RANGE = 0.3
-    # OBS_RELATIVE_CORR_RANGE = 0.5
-    # OBS_STD_ERR = 0.001
-    # SEED = 987654321
-    # USE_LOCALIZATION = True
-    # CASE = "N_40000_std_0.001_rel_obsrange_0.5_nobs_50"
-
-    NPARAM = 100
-    NREAL = 40000
-    NOBS = 25
-#    FIELD_CORR_FUNC_NAME = "gen_exponential"
-    FIELD_CORR_FUNC_NAME = "exponential"
-    OBS_CORR_FUNC_NAME = "general_exponential"
-    OBS_CORR_EXPONENT = 1.99
-    FIELD_RELATIVE_CORR_RANGE = 0.01
+    import math
+    NPARAM = 1000
+    NREAL = 100
+    NOBS = 200
+    FIELD_MEAN = 0.0
+    FIELD_STDEV = 1.0
+    XINC = 1.0
+    FIELD_CORR_FUNC_NAME = "general_exponential"
+#    FIELD_CORR_FUNC_NAME = "exponential"
+    OBS_CORR_FUNC_NAME = "exponential"
+    FIELD_CORR_EXPONENT = 1.9
+    FIELD_RELATIVE_CORR_RANGE = 0.05
     FIELD_RELATIVE_LOCALIZATION_RANGE = 0.1
-    OBS_RELATIVE_CORR_RANGE = 1.0
-    OBS_STD_ERR = 0.01
-    SEED = 987654321
+#    OBS_RELATIVE_CORR_RANGE = 0.001
+    OBS_STD_ERR = 1.0
+    OBS_STD_ERR = 2.58
+    OBS_STD_ERR = math.sqrt(NOBS/30)  # 2.58
+    OBS_STD_ERR = math.sqrt(NOBS/60)  # 1.82
+    OBS_CORR_EXPONENT = 1.9
+    SEED1 = 987654321
+    SEED2 = 781609981
     USE_LOCALIZATION = False
-    if  USE_LOCALIZATION:
-        CASE = f"N_{NREAL}_std_{OBS_STD_ERR}_obsrange_{OBS_RELATIVE_CORR_RANGE}_nobs_{NOBS}_{OBS_CORR_FUNC_NAME}_L_{FIELD_RELATIVE_LOCALIZATION_RANGE}"
-    else:
-        CASE = f"N_{NREAL}_std_{OBS_STD_ERR}_obsrange_{OBS_RELATIVE_CORR_RANGE}_nobs_{NOBS}_{OBS_CORR_FUNC_NAME}"
 
-    print(f"Case: {CASE}")
-    test_distance_based_localization_on_1D_corr_field(
+    X_prior, field_cov_matrix = draw_prior_ensemble(
+        SEED1,
+        FIELD_MEAN,
+        FIELD_STDEV,
+        XINC,
+        FIELD_CORR_FUNC_NAME,
         NPARAM,
         NREAL,
-        NOBS,
-        FIELD_CORR_FUNC_NAME,
         FIELD_RELATIVE_CORR_RANGE,
-        FIELD_RELATIVE_LOCALIZATION_RANGE,
-        OBS_CORR_FUNC_NAME,
-        OBS_RELATIVE_CORR_RANGE,
-        OBS_STD_ERR,
-        OBS_CORR_EXPONENT,
-        SEED,
-        USE_LOCALIZATION,
-        CASE,
-    )
+        FIELD_CORR_EXPONENT)
+    print(f"Field cov matrix: {field_cov_matrix=}")
+    obs_vector, obs_index_vector = draw_obs(
+        FIELD_MEAN,
+        FIELD_STDEV,
+        XINC,
+        FIELD_CORR_FUNC_NAME,
+        NPARAM,
+        NOBS,
+        FIELD_RELATIVE_CORR_RANGE,
+        FIELD_CORR_EXPONENT)
+
+    obs_relative_corr_range_vector = np.arange(0.0,0.3, 0.01)
+    for i in range(len(obs_relative_corr_range_vector)):
+        obs_relative_corr_range = obs_relative_corr_range_vector[i]
+        if  USE_LOCALIZATION:
+            CASE = f"N_{NREAL}_std_{OBS_STD_ERR:.2f}_obsrange_{obs_relative_corr_range:.2f}_nobs_{NOBS}_{OBS_CORR_FUNC_NAME}_L_{FIELD_RELATIVE_LOCALIZATION_RANGE}"
+        else:
+            CASE = f"N_{NREAL}_std_{OBS_STD_ERR:.2f}_obsrange_{obs_relative_corr_range:.2f}_nobs_{NOBS}_{OBS_CORR_FUNC_NAME}"
+
+        print(f"Case: {CASE}")
+
+        C_D = calculate_obs_covariance(
+                NPARAM,
+                NOBS,
+                XINC,
+                OBS_CORR_FUNC_NAME,
+                obs_index_vector,
+                obs_relative_corr_range,
+                OBS_STD_ERR,
+                OBS_CORR_EXPONENT)
+
+        test_distance_based_localization_on_1D_corr_field(
+            X_prior,
+            field_cov_matrix,
+            XINC,
+            obs_vector,
+            obs_index_vector,
+            C_D,
+            FIELD_RELATIVE_LOCALIZATION_RANGE,
+            SEED2,
+            USE_LOCALIZATION,
+            CASE,
+            use_esmda=False,
+            use_esmda_dist=False,
+            use_esmda_local=True)
+        
