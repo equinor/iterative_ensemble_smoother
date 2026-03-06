@@ -39,6 +39,47 @@ def linear_problem(request):
 
 
 class TestAdaptiveESMDA:
+    def test_snapshot(self):
+        """The purpose of this test is to alert the developer if any changes
+        change the behavior. If this is intended, changing the expected value
+        is perfectly fine."""
+
+        rng = np.random.default_rng(42)
+        A = rng.normal(size=(3, 10))
+
+        def forward_model(x):
+            return A @ x
+
+        covariance = np.ones(3, dtype=float)  # Covariance of the observations / outputs
+        observations = np.array([1, 2, 3], dtype=float)  # The observed data
+        smoother = AdaptiveESMDA(
+            covariance=covariance, observations=observations, alpha=3, seed=42
+        )
+        X = rng.normal(size=(10, 100))
+        X_prior = X.copy()
+
+        for iteration in range(smoother.num_assimilations()):
+            Y = np.array([forward_model(x) for x in X.T]).T
+
+            # Prepare for assimilation
+            smoother.prepare_assimilation(Y=Y, truncation=1.0)
+
+            def func(corr_XY, observations_per_parameter):
+                # Takes an array of shape (params_batch, obs)
+                # and an array representing number of non-missing observations
+                # per parameter. Returns which pairs (param, obs) to keep.
+                return np.ones_like(corr_XY, dtype=np.bool_)
+
+            X = smoother.assimilate_batch(
+                X=X, correlation_callback=smoother.three_over_sqrt_n
+            )
+
+        assert not np.allclose(X_prior, X), "AdaptiveESMDA must update the prior"
+        expected = np.array(
+            [1.96678479, -1.31975266, 1.12325697, 0.09558105, 1.65117684]
+        )
+        assert np.allclose(np.diag(X)[:5], expected)
+
     @pytest.mark.parametrize(
         "linear_problem",
         range(25),
@@ -62,7 +103,7 @@ class TestAdaptiveESMDA:
             # cross-correlation matrix contains all correlations,
             # even those deemed insignificant.
             assert corr_XY.shape == (num_params, num_observations)
-            return np.zeros_like(corr_XY)  # Cut off all
+            return np.zeros_like(corr_XY, dtype=np.bool_)  # Cut off all
 
         X_i = np.copy(X)
         for _ in range(smoother.num_assimilations()):
@@ -95,7 +136,8 @@ class TestAdaptiveESMDA:
         )
 
         def correlation_callback(corr_XY, observations):
-            return corr_XY  # Do nothing
+            # Cutoff 0 means we keep everything, so return True in all entries
+            return np.ones_like(corr_XY, dtype=np.bool_)
 
         X_i = np.copy(X)
         for _ in range(smoother.num_assimilations()):
@@ -153,8 +195,9 @@ class TestAdaptiveESMDA:
         )
 
         def correlation_callback(corr_XY, observations_per_parameter, cutoff):
-            corr_XY[np.abs(corr_XY) <= cutoff] = 0
-            return corr_XY
+            mask = np.ones_like(corr_XY, dtype=np.bool_)
+            mask[np.abs(corr_XY) <= cutoff] = 0
+            return mask
 
         X_i = np.copy(X)
 
