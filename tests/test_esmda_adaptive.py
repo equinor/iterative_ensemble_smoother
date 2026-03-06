@@ -39,6 +39,47 @@ def linear_problem(request):
 
 
 class TestAdaptiveESMDA:
+    def test_snapshot(self):
+        """The purpose of this test is to alert the developer if any changes
+        change the behavior. If this is intended, changing the expected value
+        is perfectly fine."""
+
+        rng = np.random.default_rng(42)
+        A = rng.normal(size=(3, 10))
+
+        def forward_model(x):
+            return A @ x
+
+        covariance = np.ones(3, dtype=float)  # Covariance of the observations / outputs
+        observations = np.array([1, 2, 3], dtype=float)  # The observed data
+        smoother = AdaptiveESMDA(
+            covariance=covariance, observations=observations, alpha=3, seed=42
+        )
+        X = rng.normal(size=(10, 100))
+        X_prior = X.copy()
+
+        for iteration in range(smoother.num_assimilations()):
+            Y = np.array([forward_model(x) for x in X.T]).T
+
+            # Prepare for assimilation
+            smoother.prepare_assimilation(Y=Y, truncation=1.0)
+
+            def func(corr_XY, observations_per_parameter):
+                # Takes an array of shape (params_batch, obs)
+                # and an array representing number of non-missing observations
+                # per parameter. Returns which pairs (param, obs) to keep.
+                return np.ones_like(corr_XY, dtype=np.bool_)
+
+            X = smoother.assimilate_batch(
+                X=X, correlation_callback=smoother.three_over_sqrt_n
+            )
+
+        assert not np.allclose(X_prior, X), "AdaptiveESMDA must update the prior"
+        expected = np.array(
+            [1.96678479, -1.31975266, 1.12325697, 0.09558105, 1.65117684]
+        )
+        assert np.allclose(np.diag(X)[:5], expected)
+
     @pytest.mark.parametrize(
         "linear_problem",
         range(25),
