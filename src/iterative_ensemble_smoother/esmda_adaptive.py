@@ -104,6 +104,10 @@ class AdaptiveESMDA(BaseESMDA):
 
         This simple thresholding rule is equation (6) in the adaptive localization
         paper: http://doi.org/10.1175/MWR-D-24-0269.1
+
+        The rule is also mentioned in the paper:
+            Continuous Hyper-parameter OPtimization (CHOP) in an ensemble Kalman filter
+            https://arxiv.org/abs/2206.03050
         """
         threshold = np.clip(
             3 / np.sqrt(observations_per_parameter), a_min=0.0, a_max=1.0
