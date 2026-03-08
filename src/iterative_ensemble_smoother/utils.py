@@ -37,15 +37,41 @@ def groupby_rows(
     """
     if not np.issubdtype(A.dtype, np.bool_):
         raise ValueError(f"A must be a boolean array, got dtype: {A.dtype}")
-    unique_rows, inverse = np.unique(A, axis=0, return_inverse=True)
 
-    # Group each non-zero pattern by its row
+    # Find unique rows efficiently by packing booleans into bytes.
+    #
+    # The naive approach -- np.unique(A, axis=0) -- is slow because NumPy
+    # converts each row into a structured dtype with one field per column
+    # (e.g. [('f0', bool), ('f1', bool), ...]), then sorts by comparing
+    # fields one at a time.  With 5000 columns that means up to 5000
+    # per-field dispatches for every comparison during the sort.
+    #
+    # Instead we:
+    #  1. Pack every 8 boolean columns into one uint8 byte with packbits,
+    #     shrinking a 5000-column row to ~625 bytes.
+    #  2. View each packed row as a single np.void blob (an unstructured
+    #     opaque byte sequence).  Unlike a structured dtype, np.void has
+    #     no named fields, so NumPy compares two elements with a single
+    #     memcmp call over the contiguous byte block -- not 5000 separate
+    #     field comparisons.
+    #  3. Pass these keys to np.unique, which now sorts and deduplicates
+    #     with the fast memcmp comparisons.
+    #
+    # This is a lossless encoding (packbits is a bijection on fixed-width
+    # boolean rows), so every distinct boolean row maps to a distinct key.
+    #
+    # See benchmarks/benchmark_groupby_rows.py for timings (20-375x faster).
+    packed = np.packbits(A, axis=1)
+    key_dtype = np.dtype((np.void, packed.shape[1]))
+    keys = np.ascontiguousarray(packed).view(key_dtype).ravel()
+    _, inverse = np.unique(keys, return_inverse=True)
+
     groups = collections.defaultdict(list)
     for row_idx, group in enumerate(inverse):
         groups[group].append(row_idx)
 
     for indices in groups.values():
-        first_idx, *_ = indices
+        first_idx = indices[0]
         yield np.array(indices, dtype=np.int_), A[first_idx, :]
 
 

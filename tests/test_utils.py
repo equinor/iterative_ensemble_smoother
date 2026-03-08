@@ -1,7 +1,9 @@
+import collections
+
 import numpy as np
 import pytest
 
-from iterative_ensemble_smoother.utils import adjust_for_missing
+from iterative_ensemble_smoother.utils import adjust_for_missing, groupby_rows
 
 
 @pytest.mark.parametrize("seed", range(100))
@@ -36,6 +38,42 @@ def test_adjust_for_missing(seed):
     # Verify that naive matches the function 'adjust_for_missing'
     C_actual = adjust_for_missing(X, missing=missing) @ Y.T / (N_e - 1)
     np.testing.assert_allclose(C_actual, C_expected)
+
+
+@pytest.mark.parametrize("n_rows", [1, 5, 50, 200])
+@pytest.mark.parametrize("n_cols", [1, 8, 15, 64, 200])
+def test_that_groupby_rows_matches_np_unique(n_rows, n_cols):
+    """The packed-bytes groupby_rows must give identical results to np.unique."""
+    rng = np.random.default_rng()
+    A = rng.integers(0, 2, size=(n_rows, n_cols)).astype(bool)
+
+    # --- old implementation (np.unique directly) ---
+    unique_rows_old, inverse_old = np.unique(A, axis=0, return_inverse=True)
+    groups_old = collections.defaultdict(list)
+    for row_idx, group in enumerate(inverse_old):
+        groups_old[group].append(row_idx)
+    result_old = [
+        (np.array(indices, dtype=np.int_), A[indices[0], :])
+        for indices in groups_old.values()
+    ]
+
+    # --- new implementation ---
+    result_new = list(groupby_rows(A))
+
+    assert len(result_new) == len(result_old)
+
+    # The two implementations may yield groups in different order (np.unique
+    # sorts on raw bools, the new one on packed bytes), so we compare via
+    # an order-independent dict keyed by the set of row indices.
+    def _to_dict(pairs):
+        return {frozenset(idx.tolist()): mask for idx, mask in pairs}
+
+    old_dict = _to_dict(result_old)
+    new_dict = _to_dict(result_new)
+
+    assert old_dict.keys() == new_dict.keys()
+    for key in old_dict:
+        np.testing.assert_array_equal(old_dict[key], new_dict[key])
 
 
 if __name__ == "__main__":
