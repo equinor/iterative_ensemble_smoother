@@ -357,6 +357,7 @@ class ESMDA(BaseESMDA):
         *,
         X: npt.NDArray[np.floating],
         missing: Union[npt.NDArray[np.bool_], None] = None,
+        copy: bool = True,
     ) -> npt.NDArray[np.floating]:
         """Assimilate a batch of parameters against all observations.
 
@@ -376,6 +377,9 @@ class ESMDA(BaseESMDA):
             happen if the ensemble members use different grids, where each
             ensemble member has a slightly different grid layout. If None,
             then all entries are assumed to be valid.
+        copy : bool, optional
+            If True (default), a copy of X is made before modification.
+            Set to False to update X in-place and avoid the extra allocation.
 
         Returns
         -------
@@ -383,6 +387,8 @@ class ESMDA(BaseESMDA):
             2D array of shape (num_parameters_batch, ensemble_size).
 
         """
+        if copy:
+            X = X.copy()
         if not hasattr(self, "delta_DT"):
             raise Exception("The method `prepare_assmilation` must be called.")
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)
@@ -390,9 +396,10 @@ class ESMDA(BaseESMDA):
 
         # In standard ESMDA, we simplify compute the product in a good order
         delta_M = self._compute_delta_M(X=X, missing=missing)
-        return X + np.linalg.multi_dot(
+        X += np.linalg.multi_dot(
             [delta_M, self.delta_DT, self.term_diag, self.termT, self.D_obs_minus_D]
         )
+        return X
 
 
 if __name__ == "__main__":
