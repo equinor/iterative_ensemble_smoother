@@ -152,7 +152,7 @@ class AdaptiveESMDA(BaseESMDA):
             the same shape. The returned array represents any kind of correlation
             thresholding or softening.
         overwrite: bool
-            If False (the default), the input array will not be overwritten (mutated).
+            If False (the default), the input arrays will not be overwritten (mutated).
             If True, the method may overwrite the input array.
 
         Returns

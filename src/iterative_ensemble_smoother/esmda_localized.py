@@ -169,7 +169,7 @@ class LocalizedESMDA(BaseESMDA):
             and apply element multiplication. The default is None, which applies
             the identity function (i.e. multiplication with 1 in every entry).
         overwrite: bool
-            If False (the default), the input array will not be overwritten (mutated).
+            If False (the default), the input arrays will not be overwritten (mutated).
             If True, the method may overwrite the input array.
 
         Returns

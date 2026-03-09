@@ -275,6 +275,9 @@ class BaseESMDA(ABC):
         if self.iteration >= self.num_assimilations():
             raise Exception("No more assimilation steps to run.")
 
+        if not overwrite:
+            Y = Y.copy()
+
         self.truncation = truncation
         self.iteration += 1
 
@@ -282,7 +285,6 @@ class BaseESMDA(ABC):
         N_d, N_e = D.shape  # (num_observations, ensemble_size)
         assert N_e >= 2, "Must have at least two ensemble members"
         assert N_d == self.observations.shape[0], "Shape mismatch"
-        delta_D = D - np.mean(D, axis=1, keepdims=True)  # Center observations
 
         # Compute the last factor
         alpha = self.alpha[self.iteration]
@@ -290,8 +292,9 @@ class BaseESMDA(ABC):
         self.D_obs_minus_D = D_obs - D
 
         # Compute parts of the Kalman gain
+        D -= np.mean(D, axis=1, keepdims=True)  # Center observations
         self.delta_DT, self.term_diag, self.termT = invert_subspace(
-            delta_D=delta_D, C_D_L=self.C_D_L, alpha=alpha, truncation=truncation
+            delta_D=D, C_D_L=self.C_D_L, alpha=alpha, truncation=truncation
         )
 
     def _compute_delta_M(
