@@ -44,20 +44,22 @@ def test_adjust_for_missing(seed):
 @pytest.mark.parametrize("n_cols", [1, 8, 15, 64, 200])
 def test_that_groupby_rows_matches_np_unique(n_rows, n_cols):
     """The packed-bytes groupby_rows must give identical results to np.unique."""
+
+    def _groupby_rows_np_unique(A):
+        """Reference implementation using np.unique directly."""
+        _, inverse = np.unique(A, axis=0, return_inverse=True)
+        groups = collections.defaultdict(list)
+        for row_idx, group in enumerate(inverse):
+            groups[group].append(row_idx)
+        return [
+            (np.array(indices, dtype=np.int_), A[indices[0], :])
+            for indices in groups.values()
+        ]
+
     rng = np.random.default_rng()
     A = rng.integers(0, 2, size=(n_rows, n_cols)).astype(bool)
 
-    # --- old implementation (np.unique directly) ---
-    unique_rows_old, inverse_old = np.unique(A, axis=0, return_inverse=True)
-    groups_old = collections.defaultdict(list)
-    for row_idx, group in enumerate(inverse_old):
-        groups_old[group].append(row_idx)
-    result_old = [
-        (np.array(indices, dtype=np.int_), A[indices[0], :])
-        for indices in groups_old.values()
-    ]
-
-    # --- new implementation ---
+    result_old = _groupby_rows_np_unique(A)
     result_new = list(groupby_rows(A))
 
     assert len(result_new) == len(result_old)
