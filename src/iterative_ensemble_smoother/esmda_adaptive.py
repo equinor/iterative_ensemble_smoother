@@ -85,10 +85,10 @@ class AdaptiveESMDA(BaseESMDA):
     ...     # Prepare for assimilation
     ...     smoother.prepare_assimilation(Y=Y, truncation=0.99)
     ...
-    ...     def func(corr_XY, observations_per_parameter):
+    ...     def func(corr_XY, ensemble_members_per_parameter):
     ...         # Takes an array of shape (params_batch, obs)
-    ...         # and an array representing number of non-missing observations
-    ...         # per parameter. Returns which pairs (param, obs) to keep.
+    ...         # and an array representing number of non-missing ensemble
+    ...         # members per parameter. Returns which pairs (param, obs) to keep.
     ...         return np.ones_like(corr_XY, dtype=np.bool_)
     ...
     ...     for param_idx in yield_param_indices():
@@ -99,7 +99,7 @@ class AdaptiveESMDA(BaseESMDA):
     @staticmethod
     def three_over_sqrt_n(
         corr_XY: npt.NDArray[np.floating],
-        observations_per_parameter: npt.NDArray[np.int_],
+        ensemble_members_per_parameter: Union[npt.NDArray[np.int_], int],
     ) -> npt.NDArray[np.floating]:
         """Use the correlation threshold 3 / sqrt(n). Note that unless
         the number of ensemble members is > 9, all responses are removed
@@ -113,10 +113,12 @@ class AdaptiveESMDA(BaseESMDA):
             https://arxiv.org/abs/2206.03050
         """
         threshold = np.clip(
-            3 / np.sqrt(observations_per_parameter), a_min=0.0, a_max=1.0
+            3 / np.sqrt(ensemble_members_per_parameter), a_min=0.0, a_max=1.0
         )
         # Keep those above threshold
-        result: npt.NDArray[np.floating] = np.abs(corr_XY) > threshold[:, None]
+        result: npt.NDArray[np.floating] = (
+            np.abs(corr_XY) > np.atleast_1d(threshold)[:, None]
+        )
         return result
 
     def assimilate_batch(
@@ -149,10 +151,16 @@ class AdaptiveESMDA(BaseESMDA):
             ensemble member has a slightly different grid layout. If None,
             then all entries are assumed to be valid.
         correlation_callback : callable, optional
-            A callable that takes as input a cross-correlation 2D array of shape
-            (num_parameters_batch, num_observations) and returns a 2D array of
-            the same shape. The returned array represents any kind of correlation
-            thresholding or softening.
+            A callable with signature
+            ``(corr_XY, ensemble_members_per_parameter) -> mask``.
+            *corr_XY* is a cross-correlation 2D array of shape
+            (num_parameters_batch, num_observations).
+            *ensemble_members_per_parameter* is either an int (when there are
+            no missing values, equal to the ensemble size) or a 1D int array
+            of shape (num_parameters_batch,) giving the number of non-missing
+            ensemble members for each parameter.
+            The returned array must have the same shape as *corr_XY* and
+            represents any kind of correlation thresholding or softening.
         copy : bool, optional
             If True (default), a copy of X is made before modification.
             Set to False to update X in-place and avoid the extra allocation.
@@ -201,15 +209,13 @@ class AdaptiveESMDA(BaseESMDA):
         corr_XY /= std_Y[None, :]
         corr_XY = self._clip_correlation_matrix(corr_XY)
 
-        # Number of observations each entry in corr_XY is based on.
+        # Number of ensemble members each entry in corr_XY is based on.
         # The source of missing data is only missing values in X, not Y.
-        observations_per_parameter = (
-            np.ones(N_m) * N_e
-            if missing is None
-            else np.sum(np.logical_not(missing), axis=1)
+        ensemble_members_per_parameter = (
+            N_e if missing is None else np.sum(np.logical_not(missing), axis=1)
         )
         # Apply localization function
-        mask_keep = correlation_callback(corr_XY, observations_per_parameter)
+        mask_keep = correlation_callback(corr_XY, ensemble_members_per_parameter)
         logger.debug(f"Percentage of (param, obs) pairs kept: {mask_keep.mean():.1%}")
 
         # Cross correlation to cross covariance (inplace)
