@@ -135,13 +135,13 @@ class LocalizedESMDA(BaseESMDA):
     def assimilate_batch(
         self,
         *,
-        X: npt.NDArray[np.double],
+        X: npt.NDArray[np.floating],
         missing: Union[npt.NDArray[np.bool_], None] = None,
         localization_callback: Callable[
-            [npt.NDArray[np.double]], npt.NDArray[np.double]
+            [npt.NDArray[np.floating]], npt.NDArray[np.floating]
         ]
         | None = None,
-    ) -> npt.NDArray[np.double]:
+    ) -> npt.NDArray[np.floating]:
         """Assimilate a batch of parameters against all observations.
 
         The internal storage used by the class is 2 * ensemble_size * num_observations,
@@ -187,8 +187,8 @@ class LocalizedESMDA(BaseESMDA):
         if localization_callback is None:
 
             def localization_callback(
-                K: npt.NDArray[np.double],
-            ) -> npt.NDArray[np.double]:
+                K: npt.NDArray[np.floating],
+            ) -> npt.NDArray[np.floating]:
                 return K
 
         # Create Kalman gain of shape (num_parameters_batch, num_observations),
