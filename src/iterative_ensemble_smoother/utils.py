@@ -103,8 +103,8 @@ def masked_std(
 
 
 def adjust_for_missing(
-    X: npt.NDArray[np.double], *, missing: npt.NDArray[np.bool_]
-) -> npt.NDArray[np.double]:
+    X: npt.NDArray[np.floating], *, missing: npt.NDArray[np.bool_]
+) -> npt.NDArray[np.floating]:
     """Removes missing values from X, such that the cross-covariance product
 
         center(X) @ center(Y).T / (N_e - 1)

@@ -290,9 +290,9 @@ class BaseESMDA(ABC):
     def _compute_delta_M(
         self,
         *,
-        X: npt.NDArray[np.double],
+        X: npt.NDArray[np.floating],
         missing: Union[npt.NDArray[np.bool_], None] = None,
-    ) -> npt.NDArray[np.double]:
+    ) -> npt.NDArray[np.floating]:
         """Prepare delta_M := X - center(X), dealing with missing values
         as needed."""
         if not np.issubdtype(X.dtype, np.floating):
