@@ -17,6 +17,7 @@ repos:
                 ^docs
             )
         args: [--strict, --ignore-missing-imports, --no-warn-unused-ignores]
+        additional_dependencies: [numpy, scipy]
 
 -   repo: https://github.com/codespell-project/codespell
     rev: v2.4.1

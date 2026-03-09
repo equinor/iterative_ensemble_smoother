@@ -115,7 +115,9 @@ class AdaptiveESMDA(BaseESMDA):
         threshold = np.clip(
             3 / np.sqrt(observations_per_parameter), a_min=0.0, a_max=1.0
         )
-        return np.abs(corr_XY) > threshold[:, None]  # Keep those above threshold
+        # Keep those above threshold
+        result: npt.NDArray[np.floating] = np.abs(corr_XY) > threshold[:, None]
+        return result
 
     def assimilate_batch(
         self,
@@ -123,7 +125,7 @@ class AdaptiveESMDA(BaseESMDA):
         X: npt.NDArray[np.floating],
         missing: Union[npt.NDArray[np.bool_], None] = None,
         correlation_callback: Callable[
-            [npt.NDArray[np.floating], npt.NDArray[np.int_]], npt.NDArray[np.floating]
+            [npt.NDArray[np.floating], npt.NDArray[np.int_]], npt.NDArray[np.bool_]
         ]
         | None = None,
         copy: bool = True,
@@ -178,7 +180,7 @@ class AdaptiveESMDA(BaseESMDA):
             def correlation_callback(
                 corr_XY: npt.NDArray[np.floating],
                 observations_per_parameter: npt.NDArray[np.int_],
-            ) -> npt.NDArray[np.floating]:
+            ) -> npt.NDArray[np.bool_]:
                 return np.ones_like(corr_XY, dtype=np.bool_)
 
         # Step 1: COMPUTE THE CROSS-COVARIANCE/CORRELATION AND APPLY CALLBACK
