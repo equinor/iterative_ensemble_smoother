@@ -399,6 +399,7 @@ class ESMDA(BaseESMDA):
         """
         if not overwrite:
             X = X.copy()
+            missing = missing if missing is None else missing.copy()
         if not hasattr(self, "delta_DT"):
             raise Exception("The method `prepare_assmilation` must be called.")
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)

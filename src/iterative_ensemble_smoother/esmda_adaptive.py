@@ -163,6 +163,7 @@ class AdaptiveESMDA(BaseESMDA):
         """
         if not overwrite:
             X = X.copy()
+            missing = missing if missing is None else missing.copy()
         if not hasattr(self, "D_obs_minus_D"):
             raise Exception("The method `prepare_assmilation` must be called.")
 
