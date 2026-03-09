@@ -355,9 +355,9 @@ class ESMDA(BaseESMDA):
     def assimilate_batch(
         self,
         *,
-        X: npt.NDArray[np.double],
+        X: npt.NDArray[np.floating],
         missing: Union[npt.NDArray[np.bool_], None] = None,
-    ) -> npt.NDArray[np.double]:
+    ) -> npt.NDArray[np.floating]:
         """Assimilate a batch of parameters against all observations.
 
         The internal storage used by the class is 2 * ensemble_size * num_observations,
