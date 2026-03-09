@@ -208,7 +208,11 @@ class BaseESMDA(ABC):
         return D
 
     def prepare_assimilation(
-        self, *, Y: npt.NDArray[np.double], truncation: float = 0.99
+        self,
+        *,
+        Y: npt.NDArray[np.double],
+        truncation: float = 0.99,
+        overwrite: bool = False,
     ) -> None:
         r"""Prepare assimilation of one or several batches of parameters.
 
@@ -228,6 +232,9 @@ class BaseESMDA(ABC):
             the range (0, 1]. A lower number means a more approximate answer and a
             slightly faster computation. The default is 0.99, which is recommended
             by Emerick in the reference paper.
+        overwrite: bool
+            If False (the default), the input array will not be overwritten (mutated).
+            If True, the method may overwrite the input array.
 
         Returns
         -------
@@ -357,7 +364,7 @@ class ESMDA(BaseESMDA):
         *,
         X: npt.NDArray[np.floating],
         missing: Union[npt.NDArray[np.bool_], None] = None,
-        copy: bool = True,
+        overwrite: bool = False,
     ) -> npt.NDArray[np.floating]:
         """Assimilate a batch of parameters against all observations.
 
@@ -377,9 +384,9 @@ class ESMDA(BaseESMDA):
             happen if the ensemble members use different grids, where each
             ensemble member has a slightly different grid layout. If None,
             then all entries are assumed to be valid.
-        copy : bool, optional
-            If True (default), a copy of X is made before modification.
-            Set to False to update X in-place and avoid the extra allocation.
+        overwrite: bool
+            If False (the default), the input array will not be overwritten (mutated).
+            If True, the method may overwrite the input array.
 
         Returns
         -------
@@ -387,7 +394,7 @@ class ESMDA(BaseESMDA):
             2D array of shape (num_parameters_batch, ensemble_size).
 
         """
-        if copy:
+        if not overwrite:
             X = X.copy()
         if not hasattr(self, "delta_DT"):
             raise Exception("The method `prepare_assmilation` must be called.")
