@@ -326,7 +326,8 @@ class BaseESMDA(ABC):
         # Center the parameters, possibly accounting for missing data
         if missing is not None:
             return adjust_for_missing(X, missing=missing)
-        return X - np.mean(X, axis=1, keepdims=True)
+        result: npt.NDArray[np.floating] = X - np.mean(X, axis=1, keepdims=True)
+        return result
 
 
 class ESMDA(BaseESMDA):

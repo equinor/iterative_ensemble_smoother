@@ -84,22 +84,26 @@ def masked_std(
     N_e = X.shape[1]  # Ensemble members / realizations
     n_available = N_e - np.sum(missing, axis=1, keepdims=True)  # Non-missing params
 
-    # Need at least two observations per parameter
+    # Need at least two valid ensemble members per parameter
     if np.any(n_available < 2):
-        msg = "One or several parameters have too few observations (need >=2)."
+        msg = (
+            "One or several parameters have too few valid ensemble members (need >=2)."
+        )
         raise ValueError(msg)
 
-    X_masked = np.logical_not(missing) * X  # Set missing values to zero
+    valid = np.logical_not(missing)
+    X_masked = valid * X  # Set missing values to zero
 
     # Compute mean values, taking missing into account
     X_means = np.sum(X_masked, axis=1, keepdims=True) / n_available
 
     # Center the matrix
-    X_centered = (X_masked - X_means) * np.logical_not(missing)
+    X_centered = (X_masked - X_means) * valid
 
-    return np.sqrt(
+    result: npt.NDArray[np.floating] = np.sqrt(
         np.sum(X_centered**2, axis=1, keepdims=True) / (n_available - 1)
     ).ravel()
+    return result
 
 
 def adjust_for_missing(
@@ -170,12 +174,15 @@ def adjust_for_missing(
     N_e = X.shape[1]  # Ensemble members / realizations
     n_available = N_e - np.sum(missing, axis=1, keepdims=True)  # Non-missing params
 
-    # Need at least two observations per parameter
+    # Need at least two valid ensemble members per parameter
     if np.any(n_available < 2):
-        msg = "One or several parameters have too few observations (need >=2)."
+        msg = (
+            "One or several parameters have too few valid ensemble members (need >=2)."
+        )
         raise ValueError(msg)
 
-    X_masked = np.logical_not(missing) * X  # Set missing values to zero
+    valid = np.logical_not(missing)
+    X_masked = valid * X  # Set missing values to zero
     # Compute mean values, taking missing into account
     X_means = np.sum(X_masked, axis=1, keepdims=True) / n_available
 
@@ -189,7 +196,8 @@ def adjust_for_missing(
 
     # Mask to zero in anticipation of C = X @ Y.T, so that in the product
     # zero values are accounted for in the sum-of-products in C_ij
-    return X_centered * np.logical_not(missing)
+    result: npt.NDArray[np.floating] = X_centered * np.logical_not(missing)
+    return result
 
 
 def _validate_inputs(
@@ -403,7 +411,7 @@ def gaspari_cohn(
     array([0.5, 1.5])
     """
     if not np.all(distances >= 0):
-        return ValueError(f"Distances must be positive. Min: {np.min(distances)}")
+        raise ValueError(f"Distances must be positive. Min: {np.min(distances)}")
     scaling_factor = np.zeros_like(distances)
 
     d2 = distances**2

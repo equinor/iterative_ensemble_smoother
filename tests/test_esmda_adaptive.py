@@ -64,10 +64,10 @@ class TestAdaptiveESMDA:
             # Prepare for assimilation
             smoother.prepare_assimilation(Y=Y, truncation=1.0)
 
-            def func(corr_XY, observations_per_parameter):
+            def func(corr_XY, ensemble_members_per_parameter):
                 # Takes an array of shape (params_batch, obs)
-                # and an array representing number of non-missing observations
-                # per parameter. Returns which pairs (param, obs) to keep.
+                # and an array representing number of non-missing ensemble
+                # members per parameter. Returns which pairs (param, obs) to keep.
                 return np.ones_like(corr_XY, dtype=np.bool_)
 
             X = smoother.assimilate_batch(
@@ -194,7 +194,7 @@ class TestAdaptiveESMDA:
             covariance=covariance, observations=observations, seed=1, alpha=1
         )
 
-        def correlation_callback(corr_XY, observations_per_parameter, cutoff):
+        def correlation_callback(corr_XY, ensemble_members_per_parameter, cutoff):
             mask = np.ones_like(corr_XY, dtype=np.bool_)
             mask[np.abs(corr_XY) <= cutoff] = 0
             return mask
