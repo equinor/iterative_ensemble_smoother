@@ -141,7 +141,7 @@ class LocalizedESMDA(BaseESMDA):
             [npt.NDArray[np.floating]], npt.NDArray[np.floating]
         ]
         | None = None,
-        copy: bool = True,
+        overwrite: bool = False,
     ) -> npt.NDArray[np.floating]:
         """Assimilate a batch of parameters against all observations.
 
@@ -168,9 +168,9 @@ class LocalizedESMDA(BaseESMDA):
             parameter and observation a localiation factor between 0 and 1,
             and apply element multiplication. The default is None, which applies
             the identity function (i.e. multiplication with 1 in every entry).
-        copy : bool, optional
-            If True (default), a copy of X is made before modification.
-            Set to False to update X in-place and avoid the extra allocation.
+        overwrite: bool
+            If False (the default), the input arrays will not be overwritten (mutated).
+            If True, the method may overwrite the input arrays.
 
         Returns
         -------
@@ -178,7 +178,7 @@ class LocalizedESMDA(BaseESMDA):
             2D array of shape (num_parameters_batch, ensemble_size).
 
         """
-        if copy:
+        if not overwrite:
             X = X.copy()
         if not hasattr(self, "delta_DT"):
             raise Exception("The method `prepare_assmilation` must be called.")

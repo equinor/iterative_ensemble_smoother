@@ -130,7 +130,7 @@ class AdaptiveESMDA(BaseESMDA):
             [npt.NDArray[np.floating], npt.NDArray[np.int_]], npt.NDArray[np.bool_]
         ]
         | None = None,
-        copy: bool = True,
+        overwrite: bool = False,
     ) -> npt.NDArray[np.floating]:
         """Assimilate a batch of parameters against all observations.
 
@@ -161,9 +161,9 @@ class AdaptiveESMDA(BaseESMDA):
             ensemble members for each parameter.
             The returned array must have the same shape as *corr_XY* and
             represents any kind of correlation thresholding or softening.
-        copy : bool, optional
-            If True (default), a copy of X is made before modification.
-            Set to False to update X in-place and avoid the extra allocation.
+        overwrite: bool
+            If False (the default), the input arrays will not be overwritten (mutated).
+            If True, the method may overwrite the input arrays.
 
         Returns
         -------
@@ -171,7 +171,7 @@ class AdaptiveESMDA(BaseESMDA):
             2D array of shape (num_parameters_batch, ensemble_size).
 
         """
-        if copy:
+        if not overwrite:
             X = X.copy()
         if not hasattr(self, "D_obs_minus_D"):
             raise Exception("The method `prepare_assmilation` must be called.")

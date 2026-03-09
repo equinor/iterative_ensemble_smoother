@@ -65,6 +65,132 @@ def test_ESMDA_snapshot():
     assert np.allclose(np.diag(X)[:4], expected)
 
 
+@pytest.fixture
+def setup_small():
+    """Small problem for correctness tests."""
+    rng = np.random.default_rng(42)
+
+    num_outputs = 4
+    num_inputs = 5
+    num_ensemble = 3
+
+    A = rng.normal(size=(num_outputs, num_inputs))
+
+    def g(X):
+        return A @ X
+
+    X_prior = rng.normal(size=(num_inputs, num_ensemble))
+    covariance = np.exp(rng.normal(size=num_outputs))
+    observations = A @ np.linspace(0, 1, num=num_inputs) + rng.normal(
+        size=num_outputs, scale=0.01
+    )
+
+    return X_prior, covariance, observations, g
+
+
+class TestOverwriteFalseDoesNotMutate:
+    def test_that_inputs_are_not_mutated_when_overwrite_is_false(self, setup_small):
+        X_prior, covariance, observations, g = setup_small
+        num_inputs, num_ensemble = X_prior.shape
+
+        rng = np.random.default_rng(123)
+        missing = rng.choice(
+            [True, False], size=(num_inputs, num_ensemble), p=[0.1, 0.9]
+        )
+
+        smoother = ESMDA(
+            covariance=covariance,
+            observations=observations,
+            alpha=1,
+            seed=1,
+        )
+
+        X = np.copy(X_prior)
+        for _ in range(smoother.num_assimilations()):
+            Y = g(X)
+            Y_before = Y.copy()
+            X_before = X.copy()
+            missing_before = missing.copy()
+
+            smoother.prepare_assimilation(Y=Y, overwrite=False)
+            X = smoother.assimilate_batch(X=X, missing=missing, overwrite=False)
+
+            assert np.array_equal(Y, Y_before), "Y was mutated"
+            assert np.array_equal(X_before, X_prior), "X was mutated"
+            assert np.array_equal(missing, missing_before), "missing was mutated"
+
+    def test_that_overwrite_true_and_false_give_same_result(self, setup_small):
+        X_prior, covariance, observations, g = setup_small
+
+        # Run with overwrite=False
+        overwrite = False
+        smoother = ESMDA(
+            covariance=covariance,
+            observations=observations,
+            alpha=1,
+            seed=1,
+        )
+        X_no_overwrite = np.copy(X_prior)
+        for _ in range(smoother.num_assimilations()):
+            Y = g(X_no_overwrite)
+            smoother.prepare_assimilation(Y=Y, overwrite=overwrite)
+            X_no_overwrite = smoother.assimilate_batch(
+                X=X_no_overwrite, overwrite=overwrite
+            )
+
+        # Run with overwrite=True
+        overwrite = True
+        smoother = ESMDA(
+            covariance=covariance,
+            observations=observations,
+            alpha=1,
+            seed=1,
+        )
+        X_overwrite = np.copy(X_prior)
+        for _ in range(smoother.num_assimilations()):
+            Y = g(X_overwrite)
+            smoother.prepare_assimilation(Y=Y, overwrite=overwrite)
+            X_overwrite = smoother.assimilate_batch(X=X_overwrite, overwrite=overwrite)
+
+        assert np.allclose(X_no_overwrite, X_overwrite)
+
+
+@pytest.fixture
+def setup_large():
+    rng = np.random.default_rng(42)
+
+    num_outputs = 10_000
+    num_inputs = 1_000
+    num_ensemble = 100
+
+    X_prior = rng.normal(size=(num_inputs, num_ensemble))
+    Y_prior = rng.normal(size=(num_outputs, num_ensemble))
+    covariance = np.exp(rng.normal(size=num_outputs))
+    observations = rng.normal(size=num_outputs, loc=1)
+
+    return X_prior, Y_prior, covariance, observations
+
+
+class TestOverwriteMemory:
+    @pytest.mark.limit_memory("54 MB")
+    def test_ESMDA_memory_usage_without_overwrite(self, setup_large):
+        X_prior, Y_prior, covariance, observations = setup_large
+
+        esmda = ESMDA(covariance, observations, alpha=1, seed=1)
+        for _ in range(esmda.num_assimilations()):
+            esmda.prepare_assimilation(Y=Y_prior, overwrite=False)
+            esmda.assimilate_batch(X=X_prior, overwrite=False)
+
+    @pytest.mark.limit_memory("46 MB")
+    def test_ESMDA_memory_usage_with_overwrite(self, setup_large):
+        X_prior, Y_prior, covariance, observations = setup_large
+
+        esmda = ESMDA(covariance, observations, alpha=1, seed=1)
+        for _ in range(esmda.num_assimilations()):
+            esmda.prepare_assimilation(Y=Y_prior, overwrite=True)
+            esmda.assimilate_batch(X=X_prior, overwrite=True)
+
+
 class TestESMDARealizationsDying:
     @pytest.mark.parametrize("seed", list(range(9)))
     def test_that_subspaces_have_full_rank_as_realizations_die(self, seed):
@@ -426,41 +552,6 @@ class TestESMDA:
         assert np.isclose(X_i_single.var(), X_i_multiple.var(), rtol=0.1)
 
 
-class TestESMDAMemory:
-    @pytest.fixture
-    def setup(self):
-        rng = np.random.default_rng(42)
-
-        num_outputs = 10_000
-        num_inputs = 1_000
-        num_ensemble = 100
-
-        # Prior is N(0, 1)
-        X_prior = rng.normal(size=(num_inputs, num_ensemble))
-        Y_prior = rng.normal(size=(num_outputs, num_ensemble))
-
-        # Measurement errors
-        covariance = np.exp(rng.normal(size=num_outputs))
-
-        # Observations
-        observations = rng.normal(size=num_outputs, loc=1)
-
-        return X_prior, Y_prior, covariance, observations
-
-    @pytest.mark.limit_memory("138 MB")
-    def test_ESMDA_memory_usage_without_overwrite(self, setup):
-        # TODO: Currently this is a regression test. Work to improve memory usage.
-
-        X_prior, Y_prior, covariance, observations = setup
-
-        # Create ESMDA instance from an integer `alpha` and run it
-        esmda = ESMDA(covariance, observations, alpha=1, seed=1)
-
-        for _ in range(esmda.num_assimilations()):
-            esmda.prepare_assimilation(Y=Y_prior)
-            esmda.assimilate_batch(X=X_prior)
-
-
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 @pytest.mark.parametrize("diagonal", [True, False])
 def test_that_float_dtypes_are_preserved(dtype, diagonal):
@@ -673,7 +764,7 @@ if __name__ == "__main__":
         args=[
             __file__,
             "-v",
-            # "-k test_that_float_dtypes_are_preserved",
+            "-k TestOverwriteMemory",
             "-x",
         ]
     )

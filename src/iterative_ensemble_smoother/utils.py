@@ -140,7 +140,7 @@ def adjust_for_missing(
         center(X) @ center(Y).T / (N_e - 1)
 
     remains correct even in the presence of missing parameters in some
-    ensemble members (realizations).
+    ensemble members (realizations). Mutates the "missing" argument.
 
     Examples
     --------
@@ -222,7 +222,7 @@ def adjust_for_missing(
 
     # Mask to zero in anticipation of C = X @ Y.T, so that in the product
     # zero values are accounted for in the sum-of-products in C_ij
-    result: npt.NDArray[np.floating] = X_centered * np.logical_not(missing)
+    result: npt.NDArray[np.floating] = X_centered * valid
     return result
 
 
