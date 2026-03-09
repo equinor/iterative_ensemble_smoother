@@ -307,7 +307,7 @@ def empirical_cross_covariance(
     # we cast Y to the same data type as X before computing the dot product.
     # This ensures that the output cross-covariance matrix uses memory efficiently
     # while retaining the precision dictated by X's data type.
-    cov = X @ Y.astype(X.dtype).T / (X.shape[1] - 1)
+    cov: npt.NDArray[np.floating] = X @ Y.astype(X.dtype).T / (X.shape[1] - 1)
     assert cov.shape == (X.shape[0], Y.shape[0])
     return cov
 
@@ -397,7 +397,7 @@ def invert_subspace(
     C_D_L: npt.NDArray[np.double],
     alpha: float,
     truncation: float,
-) -> npt.NDArray[np.double]:
+) -> tuple[npt.NDArray[np.double], npt.NDArray[np.double], npt.NDArray[np.double]]:
     r"""Subspace inversion implementation of the equation:
 
     (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)

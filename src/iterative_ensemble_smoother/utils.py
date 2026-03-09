@@ -97,9 +97,10 @@ def masked_std(
     # Center the matrix
     X_centered = (X_masked - X_means) * np.logical_not(missing)
 
-    return np.sqrt(
+    result: npt.NDArray[np.floating] = np.sqrt(
         np.sum(X_centered**2, axis=1, keepdims=True) / (n_available - 1)
     ).ravel()
+    return result
 
 
 def adjust_for_missing(
@@ -189,7 +190,8 @@ def adjust_for_missing(
 
     # Mask to zero in anticipation of C = X @ Y.T, so that in the product
     # zero values are accounted for in the sum-of-products in C_ij
-    return X_centered * np.logical_not(missing)
+    result: npt.NDArray[np.floating] = X_centered * np.logical_not(missing)
+    return result
 
 
 def _validate_inputs(
@@ -403,7 +405,7 @@ def gaspari_cohn(
     array([0.5, 1.5])
     """
     if not np.all(distances >= 0):
-        return ValueError(f"Distances must be positive. Min: {np.min(distances)}")
+        raise ValueError(f"Distances must be positive. Min: {np.min(distances)}")
     scaling_factor = np.zeros_like(distances)
 
     d2 = distances**2
