@@ -141,6 +141,7 @@ class LocalizedESMDA(BaseESMDA):
             [npt.NDArray[np.floating]], npt.NDArray[np.floating]
         ]
         | None = None,
+        copy: bool = True,
     ) -> npt.NDArray[np.floating]:
         """Assimilate a batch of parameters against all observations.
 
@@ -167,6 +168,9 @@ class LocalizedESMDA(BaseESMDA):
             parameter and observation a localiation factor between 0 and 1,
             and apply element multiplication. The default is None, which applies
             the identity function (i.e. multiplication with 1 in every entry).
+        copy : bool, optional
+            If True (default), a copy of X is made before modification.
+            Set to False to update X in-place and avoid the extra allocation.
 
         Returns
         -------
@@ -174,6 +178,8 @@ class LocalizedESMDA(BaseESMDA):
             2D array of shape (num_parameters_batch, ensemble_size).
 
         """
+        if copy:
+            X = X.copy()
         if not hasattr(self, "delta_DT"):
             raise Exception("The method `prepare_assmilation` must be called.")
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)
@@ -196,7 +202,8 @@ class LocalizedESMDA(BaseESMDA):
         K = localization_callback(
             np.linalg.multi_dot([delta_M, self.delta_DT, self.term_diag, self.termT])
         )
-        return X + K @ self.D_obs_minus_D
+        X += K @ self.D_obs_minus_D
+        return X
 
 
 if __name__ == "__main__":

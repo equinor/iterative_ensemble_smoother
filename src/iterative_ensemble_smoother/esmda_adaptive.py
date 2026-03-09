@@ -126,6 +126,7 @@ class AdaptiveESMDA(BaseESMDA):
             [npt.NDArray[np.floating], npt.NDArray[np.int_]], npt.NDArray[np.floating]
         ]
         | None = None,
+        copy: bool = True,
     ) -> npt.NDArray[np.floating]:
         """Assimilate a batch of parameters against all observations.
 
@@ -150,6 +151,9 @@ class AdaptiveESMDA(BaseESMDA):
             (num_parameters_batch, num_observations) and returns a 2D array of
             the same shape. The returned array represents any kind of correlation
             thresholding or softening.
+        copy : bool, optional
+            If True (default), a copy of X is made before modification.
+            Set to False to update X in-place and avoid the extra allocation.
 
         Returns
         -------
@@ -157,6 +161,8 @@ class AdaptiveESMDA(BaseESMDA):
             2D array of shape (num_parameters_batch, ensemble_size).
 
         """
+        if copy:
+            X = X.copy()
         if not hasattr(self, "D_obs_minus_D"):
             raise Exception("The method `prepare_assmilation` must be called.")
 
@@ -210,7 +216,6 @@ class AdaptiveESMDA(BaseESMDA):
 
         # Step 2: APPLY UPDATES TO EACH PARAMETER, USING CORRELATED RESPONSES
         # ===================================================================
-        result = np.zeros_like(X, dtype=X.dtype)
 
         alpha = self.alpha[self.iteration]
         delta_D = self.delta_DT.T
@@ -245,7 +250,7 @@ class AdaptiveESMDA(BaseESMDA):
 
             # Multiply together and store results
             corr_mask = np.ix_(param_idx, response_idx)
-            result[param_idx, :] = np.linalg.multi_dot(
+            X[param_idx, :] += np.linalg.multi_dot(
                 [
                     corr_XY[corr_mask],
                     factor1,
@@ -254,7 +259,7 @@ class AdaptiveESMDA(BaseESMDA):
                 ]
             )
 
-        return X + result
+        return X
 
     @staticmethod
     def _clip_correlation_matrix(
