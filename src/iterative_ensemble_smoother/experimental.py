@@ -29,10 +29,10 @@ class RowScaledESMDA(ESMDA):
     def assimilate_batch(
         self,
         *,
-        X: npt.NDArray[np.double],
+        X: npt.NDArray[np.floating],
         missing: Union[npt.NDArray[np.bool_], None] = None,
         alpha: float = 1.0,
-    ) -> npt.NDArray[np.double]:
+    ) -> npt.NDArray[np.floating]:
         """Apply a scaling `alpha` to the update."""
         if not hasattr(self, "delta_DT"):
             raise Exception("The method `prepare_assmilation` must be called.")
@@ -66,7 +66,7 @@ def ensemble_smoother_update_step_row_scaling(
     *,
     covariance: npt.NDArray[np.double],
     observations: npt.NDArray[np.double],
-    X_with_row_scaling: List[Tuple[npt.NDArray[np.double], RowScaling]],
+    X_with_row_scaling: List[Tuple[npt.NDArray[np.floating], RowScaling]],
     Y: npt.NDArray[np.double],
     seed: Union[np.random._generator.Generator, int, None] = None,
     truncation: float = 1.0,

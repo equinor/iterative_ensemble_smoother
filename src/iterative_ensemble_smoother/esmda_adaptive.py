@@ -98,9 +98,9 @@ class AdaptiveESMDA(BaseESMDA):
 
     @staticmethod
     def three_over_sqrt_n(
-        corr_XY: npt.NDArray[np.double],
+        corr_XY: npt.NDArray[np.floating],
         observations_per_parameter: npt.NDArray[np.int_],
-    ) -> npt.NDArray[np.double]:
+    ) -> npt.NDArray[np.floating]:
         """Use the correlation threshold 3 / sqrt(n). Note that unless
         the number of ensemble members is > 9, all responses are removed
         and no update happens at all.
@@ -120,13 +120,13 @@ class AdaptiveESMDA(BaseESMDA):
     def assimilate_batch(
         self,
         *,
-        X: npt.NDArray[np.double],
+        X: npt.NDArray[np.floating],
         missing: Union[npt.NDArray[np.bool_], None] = None,
         correlation_callback: Callable[
-            [npt.NDArray[np.double], npt.NDArray[np.int_]], npt.NDArray[np.double]
+            [npt.NDArray[np.floating], npt.NDArray[np.int_]], npt.NDArray[np.floating]
         ]
         | None = None,
-    ) -> npt.NDArray[np.double]:
+    ) -> npt.NDArray[np.floating]:
         """Assimilate a batch of parameters against all observations.
 
         The internal storage used by the class is 2 * ensemble_size * num_observations,
@@ -170,9 +170,9 @@ class AdaptiveESMDA(BaseESMDA):
         if correlation_callback is None:
 
             def correlation_callback(
-                corr_XY: npt.NDArray[np.double],
+                corr_XY: npt.NDArray[np.floating],
                 observations_per_parameter: npt.NDArray[np.int_],
-            ) -> npt.NDArray[np.double]:
+            ) -> npt.NDArray[np.floating]:
                 return np.ones_like(corr_XY, dtype=np.bool_)
 
         # Step 1: COMPUTE THE CROSS-COVARIANCE/CORRELATION AND APPLY CALLBACK
@@ -258,8 +258,8 @@ class AdaptiveESMDA(BaseESMDA):
 
     @staticmethod
     def _clip_correlation_matrix(
-        corr_XY: npt.NDArray[np.double],
-    ) -> npt.NDArray[np.double]:
+        corr_XY: npt.NDArray[np.floating],
+    ) -> npt.NDArray[np.floating]:
         """Clip correlation array to range [-1, 1]."""
 
         # Perform checks and clip values to [-1, 1]

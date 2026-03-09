@@ -254,8 +254,8 @@ import scipy as sp  # type: ignore
 
 
 def empirical_cross_covariance(
-    X: npt.NDArray[np.double], Y: npt.NDArray[np.double]
-) -> npt.NDArray[np.double]:
+    X: npt.NDArray[np.floating], Y: npt.NDArray[np.floating]
+) -> npt.NDArray[np.floating]:
     """Both X and Y have shape (parameters, ensemble_size).
 
     We use this function instead of np.cov to handle cross-correlation,

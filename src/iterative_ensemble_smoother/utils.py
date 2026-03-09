@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def groupby_rows(
-    A: npt.NDArray[np.double],
+    A: npt.NDArray[np.bool_],
 ) -> Iterator[tuple[npt.NDArray[np.int_], npt.NDArray[np.bool_]]]:
     """Yields pairs (row_indices, columns).
 
@@ -50,8 +50,8 @@ def groupby_rows(
 
 
 def masked_std(
-    X: npt.NDArray[np.double], *, missing: npt.NDArray[np.bool_]
-) -> npt.NDArray[np.double]:
+    X: npt.NDArray[np.floating], *, missing: npt.NDArray[np.bool_]
+) -> npt.NDArray[np.floating]:
     """Computes a masked std for each row in X.
 
     Examples
@@ -193,7 +193,7 @@ def adjust_for_missing(
 
 
 def _validate_inputs(
-    parameters: npt.NDArray[np.double],
+    parameters: npt.NDArray[np.floating],
     covariance: npt.NDArray[np.double],
     observations: npt.NDArray[np.double],
 ) -> None:
