@@ -170,7 +170,7 @@ class LocalizedESMDA(BaseESMDA):
             the identity function (i.e. multiplication with 1 in every entry).
         overwrite: bool
             If False (the default), the input arrays will not be overwritten (mutated).
-            If True, the method may overwrite the input array.
+            If True, the method may overwrite the input arrays.
 
         Returns
         -------
@@ -180,7 +180,6 @@ class LocalizedESMDA(BaseESMDA):
         """
         if not overwrite:
             X = X.copy()
-            missing = missing if missing is None else missing.copy()
         if not hasattr(self, "delta_DT"):
             raise Exception("The method `prepare_assmilation` must be called.")
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)

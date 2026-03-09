@@ -389,8 +389,8 @@ class ESMDA(BaseESMDA):
             ensemble member has a slightly different grid layout. If None,
             then all entries are assumed to be valid.
         overwrite: bool
-            If False (the default), the input array will not be overwritten (mutated).
-            If True, the method may overwrite the input array.
+            If False (the default), the input arrays will not be overwritten (mutated).
+            If True, the method may overwrite the input arrays.
 
         Returns
         -------
@@ -400,7 +400,6 @@ class ESMDA(BaseESMDA):
         """
         if not overwrite:
             X = X.copy()
-            missing = missing if missing is None else missing.copy()
         if not hasattr(self, "delta_DT"):
             raise Exception("The method `prepare_assmilation` must be called.")
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)

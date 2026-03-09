@@ -163,7 +163,7 @@ class AdaptiveESMDA(BaseESMDA):
             represents any kind of correlation thresholding or softening.
         overwrite: bool
             If False (the default), the input arrays will not be overwritten (mutated).
-            If True, the method may overwrite the input array.
+            If True, the method may overwrite the input arrays.
 
         Returns
         -------
@@ -173,7 +173,6 @@ class AdaptiveESMDA(BaseESMDA):
         """
         if not overwrite:
             X = X.copy()
-            missing = missing if missing is None else missing.copy()
         if not hasattr(self, "D_obs_minus_D"):
             raise Exception("The method `prepare_assmilation` must be called.")
 
