@@ -143,7 +143,7 @@ class TestOverwriteFalseDoesNotMutate:
         smoother = ESMDA(
             covariance=covariance,
             observations=observations,
-            alpha=2,
+            alpha=1,
             seed=1,
         )
         X_overwrite = np.copy(X_prior)
