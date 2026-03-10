@@ -61,8 +61,6 @@ class BaseESMDA(ABC):
     which each subclass implements in their own way.
     """
 
-    ALLOWED_DTYPES = (np.float16, np.float32, np.float64)
-
     def __init__(
         self,
         covariance: npt.NDArray[np.floating],
@@ -115,15 +113,17 @@ class BaseESMDA(ABC):
                 "Argument `seed` must be an integer or numpy.random.Generator."
             )
 
-        if observations.dtype not in self.ALLOWED_DTYPES:
-            raise ValueError(
-                f"'observations' has unsupported dtype {observations.dtype}"
+        if not np.issubdtype(observations.dtype, np.floating):
+            raise TypeError(
+                f"'observations' must have a floating dtype, got {observations.dtype}"
             )
-        if covariance.dtype not in self.ALLOWED_DTYPES:
-            raise ValueError(f"'covariance' has unsupported dtype {covariance.dtype}")
+        if not np.issubdtype(covariance.dtype, np.floating):
+            raise TypeError(
+                f"'covariance' must have a floating dtype, got {covariance.dtype}"
+            )
         if observations.dtype != covariance.dtype:
             raise ValueError(
-                f"dtype mismatch: 'observations' is {observations.dtype} "
+                f"dtype mismatch: 'observations' is {observations.dtype}, "
                 f"'covariance' is {covariance.dtype}"
             )
 
@@ -132,8 +132,6 @@ class BaseESMDA(ABC):
                 "All elements of `covariance` must be strictly positive "
                 "when it is a 1D array."
             )
-
-        self._dtype = observations.dtype
 
         # Store data
         self.observations = observations
@@ -166,7 +164,7 @@ class BaseESMDA(ABC):
         else:
             raise TypeError("Alpha must be integer or 1D array.")
 
-        self.alpha = self.alpha.astype(self._dtype)  # Convert to same dtype
+        self.alpha = self.alpha
 
     def num_assimilations(self) -> int:
         return len(self.alpha)
@@ -269,10 +267,9 @@ class BaseESMDA(ABC):
         if not np.issubdtype(Y.dtype, np.floating):
             raise TypeError("Argument `Y` must contain floats")
 
-        if Y.dtype != self._dtype:
+        if Y.dtype != self.observations.dtype:
             raise ValueError(
-                f"'Y' has dtype {Y.dtype}, but class was "
-                f"initialized with dtype {self._dtype}"
+                f"'Y' must have dtype {self.observations.dtype}, got {Y.dtype}"
             )
 
         if self.iteration >= self.num_assimilations():
@@ -319,12 +316,6 @@ class BaseESMDA(ABC):
 
         assert X.ndim == 2
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)
-
-        if X.dtype != self._dtype:
-            raise ValueError(
-                f"'X' has dtype {X.dtype}, but class was "
-                f"initialized with dtype {self._dtype}"
-            )
 
         # Center the parameters, possibly accounting for missing data
         if missing is not None:
@@ -408,11 +399,16 @@ class ESMDA(BaseESMDA):
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)
         assert N_e == self.delta_DT.shape[0], "Dimension mismatch"
 
-        # In standard ESMDA, we simplify compute the product in a good order
+        # In standard ESMDA, we compute the product in a good order.
+        # First compute the ensemble-space update in observation precision
+        # (small: N_e × N_e), then cast to X's dtype before multiplying with
+        # delta_M so that no parameter-sized float64 intermediate is created.
+        input_dtype = X.dtype
         delta_M = self._compute_delta_M(X=X, missing=missing)
-        X += np.linalg.multi_dot(
-            [delta_M, self.delta_DT, self.term_diag, self.termT, self.D_obs_minus_D]
+        ensemble_update = np.linalg.multi_dot(
+            [self.delta_DT, self.term_diag, self.termT, self.D_obs_minus_D]
         )
+        X += delta_M @ ensemble_update.astype(input_dtype)
         return X
 
 
