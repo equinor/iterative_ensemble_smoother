@@ -712,9 +712,9 @@ def test_row_by_row_assimilation_order():
     assert np.allclose(X1, X2)
 
 
-def test_that_mixing_float32_and_float64_fails():
-    """Passing mixed floats, like one array of float16 and another float32 is
-    likely a user error. Better to raise than silently upcast."""
+def test_that_observations_and_responses_must_have_matching_float_dtypes():
+    """Observations, covariance, and responses must share the same float dtype.
+    Parameters (X) can have any float dtype and the result preserves X's dtype."""
     rng = np.random.default_rng(42)
 
     num_outputs = 4
@@ -732,7 +732,7 @@ def test_that_mixing_float32_and_float64_fails():
         size=num_outputs, scale=0.01
     )
 
-    # Test that we cannot initialize with different dtypes
+    # Test that mismatched dtypes between observations and covariance are rejected
     with pytest.raises(ValueError, match="dtype mismatch"):
         ESMDA(
             covariance=covariance.astype(np.float32),
@@ -740,23 +740,35 @@ def test_that_mixing_float32_and_float64_fails():
         )
 
     # Test that integer dtypes are not allowed
-    with pytest.raises(ValueError, match="unsupported dtype"):
+    with pytest.raises(TypeError, match="floating dtype"):
         ESMDA(
             covariance=np.arange(num_outputs) + 1,  # <- Integer
             observations=observations,
         )
 
+    # Test that matching float32 observations and covariance are accepted
+    smoother_f32 = ESMDA(
+        covariance=covariance.astype(np.float32),
+        observations=observations.astype(np.float32),
+        seed=1,
+    )
+
+    # Test that Y must match observations dtype
+    with pytest.raises(ValueError, match="dtype"):
+        smoother_f32.prepare_assimilation(Y=g(X_prior).astype(np.float64))
+
+    # Test that matching Y dtype works
     smoother = ESMDA(
         covariance=covariance,
         observations=observations,
+        seed=1,
     )
-    with pytest.raises(ValueError, match="class was initialized with dtype"):
-        smoother.prepare_assimilation(Y=g(X_prior).astype(np.float32))
-
     smoother.prepare_assimilation(Y=g(X_prior))
 
-    with pytest.raises(ValueError, match="class was initialized with dtype"):
-        smoother.assimilate_batch(X=X_prior.astype(np.float16))
+    # Test that float32 X is allowed and result preserves X dtype
+    X_f32 = X_prior.astype(np.float32)
+    result = smoother.assimilate_batch(X=X_f32)
+    assert result.dtype == np.float32
 
 
 def test_zero_covariance_raises():
