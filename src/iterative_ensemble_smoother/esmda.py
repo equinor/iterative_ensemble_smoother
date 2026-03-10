@@ -65,9 +65,9 @@ class BaseESMDA(ABC):
 
     def __init__(
         self,
-        covariance: npt.NDArray[np.double],
-        observations: npt.NDArray[np.double],
-        alpha: Union[int, npt.NDArray[np.double]] = 5,
+        covariance: npt.NDArray[np.floating],
+        observations: npt.NDArray[np.floating],
+        alpha: Union[int, npt.NDArray[np.floating]] = 5,
         seed: Union[np.random._generator.Generator, int, None] = None,
     ) -> None:
         """
@@ -170,7 +170,7 @@ class BaseESMDA(ABC):
 
     def perturb_observations(
         self, *, ensemble_size: int, alpha: float
-    ) -> npt.NDArray[np.double]:
+    ) -> npt.NDArray[np.floating]:
         """Create a matrix D with perturbed observations.
 
         In the Emerick (2013) paper, the matrix D is defined in section 6.
@@ -201,7 +201,7 @@ class BaseESMDA(ABC):
             C_dd_cholesky=self.C_D_L, rng=self.rng, size=ensemble_size
         ).astype(self.C_D_L.dtype)
 
-        D: npt.NDArray[np.double] = (
+        D: npt.NDArray[np.floating] = (
             self.observations[:, np.newaxis] + (alpha**0.5) * samples
         )
         assert D.shape == (len(self.observations), ensemble_size)
@@ -210,7 +210,7 @@ class BaseESMDA(ABC):
     def prepare_assimilation(
         self,
         *,
-        Y: npt.NDArray[np.double],
+        Y: npt.NDArray[np.floating],
         truncation: float = 0.99,
         overwrite: bool = False,
     ) -> None:

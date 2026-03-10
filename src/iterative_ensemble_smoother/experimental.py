@@ -64,10 +64,10 @@ class RowScaling:
 
 def ensemble_smoother_update_step_row_scaling(
     *,
-    covariance: npt.NDArray[np.double],
-    observations: npt.NDArray[np.double],
+    covariance: npt.NDArray[np.floating],
+    observations: npt.NDArray[np.floating],
     X_with_row_scaling: List[Tuple[npt.NDArray[np.floating], RowScaling]],
-    Y: npt.NDArray[np.double],
+    Y: npt.NDArray[np.floating],
     seed: Union[np.random._generator.Generator, int, None] = None,
     truncation: float = 1.0,
 ):

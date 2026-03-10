@@ -228,8 +228,8 @@ def adjust_for_missing(
 
 def _validate_inputs(
     parameters: npt.NDArray[np.floating],
-    covariance: npt.NDArray[np.double],
-    observations: npt.NDArray[np.double],
+    covariance: npt.NDArray[np.floating],
+    observations: npt.NDArray[np.floating],
 ) -> None:
     # Check types
     inputs = [parameters, covariance, observations]
@@ -247,10 +247,10 @@ def _validate_inputs(
 
 def sample_mvnormal(
     *,
-    C_dd_cholesky: npt.NDArray[np.double],
+    C_dd_cholesky: npt.NDArray[np.floating],
     rng: np.random._generator.Generator,
     size: int,
-) -> npt.NDArray[np.double]:
+) -> npt.NDArray[np.floating]:
     """Draw samples from the multivariate normal N(0, C_dd).
 
     We write this function from scratch to avoid factoring the covariance
