@@ -757,6 +757,20 @@ def test_that_mixing_float32_and_float64_fails():
         smoother.assimilate_batch(X=X_prior.astype(np.float16))
 
 
+def test_zero_covariance_raises():
+    """A zero element in a 1D covariance causes division by zero in invert_subspace."""
+    covariance = np.array([1.0, 0.0, 1.0])
+    observations = np.array([1.0, 2.0, 3.0])
+    with pytest.raises(
+        ValueError,
+        match=(
+            "All elements of `covariance` must be strictly positive "
+            "when it is a 1D array."
+        ),
+    ):
+        ESMDA(covariance, observations)
+
+
 if __name__ == "__main__":
     import pytest
 

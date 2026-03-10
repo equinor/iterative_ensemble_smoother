@@ -1014,7 +1014,7 @@ def test_that_batch_handling_for_update_params_3D_does_not_change_values_when_rh
     # input with output
     X_prior = np.arange(nparam * nreal, dtype=np.float64).reshape(nparam, nreal)
     observations = np.zeros(nobs, dtype=np.float64)
-    obs_var_vector = np.zeros(nobs, dtype=np.float64)
+    obs_var_vector = np.ones(nobs, dtype=np.float64)
     Y = np.zeros((nobs, nreal), dtype=np.float64)
 
     # Set the rho matrix to zero matrix
