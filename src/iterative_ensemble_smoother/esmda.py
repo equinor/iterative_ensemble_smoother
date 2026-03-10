@@ -130,8 +130,6 @@ class BaseESMDA(ABC):
                 "'covariance' is {covariance.dtype}"
             )
 
-        self._dtype = observations.dtype
-
         # Store data
         self.observations = observations
         self.iteration = -1
@@ -163,7 +161,7 @@ class BaseESMDA(ABC):
         else:
             raise TypeError("Alpha must be integer or 1D array.")
 
-        self.alpha = self.alpha.astype(self._dtype)  # Convert to same dtype
+        self.alpha = self.alpha
 
     def num_assimilations(self) -> int:
         return len(self.alpha)
@@ -266,12 +264,6 @@ class BaseESMDA(ABC):
         if not np.issubdtype(Y.dtype, np.floating):
             raise TypeError("Argument `Y` must contain floats")
 
-        if Y.dtype != self._dtype:
-            raise ValueError(
-                f"'Y' has dtype {Y.dtype}, but class was "
-                "initialized with dtype {self._dtype}"
-            )
-
         if self.iteration >= self.num_assimilations():
             raise Exception("No more assimilation steps to run.")
 
@@ -316,12 +308,6 @@ class BaseESMDA(ABC):
 
         assert X.ndim == 2
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)
-
-        if X.dtype != self._dtype:
-            raise ValueError(
-                f"'X' has dtype {X.dtype}, but class was "
-                "initialized with dtype {self._dtype}"
-            )
 
         # Center the parameters, possibly accounting for missing data
         if missing is not None:
