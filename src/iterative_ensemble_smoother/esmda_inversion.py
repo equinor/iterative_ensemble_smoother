@@ -312,7 +312,7 @@ def empirical_cross_covariance(
     return cov
 
 
-def normalize_alpha(alpha: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
+def normalize_alpha(alpha: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
     """Assure that sum_i (1/alpha_i) = 1.
 
     This is Eqn (22) in :cite:t:`EMERICK2013`.
@@ -324,12 +324,12 @@ def normalize_alpha(alpha: npt.NDArray[np.double]) -> npt.NDArray[np.double]:
     1.0
     """
     factor = np.sum(1 / alpha)
-    rescaled: npt.NDArray[np.double] = alpha * factor
+    rescaled: npt.NDArray[np.floating] = alpha * factor
     return rescaled
 
 
 def singular_values_to_keep(
-    singular_values: npt.NDArray[np.double], truncation: float = 1.0
+    singular_values: npt.NDArray[np.floating], truncation: float = 1.0
 ) -> int:
     """Find the index of the singular values to keep when truncating.
 
@@ -373,11 +373,11 @@ def singular_values_to_keep(
 
 def invert_naive(
     *,
-    delta_D: npt.NDArray[np.double],
-    C_D_L: npt.NDArray[np.double],
+    delta_D: npt.NDArray[np.floating],
+    C_D_L: npt.NDArray[np.floating],
     alpha: float,
     truncation: float,
-) -> npt.NDArray[np.double]:
+) -> npt.NDArray[np.floating]:
     r"""Naive implementation of the equation:
 
     (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
@@ -393,11 +393,13 @@ def invert_naive(
 
 def invert_subspace(
     *,
-    delta_D: npt.NDArray[np.double],
-    C_D_L: npt.NDArray[np.double],
+    delta_D: npt.NDArray[np.floating],
+    C_D_L: npt.NDArray[np.floating],
     alpha: float,
     truncation: float,
-) -> tuple[npt.NDArray[np.double], npt.NDArray[np.double], npt.NDArray[np.double]]:
+) -> tuple[
+    npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating]
+]:
     r"""Subspace inversion implementation of the equation:
 
     (\delta D)^T [(\delta D) (\delta D)^T + \alpha (N_e - 1) C_D]^(-1)
