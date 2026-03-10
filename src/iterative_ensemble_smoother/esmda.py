@@ -130,6 +130,12 @@ class BaseESMDA(ABC):
                 "'covariance' is {covariance.dtype}"
             )
 
+        if covariance.ndim == 1 and not np.all(covariance > 0):
+            raise ValueError(
+                "All elements of `covariance` must be strictly positive "
+                "when it is a 1D array."
+            )
+
         self._dtype = observations.dtype
 
         # Store data
