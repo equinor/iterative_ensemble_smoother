@@ -129,6 +129,7 @@ select = [
 ignore = [
     "G004",  # Logging statement uses f-string
 ]
+preview = true
 
 # Exclude a variety of commonly ignored directories.
 exclude = [
