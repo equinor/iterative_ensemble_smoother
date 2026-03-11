@@ -68,7 +68,7 @@ class BaseESMDA(ABC):
         covariance: npt.NDArray[np.floating],
         observations: npt.NDArray[np.floating],
         alpha: Union[int, npt.NDArray[np.floating]] = 5,
-        seed: Union[np.random._generator.Generator, int, None] = None,
+        seed: Union[np.random.Generator, int, None] = None,
     ) -> None:
         """
         Parameters
@@ -89,8 +89,8 @@ class BaseESMDA(ABC):
             elements `alpha` is constructed. If an 1D array is given, it is
             normalized so sum_i 1/alpha_i = 1 and used. The default is 5, which
             corresponds to np.array([5, 5, 5, 5, 5]).
-        seed : integer or numpy.random._generator.Generator, optional
-            A seed or numpy.random._generator.Generator used for random number
+        seed : integer or numpy.random.Generator, optional
+            A seed or numpy.random.Generator used for random number
             generation. The argument is passed to numpy.random.default_rng().
             The default is None.
         """
@@ -110,12 +110,9 @@ class BaseESMDA(ABC):
         if not observations.shape[0] == covariance.shape[0]:
             raise ValueError("Shapes of `observations` and `covariance` must match.")
 
-        if not (
-            isinstance(seed, (int, np.random._generator.Generator)) or seed is None
-        ):
+        if not (isinstance(seed, (int, np.random.Generator)) or seed is None):
             raise TypeError(
-                "Argument `seed` must be an integer "
-                "or numpy.random._generator.Generator."
+                "Argument `seed` must be an integer or numpy.random.Generator."
             )
 
         if observations.dtype not in self.ALLOWED_DTYPES:
