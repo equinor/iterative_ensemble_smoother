@@ -59,8 +59,6 @@ def groupby_rows(
     #
     # This is a lossless encoding (packbits is a bijection on fixed-width
     # boolean rows), so every distinct boolean row maps to a distinct key.
-    #
-    # See benchmarks/benchmark_groupby_rows.py for timings (20-375x faster).
     packed = np.packbits(A, axis=1)
     key_dtype = np.dtype((np.void, packed.shape[1]))
     keys = np.ascontiguousarray(packed).view(key_dtype).ravel()
