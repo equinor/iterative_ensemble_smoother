@@ -456,7 +456,7 @@ def invert_subspace(
     # However, solve_triangular will always upcast to float64, even if inputs
     # are float32. Here we get the correct LAPACK routine based on inputs.
     # (To avoid float64 cast, we use alpha**0.5 instead of np.sqrt(alpha))
-    dtrtrs = sp.linalg.get_lapack_funcs("trtrs", arrays=(C_D_L, delta_D))
+    trtrs = sp.linalg.get_lapack_funcs("trtrs", arrays=(C_D_L, delta_D))
 
     # If the matrix C_D is 2D, then C_D_L is the (upper) Cholesky factor
     if C_D_L.ndim == 2:
@@ -464,7 +464,7 @@ def invert_subspace(
         # G = sp.linalg.solve_triangular(
         #     alpha**0.5 * C_D_L, delta_D, lower=False, trans=1
         # )
-        G, info = dtrtrs(alpha**0.5 * C_D_L, delta_D, lower=0, trans=1)
+        G, info = trtrs(alpha**0.5 * C_D_L, delta_D, lower=0, trans=1)
         assert info == 0
 
     # If the matrix C_D is 1D, then C_D_L is the square-root of C_D
@@ -483,7 +483,7 @@ def invert_subspace(
         # term = sp.linalg.solve_triangular(
         #     np.sqrt(alpha) * C_D_L, (U_r / w_r[np.newaxis, :]), lower=False
         # )
-        term, info = dtrtrs(
+        term, info = trtrs(
             alpha**0.5 * C_D_L, (U_r / w_r[np.newaxis, :]), lower=0, trans=0
         )
         assert info == 0
