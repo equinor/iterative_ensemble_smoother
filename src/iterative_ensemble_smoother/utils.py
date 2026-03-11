@@ -248,7 +248,7 @@ def _validate_inputs(
 def sample_mvnormal(
     *,
     C_dd_cholesky: npt.NDArray[np.floating],
-    rng: np.random._generator.Generator,
+    rng: np.random.Generator,
     size: int,
 ) -> npt.NDArray[np.floating]:
     """Draw samples from the multivariate normal N(0, C_dd).

@@ -68,7 +68,7 @@ def ensemble_smoother_update_step_row_scaling(
     observations: npt.NDArray[np.floating],
     X_with_row_scaling: List[Tuple[npt.NDArray[np.floating], RowScaling]],
     Y: npt.NDArray[np.floating],
-    seed: Union[np.random._generator.Generator, int, None] = None,
+    seed: Union[np.random.Generator, int, None] = None,
     truncation: float = 1.0,
 ):
     """Perform a single ESMDA update (ES) with row scaling.
@@ -129,7 +129,7 @@ class DistanceESMDA(ESMDA):
         covariance: npt.NDArray[np.float64],
         observations: npt.NDArray[np.float64],
         alpha: Union[int, npt.NDArray[np.float64]] = 5,
-        seed: Union[np.random._generator.Generator, int, None] = None,
+        seed: Union[np.random.Generator, int, None] = None,
     ) -> None:
         """Initialize DistanceESMDA instance.
 
