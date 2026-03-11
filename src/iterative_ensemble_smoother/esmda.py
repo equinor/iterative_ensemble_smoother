@@ -126,8 +126,8 @@ class BaseESMDA(ABC):
             raise ValueError(f"'covariance' has unsupported dtype {covariance.dtype}")
         if observations.dtype != covariance.dtype:
             raise ValueError(
-                f"dtype mismatch: 'observations' is {observations.dtype}"
-                "'covariance' is {covariance.dtype}"
+                f"dtype mismatch: 'observations' is {observations.dtype} "
+                f"'covariance' is {covariance.dtype}"
             )
 
         if covariance.ndim == 1 and not np.all(covariance > 0):
@@ -275,7 +275,7 @@ class BaseESMDA(ABC):
         if Y.dtype != self._dtype:
             raise ValueError(
                 f"'Y' has dtype {Y.dtype}, but class was "
-                "initialized with dtype {self._dtype}"
+                f"initialized with dtype {self._dtype}"
             )
 
         if self.iteration >= self.num_assimilations():
@@ -326,7 +326,7 @@ class BaseESMDA(ABC):
         if X.dtype != self._dtype:
             raise ValueError(
                 f"'X' has dtype {X.dtype}, but class was "
-                "initialized with dtype {self._dtype}"
+                f"initialized with dtype {self._dtype}"
             )
 
         # Center the parameters, possibly accounting for missing data
