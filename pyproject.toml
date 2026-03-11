@@ -106,6 +106,7 @@ select = [
     "INT",
     "ISC",
     "LOG",
+    "NPY",
     "PD",
     "PERF",
     "PIE",
