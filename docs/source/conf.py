@@ -3,19 +3,19 @@ iterative_ensemble_smoother documentation build configuration file.
 """
 
 import datetime
-import os
 import re
 import sys
+from pathlib import Path
 from subprocess import check_output
 
 import iterative_ensemble_smoother as ies
 
-package_path = os.path.abspath("..")
+package_path = str(Path("..").resolve())
 sys.path.insert(0, package_path)
 
 project = "iterative_ensemble_smoother"
 author = "Equinor"
-copyright = f"2022-{datetime.datetime.today().year}, {author}"
+copyright = f"2022-{datetime.datetime.today().year}, {author}"  # noqa: A001
 # The default replacements for |version| and |release|, also used in various
 # other places throughout the built documents.
 version = re.sub(r"\.dev.*$", r".dev", ies.__version__)

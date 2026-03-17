@@ -4,24 +4,18 @@ features of iterative_ensemble_smoother
 """
 
 import logging
-import numbers
-import warnings
-from typing import Callable, List, Optional, Sequence, Tuple, TypeVar, Union
+from typing import List, Tuple, TypeVar, Union
 
 import numpy as np
 import numpy.typing as npt
 import scipy as sp  # type: ignore
-from joblib import Parallel, delayed
 
 from iterative_ensemble_smoother import ESMDA
-from iterative_ensemble_smoother.esmda import BaseESMDA
 from iterative_ensemble_smoother.esmda_inversion import (
-    empirical_cross_covariance,
     singular_values_to_keep,
 )
 from iterative_ensemble_smoother.utils import (
     calc_max_number_of_layers_per_batch_for_distance_localization,
-    memory_usage_decorator,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,335 +25,27 @@ T = TypeVar("T")
 ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION = True
 
 
-class AdaptiveESMDA(BaseESMDA):
-    @staticmethod
-    def correlation_threshold(ensemble_size: int) -> float:
-        """Return a number that determines whether a correlation is significant.
+class RowScaledESMDA(ESMDA):
+    """Subclass ESMDA to apply strength "alpha" to row updates."""
 
-        Default threshold taken from luo2022,
-        Continuous Hyper-parameter OPtimization (CHOP) in an ensemble Kalman filter
-        Section 2.3 - Localization in the CHOP problem
-
-        Examples
-        --------
-        >>> AdaptiveESMDA.correlation_threshold(0)
-        1.0
-        >>> AdaptiveESMDA.correlation_threshold(9)
-        1.0
-        >>> AdaptiveESMDA.correlation_threshold(16)
-        0.75
-        >>> AdaptiveESMDA.correlation_threshold(36)
-        0.5
-        """
-        return float(min(1, max(0, 3 / np.sqrt(ensemble_size))))
-
-    @staticmethod
-    def compute_cross_covariance_multiplier(
-        *,
-        alpha: float,
-        C_D: npt.NDArray[np.double],
-        D: npt.NDArray[np.double],
-        Y: npt.NDArray[np.double],
-        cov_YY: Optional[npt.NDArray[np.double]] = None,
-    ) -> npt.NDArray[np.double]:
-        """Compute transition matrix T such that:
-
-            X + cov_XY @ transition_matrix
-
-        In the notation of Emerick et al, recall that the update equation is:
-
-            X_posterior = X_prior + cov_XY @ inv(C_DD + alpha * C_D) @ (D - Y)
-
-        This function computes a transition matrix T, defined as:
-
-            T := inv(C_DD + alpha * C_D) @ (D - Y)
-
-        Note that this might not be the most efficient way to compute the update,
-        since cov_XY := center(X) @ center(Y) / (N - 1), and we can avoid creating
-        this (huge) covariance matrix by performing multiplications right-to-left:
-
-            cov_XY @ inv(C_DD + alpha * C_D) @ (D - Y)
-            center(X) @ center(Y) / (N - 1) @ inv(C_DD + alpha * C_D) @ (D - Y)
-            center(X) @ [center(Y) / (N - 1) @ inv(C_DD + alpha * C_D) @ (D - Y)]
-
-        The advantage of forming T instead is that if we already have computed
-        cov_XY, then we can apply the same T to a reduced number of rows (parameters)
-        in cov_XY.
-        """
-        # Compute cov(Y, Y) if it was not passed to the function.
-        # Pre-computation might be faster, since covariance is commutative with
-        # respect to indexing, ie, cov(Y[mask, :], YY[mask, :]) = cov(Y, Y)[mask, mask]
-        C_DD = empirical_cross_covariance(Y, Y) if cov_YY is None else cov_YY
-
-        assert C_DD.shape[0] == C_DD.shape[1]
-        assert C_DD.shape[0] == Y.shape[0]
-
-        # Arguments for sp.linalg.solve
-        solver_kwargs = {
-            "overwrite_a": True,
-            "overwrite_b": True,
-            "assume_a": "pos",  # Assume positive definite matrix (use cholesky)
-            "lower": False,  # Only use the upper part while solving
-        }
-
-        # Compute T := sp.linalg.inv(C_DD + alpha * C_D) @ (D - Y)
-        # by solving the system (C_DD + alpha * C_D) @ T = (D - Y)
-        if C_D.ndim == 2:
-            # C_D is a covariance matrix
-            C_DD += alpha * C_D  # Save memory by mutating
-        elif C_D.ndim == 1:
-            # C_D is an array, so add it to the diagonal without forming diag(C_D)
-            np.fill_diagonal(C_DD, C_DD.diagonal() + alpha * C_D)
-
-        return sp.linalg.solve(C_DD, D - Y, **solver_kwargs)  # type: ignore
-
-    def _cov_to_corr_inplace(
-        self,
-        cov_XY: npt.NDArray[np.double],
-        stds_X: npt.NDArray[np.double],
-        stds_Y: npt.NDArray[np.double],
-    ) -> None:
-        """Convert a covariance matrix to a correlation matrix in-place."""
-
-        # Divide each element of cov_XY by the corresponding standard deviations
-        cov_XY /= stds_X[:, np.newaxis]
-        cov_XY /= stds_Y[np.newaxis, :]
-
-        # Perform checks and clip values to [-1, 1]
-        eps = 1e-8
-        if not ((cov_XY.max() <= 1 + eps) and (cov_XY.min() >= -1 - eps)):
-            msg = "Cross-correlation matrix has entries not in [-1, 1]."
-            msg += f"The min and max values are: {cov_XY.min()} and {cov_XY.max()}"
-            warnings.warn(msg)
-
-        return np.clip(cov_XY, a_min=-1, a_max=1, out=cov_XY)
-
-    def _corr_to_cov_inplace(
-        self,
-        corr_XY: npt.NDArray[np.double],
-        stds_X: npt.NDArray[np.double],
-        stds_Y: npt.NDArray[np.double],
-    ) -> None:
-        """Convert a correlation matrix to a covariance matrix in-place."""
-        # Multiply each element of corr_XY by the corresponding standard deviations
-        corr_XY *= stds_X[:, np.newaxis]
-        corr_XY *= stds_Y[np.newaxis, :]
-        return corr_XY
-
-    @staticmethod
-    def _update_single_parameter(
-        param_num: int,
-        correlated_responses_mask: npt.NDArray[np.bool_],
-        cov_XY_row: npt.NDArray[np.double],
-        Y: npt.NDArray[np.double],
-        D: npt.NDArray[np.double],
-        C_D: npt.NDArray[np.double],
-        cov_YY: npt.NDArray[np.double],
-        alpha: float,
-        compute_cross_covariance_multiplier: Callable,
-    ) -> Tuple[int, npt.NDArray[np.double]]:
-        """
-        Worker function to compute the update for a single parameter.
-        """
-
-        cov_XY_subset = cov_XY_row[correlated_responses_mask].reshape(1, -1)
-
-        Y_subset = Y[correlated_responses_mask, :]
-        D_subset = D[correlated_responses_mask, :]
-
-        cov_YY_mask = np.ix_(correlated_responses_mask, correlated_responses_mask)
-        cov_YY_subset = cov_YY[cov_YY_mask]
-
-        C_D_subset = (
-            C_D[correlated_responses_mask] if C_D.ndim == 1 else C_D[cov_YY_mask]
-        )
-
-        T = compute_cross_covariance_multiplier(
-            alpha=alpha,
-            C_D=C_D_subset,
-            D=D_subset,
-            Y=Y_subset,
-            cov_YY=cov_YY_subset,
-        )
-
-        update_vector = cov_XY_subset @ T
-
-        return param_num, update_vector
-
-    def assimilate(
+    def assimilate_batch(
         self,
         *,
-        X: npt.NDArray[np.double],
-        Y: npt.NDArray[np.double],
-        D: npt.NDArray[np.double],
-        overwrite: bool = False,
-        alpha: float,
-        correlation_threshold: Union[Callable[[int], float], float, None] = None,
-        cov_YY: Optional[npt.NDArray[np.double]] = None,
-        progress_callback: Optional[Callable[[Sequence[T]], Sequence[T]]] = None,
-        correlation_callback: Optional[Callable[[npt.NDArray[np.double]], None]] = None,
-        n_jobs: int = 1,
-    ) -> npt.NDArray[np.double]:
-        """Assimilate data and return an updated ensemble X_posterior.
+        X: npt.NDArray[np.floating],
+        missing: Union[npt.NDArray[np.bool_], None] = None,
+        alpha: float = 1.0,
+    ) -> npt.NDArray[np.floating]:
+        """Apply a scaling `alpha` to the update."""
+        if not hasattr(self, "delta_DT"):
+            raise Exception("The method `prepare_assmilation` must be called.")
+        N_m, N_e = X.shape  # (num_parameters, ensemble_size)
+        assert N_e == self.delta_DT.shape[0], "Dimension mismatch"
+        delta_M = self._compute_delta_M(X=X, missing=missing)
 
-            X_posterior = smoother.assimilate(X, Y, D, alpha)
-
-        This method first computes the cross-covariance and cross-correlation
-        matrices between X and Y. Then it sets correlations that are below the
-        threshold to zero. It then loops over parameters in X that are deemed
-        significant with respect to Y (based on the threshold), and updates
-        these groups together.
-
-        Parameters
-        ----------
-        X : np.ndarray
-            A 2D array of shape (num_parameters, ensemble_size). Each row
-            corresponds to a parameter in the model, and each column corresponds
-            to an ensemble member (realization).
-        Y : np.ndarray
-            2D array of shape (num_observations, ensemble_size), containing
-            responses when evaluating the model at X. In other words, Y = g(X),
-            where g is the forward model.
-        D : np.ndarray
-            2D array of shape (num_observations, ensemble_size), containing
-            perturbed observations. D = observations + mv_normal(0, covariance),
-            and D may be computed by the method `perturb_observations`.
-        alpha : float
-            The covariance inflation factor. The sequence of alphas should
-            obey the equation sum_i (1/alpha_i) = 1. However, this is NOT
-            enforced in this method. The user/caller is responsible for this.
-        overwrite: bool
-            If True, X will be overwritten and mutated.
-            If False, the method will not mutate inputs in any way.
-            Setting this to True saves memory.
-        correlation_threshold : callable or float or None
-            Either a callable with signature f(ensemble_size) -> float, or a
-            float in the range [0, 1]. Entries in the covariance matrix that
-            are lower than the correlation threshold will be set to zero.
-            If None, the default 3/sqrt(ensemble_size) is used.
-        cov_YY : np.ndarray or None
-            A 2D array of shape (num_observations, num_observations) with the
-            empirical covariance of Y. If passed, this is not computed in the
-            method call, potentially saving time and computation.
-        progress_callback : Callable[[Sequence[T]], Sequence[T]] or None
-            A callback function that can be used to wrap the iteration over
-            parameters for progress reporting.
-            It should accept an iterable as input and return an iterable.
-            This allows for integration with progress reporting tools like tqdm,
-            which can provide visual feedback on the progress of the
-            assimilation process.
-            If None, no progress reporting is performed.
-        correlation_callback : Optional[Callable]
-            A callback function that is called with the correlation matrix (2D array)
-            as its argument after the correlation matrix computation is complete.
-            The callback should handle or process the correlation matrix, such as
-            saving or logging it. The callback should not return any value.
-        n_jobs : int
-            The number of parallel jobs to run. If 1, no parallel processing
-            is used. If -1, all available CPU cores are used. Default is 1.
-
-        Returns
-        -------
-        X_posterior : np.ndarray
-            2D array of shape (num_parameters, ensemble_size).
-        """
-        assert X.shape[1] == Y.shape[1]
-
-        # Check the correlation threshold
-        is_callable = callable(correlation_threshold)
-        is_float = (
-            isinstance(correlation_threshold, numbers.Real)
-            and correlation_threshold >= 0
-            and correlation_threshold <= 1
+        # Mutate in place
+        X[:, :] += alpha * np.linalg.multi_dot(
+            [delta_M, self.delta_DT, self.term_diag, self.termT, self.D_obs_minus_D]
         )
-        is_None = correlation_threshold is None
-        if not (is_callable or is_float or is_None):
-            raise TypeError(
-                "`correlation_threshold` must be a callable or a float in [0, 1]"
-            )
-
-        # Do not overwrite input arguments
-        if not overwrite:
-            X = np.copy(X)
-
-        # Create `correlation_threshold` if the argument is a float
-        if is_float:
-            corr_threshold: float = correlation_threshold
-
-            def correlation_threshold(ensemble_size: int) -> float:
-                return corr_threshold
-
-        # Default correlation threshold function
-        if correlation_threshold is None:
-            correlation_threshold = self.correlation_threshold
-        assert callable(correlation_threshold), (
-            "`correlation_threshold` should be callable"
-        )
-
-        if progress_callback is None:
-
-            def progress_callback(x):
-                return x  # A simple pass-through function
-
-        # Step 1: # Compute cross-correlation between parameters X and responses Y
-        # Note: let the number of parameters be n and the number of responses be m.
-        # This step requires both O(mn) computation and O(mn) storage, which is
-        # larger than the O(n + m^2) computation used in ESMDA, which never explicitly
-        # forms the cross-covariance matrix between X and Y. However, if we batch
-        # X by parameter group (rows), the storage requirement decreases
-        cov_XY = empirical_cross_covariance(X, Y)
-        assert cov_XY.shape == (X.shape[0], Y.shape[0])
-
-        stds_X = np.std(X, axis=1, ddof=1)
-        stds_Y = np.std(Y, axis=1, ddof=1)
-
-        corr_XY = self._cov_to_corr_inplace(cov_XY, stds_X, stds_Y)
-
-        # Determine which elements in the cross covariance matrix that will
-        # be set to zero
-        threshold = correlation_threshold(X.shape[1])
-        significant_corr_XY = np.abs(corr_XY) > threshold
-
-        cov_XY = self._corr_to_cov_inplace(corr_XY, stds_X, stds_Y)
-
-        # Pre-compute the covariance cov(Y, Y) here, and index on it later
-        if cov_YY is None:
-            cov_YY = empirical_cross_covariance(Y, Y)
-        else:
-            assert cov_YY.ndim == 2, "'cov_YY' must be a 2D array"
-            assert cov_YY.shape == (Y.shape[0], Y.shape[0])
-
-        # Identify rows with at least one significant correlation.
-        significant_rows = np.any(significant_corr_XY, axis=1)
-
-        # Loop only over rows with significant correlations
-        params_to_update = np.where(significant_rows)[0]
-
-        results = Parallel(n_jobs=n_jobs)(
-            delayed(self._update_single_parameter)(
-                param_num,
-                significant_corr_XY[param_num],
-                cov_XY[param_num],
-                # These are sent in full, which is efficient as they are the same
-                # for all workers. Joblib handles this well.
-                Y,
-                D,
-                self.C_D,
-                cov_YY,
-                alpha,
-                self.compute_cross_covariance_multiplier,
-            )
-            for param_num in progress_callback(params_to_update)
-        )
-
-        for param_num, update_vector in results:
-            X[[param_num], :] += update_vector
-
-        if correlation_callback is not None:
-            corr_XY = self._cov_to_corr_inplace(cov_XY, stds_X, stds_Y)
-            correlation_callback(corr_XY)
-
-        return X
 
 
 class RowScaling:
@@ -371,21 +57,20 @@ class RowScaling:
         assert 0 <= alpha <= 1.0
         self.alpha = alpha
 
-    def multiply(self, X, K):
+    def multiply(self, X, smoother):
         """Takes a matrix X and a matrix K and performs alpha * X @ K."""
         # This implementation merely mimics how RowScaling::multiply behaves
         # in the C++ code. It mutates the input argument X instead of returning.
-        X[:, :] = X @ (K * self.alpha)
+        smoother.assimilate_batch(X=X, alpha=self.alpha)
 
 
 def ensemble_smoother_update_step_row_scaling(
     *,
-    covariance: npt.NDArray[np.double],
-    observations: npt.NDArray[np.double],
-    X_with_row_scaling: List[Tuple[npt.NDArray[np.double], RowScaling]],
-    Y: npt.NDArray[np.double],
-    seed: Union[np.random._generator.Generator, int, None] = None,
-    inversion: str = "exact",
+    covariance: npt.NDArray[np.floating],
+    observations: npt.NDArray[np.floating],
+    X_with_row_scaling: List[Tuple[npt.NDArray[np.floating], RowScaling]],
+    Y: npt.NDArray[np.floating],
+    seed: Union[np.random.Generator, int, None] = None,
     truncation: float = 1.0,
 ):
     """Perform a single ESMDA update (ES) with row scaling.
@@ -420,40 +105,22 @@ def ensemble_smoother_update_step_row_scaling(
     """
 
     # Create ESMDA instance and set alpha=1 => run single assimilation (ES)
-    smoother = ESMDA(
+    smoother = RowScaledESMDA(
         covariance=covariance,
         observations=observations,
         seed=seed,
-        inversion=inversion,
         alpha=1,
     )
 
-    # Create transition matrix - common to all parameters in X
-    transition_matrix = smoother.compute_transition_matrix(
-        Y=Y, alpha=1, truncation=truncation
-    )
-
-    # The transition matrix K is a matrix such that
-    #     X_posterior = X_prior + X_prior @ K
-    # but the C++ code in ERT requires a transition matrix F that obeys
-    #     X_posterior = X_prior @ F
-    # To accomplish this, we add the identity to the transition matrix in place
-    np.fill_diagonal(transition_matrix, transition_matrix.diagonal() + 1)
+    smoother.prepare_assimilation(Y=Y, truncation=truncation)
 
     # Loop over groups of rows (parameters)
     for X, row_scale in X_with_row_scaling:
-        # In the C++ code, multiply() will transform the transition matrix F as
-        #    F_new = F * alpha + I * (1 - alpha)
-        # but the transition matrix F that we pass below is F := K + I, so:
-        #    F_new = (K + I) * alpha + I * (1 - alpha)
-        #    F_new = K * alpha + I * alpha + I - I * alpha
-        #    F_new = K * alpha + I
-        # And the update becomes : X_posterior = X_prior @ F_new
-        # The update in the C++ code is equivalent to
-        #    X_posterior = X_prior + alpha * X_prior @ K
-        # if we had used the original transition matrix K that is returned from
-        # ESMDA.compute_transition_matrix
-        row_scale.multiply(X, transition_matrix)
+        # ESMDA computes:
+        # X_posterior = X_prior + X_prior @ ... @ (D- Y)
+        # Here we compute
+        # X_prior += X_prior @ ... @ (D- Y)
+        row_scale.multiply(X, smoother)
 
     return X_with_row_scaling
 
@@ -464,10 +131,20 @@ class DistanceESMDA(ESMDA):
         covariance: npt.NDArray[np.float64],
         observations: npt.NDArray[np.float64],
         alpha: Union[int, npt.NDArray[np.float64]] = 5,
-        seed: Union[np.random._generator.Generator, int, None] = None,
+        seed: Union[np.random.Generator, int, None] = None,
     ) -> None:
-        """
-        Initialize instance.
+        """Initialize DistanceESMDA instance.
+
+        Parameters
+        ----------
+        covariance : np.ndarray
+            Covariance matrix of the observations.
+        observations : np.ndarray
+            Array of observations.
+        alpha : int or np.ndarray, optional
+            Covariance inflation factor(s). Default is 5.
+        seed : np.random.Generator or int or None, optional
+            Random seed for reproducibility. Default is None.
         """
         # Initialize instance
         super().__init__(
@@ -478,10 +155,8 @@ class DistanceESMDA(ESMDA):
         # Is set in prepare_assimilation and used in assimilate_batch
         # Is not used when using assimilate
         self.X3: npt.NDArray[np.float64] = None
+        self.C_D = covariance
 
-    @memory_usage_decorator(
-        enabled=ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION
-    )
     def assimilate(
         self,
         *,
@@ -490,35 +165,40 @@ class DistanceESMDA(ESMDA):
         rho: npt.NDArray[np.float64],
         truncation: float = 0.99,
     ):
-        """
+        """Calculate Ensemble Smoother update with distance-based localization.
+
         Implementation of algorithm described in Appendix B of Emerick's publication.
         Reference: Emerick, Journal of Petroleum Science and Engineering 136(3):219-239
                    DOI:10.1016/j.petrol.2016.01.029  (2016)
 
-        Calculate Ensemble Smoother update with distance-based localization using the
-        RHO matrix to define the scaling/tapering function for reduction of observations
-        influence on field parameters. This function implements all steps in
-        the algorithm.
+        Uses the RHO matrix to define the scaling/tapering function for reduction of
+        observations influence on field parameters. This function implements all steps
+        in the algorithm.
 
         Typical workflow:
           Create object of DistanceESMDA
           Loop over batches of field parameter values from a field parameter:
             Run 'assimilate' for each batch of field parameter values
 
-        Args:
-            X: Parameter matrix shape=(nparameters, nrealizations)
-            Y: Response matrix with predictions of observations,
-               shape=(nobservations, nrealizations)
-            rho: Localization matrix with scaling factors,
-                 shape= (nparameters, nobservations)
-            truncation: Define threshold for how many singular values
-                 to include from SVD
+        Parameters
+        ----------
+        X : np.ndarray
+            Parameter matrix of shape (nparameters, nrealizations).
+        Y : np.ndarray
+            Response matrix with predictions of observations,
+            shape (nobservations, nrealizations).
+        rho : np.ndarray
+            Localization matrix with scaling factors,
+            shape (nparameters, nobservations).
+        truncation : float, optional
+            Threshold for how many singular values to include from SVD.
+            Default is 0.99.
 
-        Results:
+        Returns
+        -------
+        np.ndarray
             Posterior (updated) matrix with parameters,
-            shape=(nparameters, nrealizations)
-
-
+            shape (nparameters, nrealizations).
         """
 
         N_n, N_e = Y.shape
@@ -565,7 +245,7 @@ class DistanceESMDA(ESMDA):
         U_r_w_inv = U_r / w_r
         # See Eqn (B.13)
         R = (
-            self.alpha
+            self.alpha[self.iteration]
             * (N_e - 1)
             * np.linalg.multi_dot([U_r_w_inv.T, C_hat_D, U_r_w_inv])
         )
@@ -592,9 +272,13 @@ class DistanceESMDA(ESMDA):
         # See Eqn (B.24)
         K_rho_i = rho * K_i
 
-        D = self.perturb_observations(ensemble_size=N_e, alpha=self.alpha)
+        D = self.perturb_observations(
+            ensemble_size=N_e, alpha=self.alpha[self.iteration]
+        )
         # See Eqn (B.25)
         X4 = K_rho_i @ (D - Y)
+
+        self.iteration += 1
 
         # See Eqn (B.26)
         return X + X4
@@ -621,21 +305,19 @@ class DistanceESMDA(ESMDA):
           Loop over batches of field parameter values from a field parameter:
             Run 'assimilate_batch' for each batch of field parameter values
 
-
-        Args:
-            Y: Response matrix with predictions of observations,
-               shape=(nobservations, nrealizations)
-            D: Matrix of perturbed observations.
-               The shape is (nobservations, nrealizations).
-               Note that if D is None, the perturbed observations are drawn
-               inside this function using assumption of independence
-               between observation errors.
-
-        Results:
-            Updated internal matrices such that assimilate_batch function
-            can be used without having to re-calculate all steps not involving
-            the field parameters, but only the observations.
-
+        Parameters
+        ----------
+        Y : np.ndarray
+            Response matrix with predictions of observations,
+            shape (nobservations, nrealizations).
+        truncation : float, optional
+            Threshold for how many singular values to include from SVD.
+            Default is 0.99.
+        D : np.ndarray or None, optional
+            Matrix of perturbed observations, shape (nobservations, nrealizations).
+            If None, the perturbed observations are drawn inside this function
+            using assumption of independence between observation errors.
+            Default is None.
         """
 
         N_n, N_e = Y.shape
@@ -724,7 +406,8 @@ class DistanceESMDA(ESMDA):
         D: npt.NDArray[np.float64] = None,
         truncation: float = 0.99,
     ):
-        """
+        """Calculate Ensemble Smoother update for a batch of parameters.
+
         Implementation of algorithm described in Appendix B of Emerick's publication.
         Reference: Emerick, Journal of Petroleum Science and Engineering 136(3):219-239
                    DOI:10.1016/j.petrol.2016.01.029  (2016)
@@ -733,23 +416,30 @@ class DistanceESMDA(ESMDA):
         RHO matrix to define the scaling/tapering function for reduction of observations
         influence on field parameters. This function implements the update steps
         of the field parameters and requires that the initial steps in the algorithm
-        is already run by using the function 'prepare_assimilation'
+        is already run by using the function 'prepare_assimilation'.
 
-        Args:
-            X: Parameter matrix shape=(nparameters, nrealizations)
-            Y: Response matrix with predictions of observations,
-               shape=(nobservations, nrealizations)
-            rho_batch: Localization matrix with scaling factors,
-                 shape= (nparameters, nobservations)
-            D: Perturbed observations, shape=(nobservations,nrealizations)
-               Optional, default is to simulate the perturbations internally
-               within this class
+        Parameters
+        ----------
+        X_batch : np.ndarray
+            Parameter matrix of shape (nparameters, nrealizations).
+        Y : np.ndarray
+            Response matrix with predictions of observations,
+            shape (nobservations, nrealizations).
+        rho_batch : np.ndarray
+            Localization matrix with scaling factors,
+            shape (nparameters, nobservations).
+        D : np.ndarray or None, optional
+            Perturbed observations, shape (nobservations, nrealizations).
+            If None, perturbations are simulated internally. Default is None.
+        truncation : float, optional
+            Threshold for how many singular values to include from SVD.
+            Default is 0.99.
 
-        Results:
+        Returns
+        -------
+        np.ndarray
             Posterior (updated) matrix with parameters,
-            shape=(nparameters, nrealizations)
-
-
+            shape (nparameters, nrealizations).
         """
         if self.X3 is None:
             # Need to run preparation step
@@ -772,164 +462,139 @@ class DistanceESMDA(ESMDA):
         # See Eqn (B.26)
         return X_batch + X4
 
-    @memory_usage_decorator(
-        enabled=ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION
-    )
-    def update_params_1D(
-        self,
-        X_prior: npt.NDArray[np.float64],
-        Y: npt.NDArray[np.float64],
-        rho_1D: npt.NDArray[np.float64],
-    ) -> npt.NDArray[np.float64]:
-        """
-        Calculate posterior update with distance-based ESMDA for one 1D parameter
-        The RHO matrix is specified as input.
-        Result is posterior parameter matrix
-
-        Args:
-            X_prior: Matrix with prior realizations of all field parameters,
-                    shape=(nparameters, nrealizations)
-            Y: Matrix with response values for each observations for each realization,
-                    shape=(nobservations, nrealizations)
-            rho_1D: RHO matrix elements for a 1D grid with size nx,
-                    shape=(nx,nobservations). If None is input, rho is set to 1
-                    for every matrix element and there will be no localization.
-        Results:
-            X_post: Posterior ensemble of field parameters,
-            shape=(nx, nrealizations)
-        """
-        if Y is None or Y.shape[0] == 0:
-            # No observation, no update
-            return X_prior
-
-        nobs = Y.shape[0]
-        assert self.observations.shape[0] == nobs
-
-        # Get dimensions from rho matrix
-        nx, _ = rho_1D.shape
-        assert nx == X_prior.shape[0]
-        assert nobs == rho_1D.shape[1]
-        nreal = X_prior.shape[1]
-        assert Y.shape[1] == nreal
-
-        return self.assimilate(X=X_prior, Y=Y, rho=rho_1D)
-
-    @memory_usage_decorator(
-        enabled=ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION
-    )
     def update_params_2D(
         self,
-        X_prior: npt.NDArray[np.float64],
+        X: npt.NDArray[np.float64],
         Y: npt.NDArray[np.float64],
         rho_2D: npt.NDArray[np.float64],
     ) -> npt.NDArray[np.float64]:
-        """
-        Calculate posterior update with distance-based ESMDA for one 2D parameter
-        The RHO matrix is specified as input. Result is posterior parameter matrix.
-        Number of parameters for the field is nx*ny,
-        dimensions of the rho_2D in addition to number of observations.
-        Args:
-            X_prior: Matrix with prior realizations of all field parameters,
-                    shape=(nparameters, nrealizations)
-            Y: Matrix with response values for each observations for each realization,
-                    shape=(nobservations, nrealizations)
-            rho_2D: RHO matrix elements for a 2D grid with size (nx,,ny)
-                    shape=(nx,ny, nobservations). If None is input, rho is set to 1
-                    for every matrix element and there will be no localization.
-                    nx and ny are the dimensions of the 2D field.
-        Results:
-            X_post: Posterior ensemble of field parameters,
-                    shape=(nparameters, nrealizations)
+        """Calculate posterior update with distance-based ESMDA for one 2D parameter.
+
+        The RHO matrix is specified as input. Number of parameters for the field
+        is nx*ny, dimensions of the rho_2D in addition to number of observations.
+
+        Parameters
+        ----------
+        X : np.ndarray
+            Matrix with prior realizations of all field parameters,
+            shape (nparameters, nrealizations).
+        Y : np.ndarray
+            Matrix with response values for each observation for each realization,
+            shape (nobservations, nrealizations).
+        rho_2D : np.ndarray
+            Localization matrix for distance-based correlation tapering.
+            Shape (nx, ny, nobservations), where nx and ny are the
+            dimensions of the 2D grid. Each element specifies the
+            localization factor between a grid cell and an observation,
+            with values in [0, 1]. A value of 1 indicates full correlation
+            (no localization), while 0 indicates the parameter and
+            observation are independent.
+
+        Returns
+        -------
+        np.ndarray
+            Posterior ensemble of field parameters,
+            shape (nparameters, nrealizations).
         """
         # No update if no observations or responses
         if Y is None or Y.shape[0] == 0:
             # No update of the field parameters
-            # Check if it necessary to make a copy or can we only return X_prior?
-            return X_prior.copy()
+            # Check if it necessary to make a copy or can we only return X?
+            return X.copy()
 
         nx, ny, nobs = rho_2D.shape
         nparam = nx * ny
-        nreal = X_prior.shape[1]
-        assert X_prior.shape[0] == nparam, (
-            f"Mismatch between X_prior dimension {X_prior.shape[0]} and nparam {nparam}"
+        nreal = X.shape[1]
+        assert X.shape[0] == nparam, (
+            f"Mismatch between X dimension {X.shape[0]} and nparam {nparam}"
         )
 
         assert nobs == Y.shape[0], (
             "Mismatch between Y matrix dimension for number of observation and rho_2D"
         )
         assert Y.shape[1] == nreal, (
-            f"Mismatch between X_prior dimension {Y.shape[1]} and nreal {nreal}"
+            f"Mismatch between X dimension {Y.shape[1]} and nreal {nreal}"
         )
         assert self.observations.shape[0] == nobs
 
-        rho = rho_2D.reshape(nparam, nobs)
-        return self.assimilate_batch(X_batch=X_prior, Y=Y, rho_batch=rho)
+        # Skip assimilation if rho is all zeros (no localization effect)
+        if np.count_nonzero(rho_2D) == 0:
+            return X.copy()
 
-    @memory_usage_decorator(
-        enabled=ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION
-    )
+        rho = rho_2D.reshape(nparam, nobs)
+        return self.assimilate_batch(X_batch=X, Y=Y, rho_batch=rho)
+
     def update_params_3D(
         self,
-        X_prior: npt.NDArray[np.float64],
+        X: npt.NDArray[np.float64],
         Y: npt.NDArray[np.float64],
         rho_2D_slice: npt.NDArray[np.float64],
         nz: int,
         min_nbatch: int = 1,
-        no_update: bool = False,
     ) -> npt.NDArray[np.float64]:
-        """
-        Calculate posterior update with distance-based ESMDA for one 3D parameter.
+        """Calculate posterior update with distance-based ESMDA for one 3D parameter.
+
         The RHO for one layer of the 3D field parameter is input.
         This is copied to all other layers of RHO in each batch of grid parameter
         layers since only lateral distance is used when calculating distances.
-        Result is posterior parameter matrices of field parameters for one field.
         Number of parameters is nx*ny*nz where nx, ny is dimension of the rho_2D_slice
         in addition to number of observations.
 
-        Args:
-            X_prior: Matrix with prior realizations of all field parameters,
-                    shape=(nparameters, nrealizations)
-            Y: Matrix with response values for each observations for each realization,
-                    shape=(nobservations, nrealizations)
-            rho_2D_slice: RHO matrix elements for one layer (slice) of a 3D grid
-                    with size (nx, ny), shape=(nx,ny,nobservations). If this variable
-                    is None, then rho is set to 1 for all elements which means
-                    that no localization is used.
-            nz:     Number of grid layers for the 3D field parameter.
-            min_nbatch: Minimum number of batches the field parameter is split into.
-                    Default is 1. Usually number of batches will be calculated based
-                    on available memory and the size of the field parameters,
-                    number of observations and realizations. The actual number of
-                    batches will be max(min_nbatch, min_number_of_batches_required).
-            no_update: Is set to True only when testing the batch loop.
-                    Should be False to get any update.
+        Parameters
+        ----------
+        X : np.ndarray
+            Matrix with prior realizations of all field parameters,
+            shape (nparameters, nrealizations).
+        Y : np.ndarray
+            Matrix with response values for each observation for each realization,
+            shape (nobservations, nrealizations).
+        rho_2D_slice : np.ndarray
+            Localization matrix for distance-based correlation tapering
+            for one horizontal layer (slice) of a 3D grid. Shape
+            (nx, ny, nobservations), where nx and ny are the lateral
+            dimensions of the grid. This same localization is applied to
+            all vertical layers. Each element specifies the localization
+            factor between a grid cell and an observation, with values
+            in [0, 1]. A value of 1 indicates full correlation (no
+            localization), while 0 indicates the parameter and observation
+            are independent.
+        nz : int, optional
+            Number of grid layers for the 3D field parameter. Default is 1.
+        min_nbatch : int, optional
+            Minimum number of batches the field parameter is split into.
+            Default is 1. Usually number of batches will be calculated based
+            on available memory and the size of the field parameters,
+            number of observations and realizations. The actual number of
+            batches will be max(min_nbatch, min_number_of_batches_required).
 
-        Results:
-            X_post: Posterior ensemble of field parameters,
-            shape=(nx*ny*nz, nrealizations)
+        Returns
+        -------
+        np.ndarray
+            Posterior ensemble of field parameters,
+            shape (nx*ny*nz, nrealizations).
         """
         # No update if no observations or responses
         if Y is None or Y.shape[0] == 0:
             # No update of the field parameters
             # Check if it is it necessary to return a copy here?
-            return X_prior.copy()
+            return X.copy()
 
         nx, ny, nobs = rho_2D_slice.shape
 
         nparam_per_layer = nx * ny
         nparam = nparam_per_layer * nz
-        nreal = X_prior.shape[1]
-        assert X_prior.shape[0] == nparam, (
-            f"Mismatch between X_prior dimension {X_prior.shape[0]} and nparam {nparam}"
+        nreal = X.shape[1]
+        assert X.shape[0] == nparam, (
+            f"Mismatch between X dimension {X.shape[0]} and nparam {nparam}"
         )
         assert nobs == Y.shape[0], (
             f"Mismatch between number of observations in Rho_2D {nobs} and in Y matrix"
         )
         assert Y.shape[1] == nreal, (
-            f"Mismatch between X_prior dimension {Y.shape[1]} and nreal {nreal}"
+            f"Mismatch between X dimension {Y.shape[1]} and nreal {nreal}"
         )
 
-        X_prior_3D = X_prior.reshape(nx, ny, nz, nreal)
+        X_3D = X.reshape(nx, ny, nz, nreal)
 
         # Check memory constraints and calculate how many grid layers of
         # field parameters is possible to update on one batch
@@ -963,33 +628,38 @@ class DistanceESMDA(ESMDA):
         nlayer_last_batch = nz - nbatch * nlayer_per_batch
 
         # Initialize the X_post_3D
-        X_post_3D = X_prior_3D.copy()
+        X_post_3D = X_3D.copy()
         for batch_number in range(nbatch):
             start_layer_number = batch_number * nlayer_per_batch
             end_layer_number = start_layer_number + nlayer_per_batch
 
-            X_batch = X_prior_3D[:, :, start_layer_number:end_layer_number, :].reshape(
+            X_batch = X_3D[:, :, start_layer_number:end_layer_number, :].reshape(
                 (nparam_in_batch, nreal)
             )
 
-            # Copy rho calculated from one layer of 3D parameter into all layers for
-            # current batch of layers.
-            # Size of rho batch: (nx,ny,nlayer_per_batch,nobs)
-            rho_3D_batch = np.zeros((nx, ny, nlayer_per_batch, nobs), dtype=np.float64)
-            rho_3D_batch[:, :, :, :] = rho_2D_slice[:, :, np.newaxis, :]
-            rho_batch = rho_3D_batch.reshape((nparam_in_batch, nobs))
+            if np.count_nonzero(rho_2D_slice) != 0:
+                # Copy rho calculated from one layer of 3D parameter into all layers for
+                # current batch of layers.
+                # Size of rho batch: (nx,ny,nlayer_per_batch,nobs)
+                rho_3D_batch = np.zeros(
+                    (nx, ny, nlayer_per_batch, nobs), dtype=np.float64
+                )
+                rho_3D_batch[:, :, :, :] = rho_2D_slice[:, :, np.newaxis, :]
+                rho_batch = rho_3D_batch.reshape((nparam_in_batch, nobs))
 
-            if no_update:
-                # Only used for test purpose
-                X_post_batch = X_batch
-            else:
                 logger.debug(f"Assimilate batch number {batch_number}")
                 X_post_batch = self.assimilate_batch(
                     X_batch=X_batch, Y=Y, rho_batch=rho_batch
                 )
-            X_post_3D[:, :, start_layer_number:end_layer_number, :] = (
-                X_post_batch.reshape(nx, ny, nlayer_per_batch, nreal)
-            )
+
+                X_post_3D[:, :, start_layer_number:end_layer_number, :] = (
+                    X_post_batch.reshape(nx, ny, nlayer_per_batch, nreal)
+                )
+            else:
+                X_post_batch = X_batch
+                logger.debug(
+                    f"Skip assimilate for batch number {batch_number} since rho is zero"
+                )
 
         if nlayer_last_batch > 0:
             batch_number = nbatch
@@ -997,82 +667,94 @@ class DistanceESMDA(ESMDA):
             end_layer_number = start_layer_number + nlayer_last_batch
             nparam_in_last_batch = nparam_per_layer * nlayer_last_batch
 
-            X_batch = X_prior_3D[:, :, start_layer_number:end_layer_number, :].reshape(
+            X_batch = X_3D[:, :, start_layer_number:end_layer_number, :].reshape(
                 (nparam_in_last_batch, nreal)
             )
 
-            rho_3D_batch = np.zeros((nx, ny, nlayer_last_batch, nobs), dtype=np.float64)
-            # Copy rho calculated from one layer of 3D parameter into all layers for
-            # current batch of layers
-            rho_3D_batch[:, :, :, :] = rho_2D_slice[:, :, np.newaxis, :]
-            rho_batch = rho_3D_batch.reshape((nparam_in_last_batch, nobs))
-            if no_update:
-                # Only used for test purpose
-                X_post_batch = X_batch
-            else:
-                logger.debug(f"Assimilate batch number {batch_number}")
+            if np.count_nonzero(rho_2D_slice) != 0:
+                rho_3D_batch = np.zeros(
+                    (nx, ny, nlayer_last_batch, nobs), dtype=np.float64
+                )
+                # Copy rho calculated from one layer of 3D parameter into all layers for
+                # current batch of layers
+                rho_3D_batch[:, :, :, :] = rho_2D_slice[:, :, np.newaxis, :]
+                rho_batch = rho_3D_batch.reshape((nparam_in_last_batch, nobs))
 
+                logger.debug(f"Assimilate batch number {batch_number}")
                 X_post_batch = self.assimilate_batch(
                     X_batch=X_batch, Y=Y, rho_batch=rho_batch
                 )
-            X_post_3D[:, :, start_layer_number:end_layer_number, :] = (
-                X_post_batch.reshape(nx, ny, nlayer_last_batch, nreal)
-            )
+
+                X_post_3D[:, :, start_layer_number:end_layer_number, :] = (
+                    X_post_batch.reshape(nx, ny, nlayer_last_batch, nreal)
+                )
+            else:
+                X_post_batch = X_batch
+                logger.debug(
+                    f"Skip assimilate for batch number {batch_number} since rho is zero"
+                )
 
         return X_post_3D.reshape(nparam, nreal)
 
     def update_params(
         self,
-        X_prior: npt.NDArray[np.float64],
+        X: npt.NDArray[np.float64],
         Y: npt.NDArray[np.float64],
         rho_input: npt.NDArray[np.float64],
         nz: int = 1,
         min_nbatch: int = 1,
-        no_update: bool = False,
     ) -> npt.NDArray[np.float64]:
-        """
-        Calculate posterior update with distance-based ESMDA.
-        Depending on the shape of rho_input it will update an 1D , 2D or 3D field.
-        Dimension of the ensemble X_prior is either (nx), (nx,ny) or (nx,ny,nz)
-        and rho_input define nx and ny while nz is number of layers in the grid
-        for the field parameter in 3D.
+        """Calculate posterior update with distance-based ESMDA.
 
-        Args:
-            X_prior: Matrix with prior realizations of all field parameters,
-                    shape=(nparameters, nrealizations)
-            Y: Matrix with response values for each observations for each realization,
-                    shape=(nobservations, nrealizations)
-            rho_input: RHO matrix elements.
-                    If RHO_input has shape= (nx,nobs),
-                    X_prior is an ensemble of 1D fields
-                    If RHO_input has shape= (nx, ny, nobs),
-                    X_prior is an ensemble of 2D fields.
-                    If Rho_input has shape=(nx,ny,nobs) and nz > 1,
-                    X_prior is an ensemble of 3D fields with size (nx, ny, nz).
-            nz:     Number of grid layers for the 3D field parameter.
-            min_nbatch: Minimum number of batches the field parameter is split into.
-                    Default is 1. Usually number of batches will be calculated based
-                    on available memory and the size of the field parameters,
-                    number of observations and realizations. The actual number of
-                    batches will be max(min_nbatch, min_number_of_batches_required).
-            no_update: Is set to True only when testing the batch loop.
-                    Should be False to get any update.
+        Depending on the shape of rho_input, this method handles updates for
+        parameters representing 1D, 2D, or 3D fields. X is always a 2D matrix
+        of shape (nparameters, nrealizations), where nparameters corresponds to
+        the flattened field (nx for 1D, nx*ny for 2D, nx*ny*nz for 3D).
+        The shape of rho_input and the nz parameter determine how the field
+        is structured.
 
-        Results:
-            X_post: Posterior ensemble of field parameters,
-            shape=(nx*ny*nz, nrealizations)
+        Parameters
+        ----------
+        X : np.ndarray
+            Matrix with prior realizations of all field parameters,
+            shape (nparameters, nrealizations).
+        Y : np.ndarray
+            Matrix with response values for each observation for each realization,
+            shape (nobservations, nrealizations).
+        rho_input : np.ndarray
+            RHO matrix elements for localization.
+            If rho_input has shape (nparam, nobs) and nz == 1,
+            it is treated as a flat (1D) field and reshaped to (nparam, 1, nobs).
+            If rho_input has shape (nx, ny, nobs) and nz == 1,
+            parameters represent a 2D field with nparameters = nx*ny.
+            If rho_input has shape (nx, ny, nobs) and nz > 1,
+            parameters represent a 3D field with nparameters = nx*ny*nz.
+        nz : int, optional
+            Number of grid layers for the 3D field parameter. Default is 1.
+        min_nbatch : int, optional
+            Minimum number of batches the field parameter is split into.
+            Default is 1. Usually number of batches will be calculated based
+            on available memory and the size of the field parameters,
+            number of observations and realizations. The actual number of
+            batches will be max(min_nbatch, min_number_of_batches_required).
+
+        Returns
+        -------
+        np.ndarray
+            Posterior ensemble of field parameters,
+            shape (nx*ny*nz, nrealizations).
         """
-        if rho_input.ndim == 1:
-            return self.update_params_1D(X_prior=X_prior, Y=Y, rho_1D=rho_input)
         if rho_input.ndim == 2 and nz == 1:
-            return self.update_params_2D(X_prior=X_prior, Y=Y, rho_2D=rho_input)
+            # Treat as flat field: reshape (nparam, nobs) to (nparam, 1, nobs)
+            return self.update_params_2D(X=X, Y=Y, rho_2D=rho_input[:, np.newaxis, :])
+        if rho_input.ndim == 3 and nz == 1:
+            return self.update_params_2D(X=X, Y=Y, rho_2D=rho_input)
         return self.update_params_3D(
-            X_prior=X_prior,
+            X=X,
             Y=Y,
             rho_2D_slice=rho_input,
             nz=nz,
             min_nbatch=min_nbatch,
-            no_update=no_update,
         )
 
 

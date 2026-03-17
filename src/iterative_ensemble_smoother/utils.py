@@ -1,10 +1,8 @@
 from __future__ import annotations
 
+import collections
 import logging
-import os
-import time
-from functools import wraps
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Iterator
 
 import numpy as np
 import psutil
@@ -15,44 +13,221 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def steplength_exponential(
-    iteration: int,
-    min_steplength: float = 0.3,
-    max_steplength: float = 0.6,
-    halflife: float = 1.5,
-) -> float:
-    r"""
-    Compute a suitable step length for the update step.
+def groupby_rows(
+    A: npt.NDArray[np.bool_],
+) -> Iterator[tuple[npt.NDArray[np.int_], npt.NDArray[np.bool_]]]:
+    """Yields pairs (row_indices, columns).
 
-    This is an implementation of Eq. (49), which calculates a suitable step length for
-    the update step, from the book: \"Formulating the history matching problem with
-    consistent error statistics", written by :cite:t:`evensen2021formulating`.
+    The usage is that A is a boolean matrix with shape (params, responses)
+    indicating for each parameter which responses to keep. This function
+    tells us, for each group of parameters, which responses to update.
 
     Examples
     --------
-    >>> [steplength_exponential(i) for i in [1, 2, 3, 4]]
-    [0.6, 0.48898815748423097, 0.41905507889761495, 0.375]
-    >>> [steplength_exponential(i, 0.0, 1.0, 1.0) for i in [1, 2, 3, 4]]
-    [1.0, 0.5, 0.25, 0.125]
-    >>> [steplength_exponential(i, 0.0, 1.0, 0.5) for i in [1, 2, 3, 4]]
-    [1.0, 0.25, 0.0625, 0.015625]
-    >>> [steplength_exponential(i, 0.5, 1.0, 1.0) for i in [1, 2, 3]]
-    [1.0, 0.75, 0.625]
-
+    >>> A = np.array([[ True, False,  True],
+    ...               [False,  True, False],
+    ...               [False,  True, False],
+    ...               [ True, False,  True],
+    ...               [ True,  True, False]])
+    >>> for param_idx, response_idx in groupby_rows(A):
+    ...     print(param_idx, response_idx)
+    [0 3] [ True False  True]
+    [1 2] [False  True False]
+    [4] [ True  True False]
     """
-    assert max_steplength > min_steplength
-    assert iteration >= 1
-    assert halflife > 0
+    if not np.issubdtype(A.dtype, np.bool_):
+        raise ValueError(f"A must be a boolean array, got dtype: {A.dtype}")
 
-    delta = max_steplength - min_steplength
-    exponent = -(iteration - 1) / halflife
-    return min_steplength + delta * 2**exponent
+    # Find unique rows efficiently by packing booleans into bytes.
+    #
+    # The naive approach -- np.unique(A, axis=0) -- is slow because NumPy
+    # converts each row into a structured dtype with one field per column
+    # (e.g. [('f0', bool), ('f1', bool), ...]), then sorts by comparing
+    # fields one at a time.  With 5000 columns that means up to 5000
+    # per-field dispatches for every comparison during the sort.
+    #
+    # Instead we:
+    #  1. Pack every 8 boolean columns into one uint8 byte with packbits,
+    #     shrinking a 5000-column row to ~625 bytes.
+    #  2. View each packed row as a single np.void blob (an unstructured
+    #     opaque byte sequence).  Unlike a structured dtype, np.void has
+    #     no named fields, so NumPy compares two elements with a single
+    #     memcmp call over the contiguous byte block -- not 5000 separate
+    #     field comparisons.
+    #  3. Pass these keys to np.unique, which now sorts and deduplicates
+    #     with the fast memcmp comparisons.
+    #
+    # This is a lossless encoding (packbits is a bijection on fixed-width
+    # boolean rows), so every distinct boolean row maps to a distinct key.
+    packed = np.packbits(A, axis=1)
+    key_dtype = np.dtype((np.void, packed.shape[1]))
+    keys = np.ascontiguousarray(packed).view(key_dtype).ravel()
+    _, inverse = np.unique(keys, return_inverse=True)
+
+    groups = collections.defaultdict(list)
+    for row_idx, group in enumerate(inverse):
+        groups[group].append(row_idx)
+
+    for indices in groups.values():
+        first_idx = indices[0]
+        yield np.array(indices, dtype=np.int_), A[first_idx, :]
+
+
+def masked_std(
+    X: npt.NDArray[np.floating], *, missing: npt.NDArray[np.bool_]
+) -> npt.NDArray[np.floating]:
+    """Computes a masked std for each row in X.
+
+    Examples
+    --------
+    >>> X = np.array([[ 0.65,  0.74,  0.54, -0.67],
+    ...               [ 0.23,  0.12,  0.22,  0.87],
+    ...               [ 0.22,  0.68,  0.07,  0.29]])
+
+    Let us encode some missing data:
+
+    >>> missing = np.array([[0, 0, 0, 0],
+    ...                     [0, 0, 0, 1],
+    ...                     [0, 0, 1, 1]], dtype=np.bool_)
+
+    For each row, the standard deviations are:
+
+
+    >>> for i in range(X.shape[0]):
+    ...     print(float(np.std(X[i, ~missing[i, :]], ddof=1)))
+    0.6617401302626281
+    0.060827625302982205
+    0.3252691193458119
+
+    This function computes the same standard deviations, but vectorized:
+
+    >>> masked_std(X, missing=missing)
+    array([0.66174013, 0.06082763, 0.32526912])
+    """
+
+    N_e = X.shape[1]  # Ensemble members / realizations
+    n_available = N_e - np.sum(missing, axis=1, keepdims=True)  # Non-missing params
+
+    # Need at least two valid ensemble members per parameter
+    if np.any(n_available < 2):
+        msg = (
+            "One or several parameters have too few valid ensemble members (need >=2)."
+        )
+        raise ValueError(msg)
+
+    valid = np.logical_not(missing)
+    X_masked = valid * X  # Set missing values to zero
+
+    # Compute mean values, taking missing into account
+    X_means = np.sum(X_masked, axis=1, keepdims=True) / n_available
+
+    # Center the matrix
+    X_centered = (X_masked - X_means) * valid
+
+    result: npt.NDArray[np.floating] = np.sqrt(
+        np.sum(X_centered**2, axis=1, keepdims=True) / (n_available - 1)
+    ).ravel()
+    return result
+
+
+def adjust_for_missing(
+    X: npt.NDArray[np.floating], *, missing: npt.NDArray[np.bool_]
+) -> npt.NDArray[np.floating]:
+    """Removes missing values from X, such that the cross-covariance product
+
+        center(X) @ center(Y).T / (N_e - 1)
+
+    remains correct even in the presence of missing parameters in some
+    ensemble members (realizations). Mutates the "missing" argument.
+
+    Examples
+    --------
+    >>> X = np.array([[ 0.65,  0.74,  0.54, -0.67],
+    ...               [ 0.23,  0.12,  0.22,  0.87],
+    ...               [ 0.22,  0.68,  0.07,  0.29]])
+
+    Let us encode some missing data:
+
+    >>> missing = np.array([[0, 0, 0, 0],
+    ...                     [0, 0, 0, 1],
+    ...                     [0, 0, 1, 1]], dtype=np.bool_)
+
+    The second parameter (row) is missing from the last realization (column).
+    The third parameter (row) is missing from last two realizations (columns).
+
+    If we compute the cross-covariance directly, we get the wrong answer.
+    (Recall that we don't have to center both matrices, centering one is enough.)
+
+    >>> Y = np.array([[ 0.59,  0.71,  0.79, -0.35],
+    ...               [-0.46,  0.86, -0.19, -1.28]])
+    >>> (X - np.mean(X, axis=1, keepdims=True)) @ Y.T / (X.shape[1] - 1)
+    array([[ 0.34063333,  0.47648333],
+           [-0.17873333, -0.2576    ],
+           [ 0.0061    ,  0.14538333]])
+
+    Only the top row is actually correct, since only the first parameter has no
+    missing values. The remaining entries are wrong, because missing values
+    are not taken into account. Let us compute a few entries by hand.
+
+    The entry in the second row, first column should be:
+
+    >>> x = np.array([0.23,  0.12,  0.22])
+    >>> y = np.array([0.59,  0.71,  0.79])
+    >>> float((x - np.mean(x)) @ y / (3 - 1))
+    -0.0011999...
+
+    The bottom-right entry should be:
+
+    >>> x = np.array([0.22, 0.68])
+    >>> y = np.array([-0.46,  0.86])
+    >>> float((x - np.mean(x)) @ y / (2 - 1))
+    0.30360000...
+
+    Now let us use our function. Notice that the entries match up to numerical
+    accuracy:
+
+    >>> adjust_for_missing(X, missing=missing) @ Y.T / (X.shape[1] - 1)
+    array([[ 0.34063333,  0.47648333],
+           [-0.0012    , -0.04215   ],
+           [ 0.0276    ,  0.3036    ]])
+
+    To summarize, this function prepares a matrix X for the cross-covariance
+    computation, such that the computation is correct even is the presence
+    of missing values.
+    """
+    N_e = X.shape[1]  # Ensemble members / realizations
+    n_available = N_e - np.sum(missing, axis=1, keepdims=True)  # Non-missing params
+
+    # Need at least two valid ensemble members per parameter
+    if np.any(n_available < 2):
+        msg = (
+            "One or several parameters have too few valid ensemble members (need >=2)."
+        )
+        raise ValueError(msg)
+
+    valid = np.logical_not(missing)
+    X_masked = valid * X  # Set missing values to zero
+    # Compute mean values, taking missing into account
+    X_means = np.sum(X_masked, axis=1, keepdims=True) / n_available
+
+    # Center the matrix
+    X_centered = X_masked - X_means
+
+    # Scale by number of ensemble members. I think of this as a scaling of
+    # the final covariance matrix, but it works to apply it to X directly
+    # due to linearity: a[:, None] * (X @ Y.T) == (a[:, None] * X) @ Y.T
+    X_centered *= (N_e - 1) / (n_available - 1)
+
+    # Mask to zero in anticipation of C = X @ Y.T, so that in the product
+    # zero values are accounted for in the sum-of-products in C_ij
+    result: npt.NDArray[np.floating] = X_centered * valid
+    return result
 
 
 def _validate_inputs(
-    parameters: npt.NDArray[np.double],
-    covariance: npt.NDArray[np.double],
-    observations: npt.NDArray[np.double],
+    parameters: npt.NDArray[np.floating],
+    covariance: npt.NDArray[np.floating],
+    observations: npt.NDArray[np.floating],
 ) -> None:
     # Check types
     inputs = [parameters, covariance, observations]
@@ -70,10 +245,10 @@ def _validate_inputs(
 
 def sample_mvnormal(
     *,
-    C_dd_cholesky: npt.NDArray[np.double],
-    rng: np.random._generator.Generator,
+    C_dd_cholesky: npt.NDArray[np.floating],
+    rng: np.random.Generator,
     size: int,
-) -> npt.NDArray[np.double]:
+) -> npt.NDArray[np.floating]:
     """Draw samples from the multivariate normal N(0, C_dd).
 
     We write this function from scratch to avoid factoring the covariance
@@ -112,42 +287,6 @@ def sample_mvnormal(
     return C_dd_cholesky.reshape(-1, 1) * z
 
 
-def memory_usage_decorator(
-    enabled: bool = True,
-) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
-        @wraps(func)
-        def wrapper(*args, **kwargs) -> Any:  # type: ignore
-            if enabled:
-                # Get process ID of the current Python process
-                process = psutil.Process(os.getpid())
-
-                start_time = time.perf_counter()
-
-                # Memory usage before the function call
-                mem_before = process.memory_info().rss / 1024 / 1024  # Convert to MB
-                logger.debug(
-                    f"\nMemory before calling '{func.__name__}': {mem_before:.2f} MB"
-                )
-
-            # Call the target function
-            result = func(*args, **kwargs)
-
-            if enabled:
-                mem_after = process.memory_info().rss / 1024 / 1024  # Convert to MB
-                end_time = time.perf_counter()
-                # Memory usage after the function call
-                logger.debug(
-                    f"Memory after calling '{func.__name__}': {mem_after:.2f} MB"
-                )
-                logger.debug(f"Run time used: {(end_time - start_time):.4f} seconds")
-            return result
-
-        return wrapper
-
-    return decorator
-
-
 def calc_max_number_of_layers_per_batch_for_distance_localization(
     nx: int,
     ny: int,
@@ -176,18 +315,26 @@ def calc_max_number_of_layers_per_batch_for_distance_localization(
         on the platform and it is supposed to be used to monitor actual
         memory usage in a cross platform fashion.
 
-    Args:
-        nx: grid size in I-direction (local x-axis direction)
-        ny: grid size in J-direction (local y-axis direction)
-        nz: grid size in K-direction (number of layers)
-        num_obs: Number of observations
-        nreal: Number of realizations
-        bytes_per_float: Is 4 or 8
+    Parameters
+    ----------
+    nx : int
+        Grid size in I-direction (local x-axis direction).
+    ny : int
+        Grid size in J-direction (local y-axis direction).
+    nz : int
+        Grid size in K-direction (number of layers).
+    num_obs : int
+        Number of observations.
+    nreal : int
+        Number of realizations.
+    bytes_per_float : int, optional
+        Number of bytes per float (4 or 8). Default is 8.
 
-    Returns:
+    Returns
+    -------
+    int
         Max number of layers that can be updated in one batch to
         avoid memory problems.
-
     """
 
     memory_safety_factor = 0.8
@@ -243,97 +390,78 @@ def calc_max_number_of_layers_per_batch_for_distance_localization(
     return max_nlayer_per_batch
 
 
-def transform_positions_to_local_field_coordinates(
-    coordsys_origin: tuple[float, float],
-    coordsys_rotation_angle: float,
-    utmx: npt.NDArray[np.float64],
-    utmy: npt.NDArray[np.float64],
-) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
-    """Calculates coordinate transformation from global to local coordinates.
-
-    Args:
-        coordys_origin: (x,y) coordinate of local coordinate
-        origin in global coordinates.
-        coordsys_rotation_angle: Angle for how much the local x-axis is rotated
-        anti-clockwise relative to the global x-axis in degrees.
-        utmx: vector of x-coordinates in global coordinates.
-        utmy: vector of y-coordinates in global coordinates.
-
-    Returns:
-        First vector is local x-coordinates and second vector is local y-coordinates.
-    """
-    # Translate
-    x1 = utmx - coordsys_origin[0]
-    y1 = utmy - coordsys_origin[1]
-    # Rotate
-    # Input angle is the local coordinate systems rotation
-    # anticlockwise relative to global x-axis in degrees
-    rotation_of_ertbox = coordsys_rotation_angle
-    rotation_angle = np.deg2rad(rotation_of_ertbox)
-    cos_theta = np.cos(rotation_angle)
-    sin_theta = np.sin(rotation_angle)
-    x2 = x1 * cos_theta + y1 * sin_theta
-    y2 = -x1 * sin_theta + y1 * cos_theta
-    return x2, y2
-
-
-def transform_local_ellipse_angle_to_local_coords(
-    coordsys_rotation_angle: float,
-    ellipse_anisotropy_angle: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
-    """Calculate angles relative to local coordinate system.
-
-    Args:
-        coordsys_rotation_angle: Local coordinate systems rotation angle
-        relative to the global coordinate system.
-        ellipse_anisotropy_angle: Vector of input angles in global coordinates.
-
-    Returns:
-        Vector of output angles relative to the local coordinate system.
-    """
-    # Both angles measured anti-clock from global coordinate systems x-axis in degrees
-    return ellipse_anisotropy_angle - coordsys_rotation_angle
-
-
-def localization_scaling_function(
+def gaspari_cohn(
     distances: npt.NDArray[np.float64],
 ) -> npt.NDArray[np.float64]:
-    """Calculate scaling factor to be used as values in
-    RHO matrix in distance-based localization.
-    The scaling function implements the commonly
-    used function published by Gaspari and Cohn.
-    For input normalized distance >= 2, the value will be 0.
+    """Gaspari--Cohn distance-based localization scaling function.
 
-    Args:
-        distances: Vector of values for normalized distances.
+    For each normalised distance d, returns a scaling factor in [0, 1]
+    used as elements in the localization matrix (rho).
+    For d >= 2 the value is 0.
 
-    Returns:
+    This is an implementation of Eq. (4.10) in Section 4.3
+    ("Compactly supported 5th-order piecewise rational functions") of
+    :cite:t:`gaspari1999construction`.
+
+    References
+    ----------
+    Gaspari, G. and Cohn, S.E. (1999), Construction of correlation functions
+    in two and three dimensions. Q.J.R. Meteorol. Soc., 125: 723-757.
+    https://doi.org/10.1002/qj.49712555417
+
+    Parameters
+    ----------
+    distances : np.ndarray
+        Vector of values for normalized distances.
+
+    Returns
+    -------
+    np.ndarray
         Values of scaling factors for each value of input distance.
+
+    Examples
+    --------
+    The function equals 1 at d=0, 5/24 at d=1, and 0 for d>=2:
+
+    >>> import numpy as np
+    >>> gaspari_cohn(np.array([0.0, 1.0, 2.0, 3.0]))
+    array([1.        , 0.20833333, 0.        , 0.        ])
+
+    The input array is not modified:
+
+    >>> d = np.array([0.5, 1.5])
+    >>> _ = gaspari_cohn(d)
+    >>> d
+    array([0.5, 1.5])
     """
-    # "gaspari-cohn"
-    # Commonly used in distance-based localization
-    # Is exact 0 for normalized distance > 2.
-    scaling_factor = distances
+    if not np.all(distances >= 0):
+        raise ValueError(f"Distances must be positive. Min: {np.min(distances)}")
+    scaling_factor = np.zeros_like(distances)
+
     d2 = distances**2
     d3 = d2 * distances
     d4 = d3 * distances
     d5 = d4 * distances
-    s = -1 / 4 * d5 + 1 / 2 * d4 + 5 / 8 * d3 - 5 / 3 * d2 + 1
-    scaling_factor[distances <= 1] = s[distances <= 1]
-    s = (
-        1 / 12 * d5
-        - 1 / 2 * d4
-        + 5 / 8 * d3
-        + 5 / 3 * d2
-        - 5 * distances
-        + 4
-        - 2 / 3 * 1 / distances
-    )
-    scaling_factor[(distances > 1) & (distances <= 2)] = s[
-        (distances > 1) & (distances <= 2)
-    ]
-    scaling_factor[distances > 2] = 0.0
 
+    near = distances <= 1
+    scaling_factor[near] = (
+        -1 / 4 * d5[near] + 1 / 2 * d4[near] + 5 / 8 * d3[near] - 5 / 3 * d2[near] + 1
+    )
+
+    mid = (distances > 1) & (distances <= 2)
+    scaling_factor[mid] = (
+        1 / 12 * d5[mid]
+        - 1 / 2 * d4[mid]
+        + 5 / 8 * d3[mid]
+        + 5 / 3 * d2[mid]
+        - 5 * distances[mid]
+        + 4
+        - 2 / 3 / distances[mid]
+    )
+
+    # Clip to [0, 1] to suppress tiny negative artefacts from
+    # floating-point arithmetic at the d=2 boundary.
+    np.clip(scaling_factor, 0.0, 1.0, out=scaling_factor)
     return scaling_factor
 
 
@@ -349,54 +477,76 @@ def calc_rho_for_2d_grid_layer(
     obs_anisotropy_angle: npt.NDArray[np.float64],
     right_handed_grid_indexing: bool = True,
 ) -> npt.NDArray[np.float64]:
-    """Calculate scaling values (RHO matrix elements) for a set of observations
-    with associated localization ellipse. The method will first
-    calculate the distances from each observation position to each grid cell
-    center point of all grid cells for a 2D grid.
-    The localization method will only consider lateral distances, and it is
-    therefore sufficient to calculate the distances in 2D.
-    All input observation positions are in the local grid coordinate system
-    to simplify the calculation of the distances.
+    """Calculate elements of the localization matrix (rho) for a 2D grid layer.
 
-    The position: xpos[n], ypos[n] and
-    localization ellipse defined by obs_main_range[n],obs_perp_range[n],
-    obs_anisotropy_angle[n]) refers to observation[n].
+    For each observation, the distance to every grid cell centre is computed
+    and passed through the Gaspari--Cohn scaling function to obtain rho.
+    Only lateral distances (horizontal distances in the (x, y) plane,
+    ignoring depth) are considered, so every depth layer of a 3D grid
+    shares the same cell centres and produces identical rho values;
+    a single 2D calculation therefore covers all depth layers.
+    All observation positions are given in the local grid coordinate
+    system.
 
-    The distance between an observation with index n and a grid cell (i,j) is
-    d[m,n] = dist((xpos_obs[n],ypos_obs[n]),(xpos_field[i,j],ypos_field[i,j]))
+    Each observation n is described by its position
+    (obs_xpos[n], obs_ypos[n]) and its localization ellipse
+    (obs_main_range[n], obs_perp_range[n], obs_anisotropy_angle[n]).
 
-    RHO[[m,n] = scaling(d)
-    where m = j + i * ny for left-handed grid index origo and
-          m = (ny - j - 1) + i * ny for right-handed grid index origo
-    Note that since d[m,n] does only depend on observation index n and
-    grid cell index (i,j). The values for RHO is
-    calculated for the combination ((i,j), n) and this covers
-    one grid layer in ertbox grid or a 2D surface grid.
+    Grid cells are addressed by a flat index m that encodes the 2D cell index (i, j):
+        m = j + i * ny                (left-handed grid indexing)
+        m = (ny - j - 1) + i * ny    (right-handed grid indexing)
 
-    Args:
-        nx: Number of grid cells in x-direction of local coordinate system.
-        ny: Number of grid cells in y-direction of local coordinate system.
-        xinc: Grid cell size in x-direction.
-        yinc: Grid cell size in y-direction.
-        obs_xpos: Observations x coordinates in local coordinates
-        obs_ypos: Observatiopns y coordinates in local coordinates
-        obs_main_range: Localization ellipse first range
-        obs_perp_range: Localization ellipse second range
-        obs_anisotropy_angle: Localization ellipse orientation relative
-        to local coordinate system in degrees
+    The 2D distance from observation n to grid cell m = (i, j) is:
+        d[m, n] = dist((obs_xpos[n], obs_ypos[n]), ((i + 0.5) * xinc, (j + 0.5) * yinc))
 
-    Returns:
-        Rho matrix values for one layer of the 3D ertbox grid or for a 2D surface grid.
+    where (i + 0.5) * xinc and (j + 0.5) * yinc are the x- and y-coordinates
+    of the centre of grid cell (i, j) in the local coordinate system.
+
+    The localization matrix element for cell m and observation n is:
+        rho[m, n] = gaspari_cohn(d[m, n])
+
+    Parameters
+    ----------
+    nx : int
+        Number of grid cells in x-direction of local coordinate system.
+    ny : int
+        Number of grid cells in y-direction of local coordinate system.
+    xinc : float
+        Grid cell size in x-direction.
+    yinc : float
+        Grid cell size in y-direction.
+    obs_xpos : np.ndarray
+        Observations x coordinates in local coordinates.
+    obs_ypos : np.ndarray
+        Observations y coordinates in local coordinates.
+    obs_main_range : np.ndarray
+        Semi-axis length of the localization ellipse along the principal axis
+        (the axis oriented at ``obs_anisotropy_angle`` relative to the local x-axis).
+    obs_perp_range : np.ndarray
+        Semi-axis length of the localization ellipse perpendicular to the principal
+        axis. Equal to ``obs_main_range`` gives a circle; smaller gives an elongated
+        ellipse.
+    obs_anisotropy_angle : np.ndarray
+        Orientation of the principal axis of the localization ellipse in degrees
+        relative to the local x-axis. An angle of 0 aligns the principal axis with
+        the x-axis of the local coordinate system.
+    right_handed_grid_indexing : bool, optional
+        Whether to use right-handed grid indexing. Default is True.
+
+    Returns
+    -------
+    np.ndarray
+        Localization matrix (rho) of shape ``(nx, ny, nobs)`` for one
+        layer of a 3D grid or for a 2D surface grid.
     """
     # Center points of each grid cell in field parameter grid
-    x_local = (np.arange(nx, dtype=np.float64) + 0.5) * xinc
+    x_local = (np.arange(nx) + 0.5) * xinc
     if right_handed_grid_indexing:
         # y coordinate decreases from max to min
-        y_local = (np.arange(ny - 1, -1, -1, dtype=np.float64) + 0.5) * yinc
+        y_local = (np.arange(ny - 1, -1, -1) + 0.5) * yinc
     else:
         # y coordinate increases from min to max
-        y_local = (np.arange(ny, dtype=np.float64) + 0.5) * yinc
-    mesh_x_coord, mesh_y_coord = np.meshgrid(x_local, y_local, indexing="ij")
+        y_local = (np.arange(ny) + 0.5) * yinc
 
     # Number of observations
     nobs = len(obs_xpos)
@@ -419,9 +569,12 @@ def calc_rho_for_2d_grid_layer(
         "All range values for all observations must be positive"
     )
 
-    # Expand grid coordinates to match observations
-    mesh_x_coord_flat = mesh_x_coord.flatten()[:, np.newaxis]  # (nx * ny, 1)
-    mesh_y_coord_flat = mesh_y_coord.flatten()[:, np.newaxis]  # (nx * ny, 1)
+    # Build flattened grid coordinates directly, avoiding intermediate (nx, ny) arrays.
+    # With "ij" indexing, meshgrid followed by flatten is equivalent to:
+    #   x repeated ny times per x-value: [x0,x0,...,x1,x1,...,xn,xn,...]
+    #   y tiled nx times:                [y0,y1,...,y0,y1,...,y0,y1,...]
+    mesh_x_coord_flat = np.repeat(x_local, ny).reshape(-1, 1)  # (nx * ny, 1)
+    mesh_y_coord_flat = np.tile(y_local, nx).reshape(-1, 1)  # (nx * ny, 1)
 
     # Observation coordinates and parameters
     obs_xpos = obs_xpos[np.newaxis, :]  # (1, nobs)
@@ -450,7 +603,7 @@ def calc_rho_for_2d_grid_layer(
     # Compute distances in the elliptical coordinate system
     distances = np.hypot(dX_ellipse, dY_ellipse)  # (nx * ny, nobs)
     # Apply the scaling function
-    return localization_scaling_function(distances).reshape((nx, ny, nobs))
+    return gaspari_cohn(distances).reshape((nx, ny, nobs))
 
 
 if __name__ == "__main__":

@@ -4,8 +4,7 @@ Purpose
 
 **iterative_ensemble_smoother** is an open-source, pure python,
 and object-oriented library that provides
-a user friendly implementation of history matching algorithms
-from :cite:t:`evensen2019efficient`.
+a user friendly implementation of history matching algorithms.
 
 The following functionalities are directly provided on module-level.
 
@@ -15,16 +14,9 @@ Classes
 .. autosummary::
    :toctree: _autosummary
 
-   SIES
    ESMDA
-
-Functions
-=========
-
-.. autosummary::
-   :toctree: _autosummary
-
-    steplength_exponential
+   AdaptiveESMDA
+   LocalizedESMDA
 
 """
 
@@ -36,11 +28,7 @@ except ImportError:
     version_tuple = (0, 0, "unknown version", "unknown commit")
 
 from iterative_ensemble_smoother.esmda import ESMDA
-from iterative_ensemble_smoother.sies import SIES
-from iterative_ensemble_smoother.utils import steplength_exponential
+from iterative_ensemble_smoother.esmda_adaptive import AdaptiveESMDA
+from iterative_ensemble_smoother.esmda_localized import LocalizedESMDA
 
-__all__ = [
-    "SIES",
-    "ESMDA",
-    "steplength_exponential",
-]
+__all__ = ["ESMDA", "AdaptiveESMDA", "LocalizedESMDA"]

@@ -25,13 +25,175 @@ import pytest
 
 from iterative_ensemble_smoother.esmda import ESMDA
 from iterative_ensemble_smoother.esmda_inversion import empirical_cross_covariance
-from iterative_ensemble_smoother.sies import SIES
+
+
+def test_ESMDA_snapshot():
+    """The purpose of this test is to alert the developer if any changes
+    change the behavior of ESMDA. If this is intended, changing the
+    expected value is perfectly fine."""
+
+    rng = np.random.default_rng(42)
+
+    # Problem size
+    num_outputs = 100
+    num_inputs = 50
+    num_ensemble = 10
+    alpha = 2
+
+    # Prior is N(0, 1)
+    X_prior = rng.normal(size=(num_inputs, num_ensemble))
+    A = rng.normal(size=(num_outputs, num_inputs))
+
+    def forward(X):
+        return A @ X
+
+    # Measurement errors
+    F = rng.normal(size=(num_outputs, num_outputs))
+    covariance = F.T @ F + np.diag(np.logspace(-10, 10, num=num_outputs))
+
+    # Observations
+    observations = rng.normal(size=num_outputs, loc=1)
+    X = np.copy(X_prior)
+
+    esmda = ESMDA(covariance, observations, alpha=alpha, seed=42)
+    for _ in range(esmda.num_assimilations()):
+        Y = forward(X)
+        esmda.prepare_assimilation(Y=Y, truncation=1.0)
+        X = esmda.assimilate_batch(X=X)
+
+    expected = np.array([-1.07090935, 0.93111682, -0.41614521, -0.58934856])
+    assert np.allclose(np.diag(X)[:4], expected)
+
+
+@pytest.fixture
+def setup_small():
+    """Small problem for correctness tests."""
+    rng = np.random.default_rng(42)
+
+    num_outputs = 4
+    num_inputs = 5
+    num_ensemble = 3
+
+    A = rng.normal(size=(num_outputs, num_inputs))
+
+    def g(X):
+        return A @ X
+
+    X_prior = rng.normal(size=(num_inputs, num_ensemble))
+    covariance = np.exp(rng.normal(size=num_outputs))
+    observations = A @ np.linspace(0, 1, num=num_inputs) + rng.normal(
+        size=num_outputs, scale=0.01
+    )
+
+    return X_prior, covariance, observations, g
+
+
+class TestOverwriteFalseDoesNotMutate:
+    def test_that_inputs_are_not_mutated_when_overwrite_is_false(self, setup_small):
+        X_prior, covariance, observations, g = setup_small
+        num_inputs, num_ensemble = X_prior.shape
+
+        rng = np.random.default_rng(123)
+        missing = rng.choice(
+            [True, False], size=(num_inputs, num_ensemble), p=[0.1, 0.9]
+        )
+
+        smoother = ESMDA(
+            covariance=covariance,
+            observations=observations,
+            alpha=1,
+            seed=1,
+        )
+
+        X = np.copy(X_prior)
+        for _ in range(smoother.num_assimilations()):
+            Y = g(X)
+            Y_before = Y.copy()
+            X_before = X.copy()
+            missing_before = missing.copy()
+
+            smoother.prepare_assimilation(Y=Y, overwrite=False)
+            X = smoother.assimilate_batch(X=X, missing=missing, overwrite=False)
+
+            assert np.array_equal(Y, Y_before), "Y was mutated"
+            assert np.array_equal(X_before, X_prior), "X was mutated"
+            assert np.array_equal(missing, missing_before), "missing was mutated"
+
+    def test_that_overwrite_true_and_false_give_same_result(self, setup_small):
+        X_prior, covariance, observations, g = setup_small
+
+        # Run with overwrite=False
+        overwrite = False
+        smoother = ESMDA(
+            covariance=covariance,
+            observations=observations,
+            alpha=1,
+            seed=1,
+        )
+        X_no_overwrite = np.copy(X_prior)
+        for _ in range(smoother.num_assimilations()):
+            Y = g(X_no_overwrite)
+            smoother.prepare_assimilation(Y=Y, overwrite=overwrite)
+            X_no_overwrite = smoother.assimilate_batch(
+                X=X_no_overwrite, overwrite=overwrite
+            )
+
+        # Run with overwrite=True
+        overwrite = True
+        smoother = ESMDA(
+            covariance=covariance,
+            observations=observations,
+            alpha=1,
+            seed=1,
+        )
+        X_overwrite = np.copy(X_prior)
+        for _ in range(smoother.num_assimilations()):
+            Y = g(X_overwrite)
+            smoother.prepare_assimilation(Y=Y, overwrite=overwrite)
+            X_overwrite = smoother.assimilate_batch(X=X_overwrite, overwrite=overwrite)
+
+        assert np.allclose(X_no_overwrite, X_overwrite)
+
+
+@pytest.fixture
+def setup_large():
+    rng = np.random.default_rng(42)
+
+    num_outputs = 10_000
+    num_inputs = 1_000
+    num_ensemble = 100
+
+    X_prior = rng.normal(size=(num_inputs, num_ensemble))
+    Y_prior = rng.normal(size=(num_outputs, num_ensemble))
+    covariance = np.exp(rng.normal(size=num_outputs))
+    observations = rng.normal(size=num_outputs, loc=1)
+
+    return X_prior, Y_prior, covariance, observations
+
+
+class TestOverwriteMemory:
+    @pytest.mark.limit_memory("54 MB")
+    def test_ESMDA_memory_usage_without_overwrite(self, setup_large):
+        X_prior, Y_prior, covariance, observations = setup_large
+
+        esmda = ESMDA(covariance, observations, alpha=1, seed=1)
+        for _ in range(esmda.num_assimilations()):
+            esmda.prepare_assimilation(Y=Y_prior, overwrite=False)
+            esmda.assimilate_batch(X=X_prior, overwrite=False)
+
+    @pytest.mark.limit_memory("46 MB")
+    def test_ESMDA_memory_usage_with_overwrite(self, setup_large):
+        X_prior, Y_prior, covariance, observations = setup_large
+
+        esmda = ESMDA(covariance, observations, alpha=1, seed=1)
+        for _ in range(esmda.num_assimilations()):
+            esmda.prepare_assimilation(Y=Y_prior, overwrite=True)
+            esmda.assimilate_batch(X=X_prior, overwrite=True)
 
 
 class TestESMDARealizationsDying:
     @pytest.mark.parametrize("seed", list(range(9)))
-    @pytest.mark.parametrize("inversion", ESMDA._inversion_methods.keys())
-    def test_that_subspaces_have_full_rank_as_realizations_die(self, seed, inversion):
+    def test_that_subspaces_have_full_rank_as_realizations_die(self, seed):
         """Consider the case with twice as many realizations as parameters.
 
         We start with a matrix
@@ -74,7 +236,6 @@ class TestESMDARealizationsDying:
             observations=observations,
             alpha=10,  # Number of iterations
             seed=rng,
-            inversion=inversion,
         )
 
         # Initially, the first 10 realization span a 10 dimensional space
@@ -91,9 +252,9 @@ class TestESMDARealizationsDying:
 
             # Run model forward and assimilate on living realizations
             Y_i = g(X_i)
-            X_i[:, ensemble_mask] = smoother.assimilate(
-                X_i[:, ensemble_mask], Y_i[:, ensemble_mask]
-            )
+            smoother.prepare_assimilation(Y=Y_i[:, ensemble_mask], truncation=0.99)
+
+            X_i[:, ensemble_mask] = smoother.assimilate_batch(X=X_i[:, ensemble_mask])
 
         # In the posterior, the first 10 realization should span a 10 dimensional space
         assert np.linalg.matrix_rank(X_i[:, :10]) == 10
@@ -102,55 +263,8 @@ class TestESMDARealizationsDying:
 
 
 class TestESMDA:
-    @pytest.mark.parametrize("num_inputs", [10, 25, 50])
-    @pytest.mark.parametrize("num_outputs", [5, 25, 50])
-    @pytest.mark.parametrize("sies_inversion", ["direct", "subspace_exact"])
     @pytest.mark.parametrize("seed", list(range(10)))
-    def test_that_ESMDA_and_SIES_produce_same_result_with_one_step(
-        self, seed, sies_inversion, num_outputs, num_inputs
-    ):
-        """With a single step (alpha=1), ESMDA = SIES = ES.
-
-        When num_inputs < num_ensemble - 1, then Section (2.4.3) in the SIES
-        paper triggers and the result is not identical.
-        """
-        rng = np.random.default_rng(seed)
-
-        num_ensemble = 10
-        alpha = 1
-
-        # Create problem instance
-        X = rng.normal(size=(num_inputs, num_ensemble))
-        Y = rng.normal(size=(num_outputs, num_ensemble))
-        covariance = np.exp(rng.normal(size=num_outputs))
-        observations = rng.normal(size=num_outputs, loc=1)
-
-        # Create ESMDA instance and perform one iteration
-        esmda = ESMDA(
-            covariance, observations, alpha=alpha, seed=seed + 99, inversion="exact"
-        )
-        X_ESMDA = np.copy(X)
-
-        # Perform one iteration of ESMDA
-        X_ESMDA = esmda.assimilate(X_ESMDA, Y)
-
-        # Create SIES instance and perform one iteration
-        sies = SIES(
-            parameters=X,
-            covariance=covariance,
-            observations=observations,
-            inversion=sies_inversion,
-            truncation=1.0,
-            seed=seed + 99,
-        )
-
-        X_SIES = sies.sies_iteration(responses=Y, step_length=1)
-
-        assert np.allclose(X_ESMDA, X_SIES)
-
-    @pytest.mark.parametrize("seed", list(range(10)))
-    @pytest.mark.parametrize("inversion", ESMDA._inversion_methods.keys())
-    def test_that_diagonal_covariance_gives_same_answer_as_dense(self, seed, inversion):
+    def test_that_diagonal_covariance_gives_same_answer_as_dense(self, seed):
         rng = np.random.default_rng(seed)
 
         num_outputs = rng.choice([5, 10, 15, 25])
@@ -169,22 +283,26 @@ class TestESMDA:
         observations = rng.normal(size=num_outputs, loc=1)
 
         esmda = ESMDA(
-            covariance, observations, alpha=alpha, seed=seed, inversion=inversion
+            covariance,
+            observations,
+            alpha=alpha,
+            seed=seed,
         )
         X_posterior1 = np.copy(X_prior)
         for _ in range(esmda.num_assimilations()):
-            X_posterior1 = esmda.assimilate(X_posterior1, Y_prior)
+            esmda.prepare_assimilation(Y=Y_prior)
+            X_posterior1 = esmda.assimilate_batch(X=X_posterior1)
 
         esmda = ESMDA(
             np.diag(covariance),
             observations,
             alpha=alpha,
             seed=seed,
-            inversion=inversion,
         )
         X_posterior2 = np.copy(X_prior)
         for _ in range(esmda.num_assimilations()):
-            X_posterior2 = esmda.assimilate(X_posterior2, Y_prior)
+            esmda.prepare_assimilation(Y=Y_prior)
+            X_posterior2 = esmda.assimilate_batch(X=X_posterior2)
 
         assert np.allclose(X_posterior1, X_posterior2)
 
@@ -221,13 +339,15 @@ class TestESMDA:
         esmda_integer = ESMDA(covariance, observations, alpha=5, seed=seed)
         X_i_int = np.copy(X_prior)
         for _ in range(esmda_integer.num_assimilations()):
-            X_i_int = esmda_integer.assimilate(X_i_int, G(X_i_int))
+            esmda_integer.prepare_assimilation(Y=G(X_i_int))
+            X_i_int = esmda_integer.assimilate_batch(X=X_i_int)
 
         # Create another ESMDA instance from a vector `alpha` and run it
         esmda_array = ESMDA(covariance, observations, alpha=np.ones(5), seed=seed)
         X_i_array = np.copy(X_prior)
         for _ in range(esmda_array.num_assimilations()):
-            X_i_array = esmda_array.assimilate(X_i_array, G(X_i_array))
+            esmda_array.prepare_assimilation(Y=G(X_i_array))
+            X_i_array = esmda_array.assimilate_batch(X=X_i_array)
 
         # Exactly the same result with equal seeds
         assert np.allclose(X_i_int, X_i_array)
@@ -244,6 +364,15 @@ class TestESMDA:
     def test_that_result_corresponds_with_theory_for_1D_gauss_linear_case(
         self, mu, S, X_true, C_D, a, b
     ):
+        mu, S, X_true, C_D, a, b = (
+            float(mu),
+            float(S),
+            float(X_true),
+            float(C_D),
+            float(a),
+            float(b),
+        )
+
         # Here we test on a Guass-linear case.
         # The section "2.3.3 Bayes’ theorem for Gaussian variables" in the book
         # Pattern Recognition and Machine Learning by Bishop (2006) states that if
@@ -270,7 +399,7 @@ class TestESMDA:
 
         # Create a random number generator
         parameters = [mu, S, X_true, C_D, a, b]
-        seed = abs(sum(p_i * 10**i for i, p_i in enumerate(parameters)))
+        seed = int(abs(sum(p_i * 10**i for i, p_i in enumerate(parameters))))
         rng = np.random.default_rng(seed)
 
         # Prior is p(x) ~ N(mu, S)
@@ -280,7 +409,8 @@ class TestESMDA:
         esmda = ESMDA(np.atleast_2d([C_D]), G(np.atleast_1d(X_true)), alpha=1, seed=rng)
         X_i = X_prior
         for _ in range(esmda.num_assimilations()):
-            X_i = esmda.assimilate(X_i, G(X_i))
+            esmda.prepare_assimilation(Y=G(X_i))
+            X_i = esmda.assimilate_batch(X=X_i)
 
         # Check that analytical solution is close to ESMDA posterior
         # np.isclose(a, b) := abs(`a` - `b`) <= (`atol` + `rtol` * abs(`b`))
@@ -317,8 +447,7 @@ class TestESMDA:
         def G(x):
             if x.ndim == 1:
                 return A @ x + b
-            else:
-                return (b.reshape(-1, 1) + (A @ x)).squeeze()
+            return (b.reshape(-1, 1) + (A @ x)).squeeze()
 
         assert np.allclose(
             G(np.arange(num_inputs)), G(np.arange(num_inputs).reshape(-1, 1)).squeeze()
@@ -344,7 +473,8 @@ class TestESMDA:
         esmda = ESMDA(C_D, G(X_true), alpha=1, seed=rng)
         X_i = np.copy(X_prior)
         for _ in range(esmda.num_assimilations()):
-            X_i = esmda.assimilate(X_i, G(X_i))
+            esmda.prepare_assimilation(Y=G(X_i))
+            X_i = esmda.assimilate_batch(X=X_i)
 
         # Check that analytical solution is close to ESMDA posterior
         relative_error_mean = np.linalg.norm(X_i.mean(axis=1) - MEAN) / np.linalg.norm(
@@ -375,6 +505,7 @@ class TestESMDA:
     def test_that_single_and_multiple_assimil_give_same_res_for_1D_gauss_linear_case(
         self, alpha, mu, S, X_true, C_D
     ):
+        mu, S, X_true, C_D = float(mu), float(S), float(X_true), float(C_D)
         # Here we test on a Guass-linear case.
         # The section "2.3.3 Bayes' theorem for Gaussian variables" in the book
         # Pattern Recognition and Machine Learning by Bishop (2006) states that if
@@ -395,7 +526,7 @@ class TestESMDA:
 
         # Create a random number generator
         parameters = [alpha, mu, S, X_true, C_D]
-        seed = abs(sum(p_i * 10**i for i, p_i in enumerate(parameters)))
+        seed = int(abs(sum(p_i * 10**i for i, p_i in enumerate(parameters))))
         rng = np.random.default_rng(seed)
 
         # Prior is p(x) ~ N(mu, S)
@@ -405,13 +536,15 @@ class TestESMDA:
         esmda = ESMDA(np.diag([C_D]), G(np.atleast_1d(X_true)), alpha=1, seed=rng)
         X_i_single = np.copy(X_prior)
         for _ in range(esmda.num_assimilations()):
-            X_i_single = esmda.assimilate(X_i_single, G(X_i_single))
+            esmda.prepare_assimilation(Y=G(X_i_single))
+            X_i_single = esmda.assimilate_batch(X=X_i_single)
 
         # Create ESMDA instance with multiple iterations
         esmda = ESMDA(np.diag([C_D]), G(np.atleast_1d(X_true)), alpha=alpha, seed=rng)
         X_i_multiple = np.copy(X_prior)
         for _ in range(esmda.num_assimilations()):
-            X_i_multiple = esmda.assimilate(X_i_multiple, G(X_i_multiple))
+            esmda.prepare_assimilation(Y=G(X_i_multiple))
+            X_i_multiple = esmda.assimilate_batch(X=X_i_multiple)
 
         # Check that summary statistics of solutions are close to each other
         # np.isclose(a, b) := abs(`a` - `b`) <= (`atol` + `rtol` * abs(`b`))
@@ -419,56 +552,9 @@ class TestESMDA:
         assert np.isclose(X_i_single.var(), X_i_multiple.var(), rtol=0.1)
 
 
-class TestESMDAMemory:
-    @pytest.fixture
-    def setup(self):
-        rng = np.random.default_rng(42)
-
-        num_outputs = 10_000
-        num_inputs = 1_000
-        num_ensemble = 100
-
-        # Prior is N(0, 1)
-        X_prior = rng.normal(size=(num_inputs, num_ensemble))
-        Y_prior = rng.normal(size=(num_outputs, num_ensemble))
-
-        # Measurement errors
-        covariance = np.exp(rng.normal(size=num_outputs))
-
-        # Observations
-        observations = rng.normal(size=num_outputs, loc=1)
-
-        return X_prior, Y_prior, covariance, observations
-
-    @pytest.mark.limit_memory("138 MB")
-    def test_ESMDA_memory_usage_subspace_inversion_without_overwrite(self, setup):
-        # TODO: Currently this is a regression test. Work to improve memory usage.
-
-        X_prior, Y_prior, covariance, observations = setup
-
-        # Create ESMDA instance from an integer `alpha` and run it
-        esmda = ESMDA(covariance, observations, alpha=1, seed=1, inversion="subspace")
-
-        for _ in range(esmda.num_assimilations()):
-            esmda.assimilate(X_prior, Y_prior)
-
-    @pytest.mark.limit_memory("129 MB")
-    def test_ESMDA_memory_usage_subspace_inversion_with_overwrite(self, setup):
-        # TODO: Currently this is a regression test. Work to improve memory usage.
-
-        X_prior, Y_prior, covariance, observations = setup
-
-        # Create ESMDA instance from an integer `alpha` and run it
-        esmda = ESMDA(covariance, observations, alpha=1, seed=1, inversion="subspace")
-
-        for _ in range(esmda.num_assimilations()):
-            esmda.assimilate(X_prior, Y_prior, overwrite=True)
-
-
-@pytest.mark.parametrize("inversion", ESMDA._inversion_methods.keys())
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 @pytest.mark.parametrize("diagonal", [True, False])
-def test_that_float_dtypes_are_preserved(inversion, dtype, diagonal):
+def test_that_float_dtypes_are_preserved(dtype, diagonal):
     """If every matrix passed is of a certain dtype, then the output
     should also be of the same dtype. 'linalg' does not support float16
     nor float128."""
@@ -498,17 +584,17 @@ def test_that_float_dtypes_are_preserved(inversion, dtype, diagonal):
     observations = observations.astype(dtype)
 
     # Create ESMDA instance from an integer `alpha` and run it
-    esmda = ESMDA(covariance, observations, alpha=1, seed=1, inversion=inversion)
+    esmda = ESMDA(covariance, observations, alpha=1, seed=1)
 
     for _ in range(esmda.num_assimilations()):
-        X_posterior = esmda.assimilate(X_prior, Y_prior)
+        esmda.prepare_assimilation(Y=Y_prior)
+        X_posterior = esmda.assimilate_batch(X=X_prior)
 
     # Check that dtype of returned array matches input dtype
     assert X_posterior.dtype == dtype
 
 
-@pytest.mark.parametrize("inversion", ESMDA._inversion_methods.keys())
-def test_row_by_row_assimilation(inversion):
+def test_row_by_row_assimilation():
     # Create problem instance
     rng = np.random.default_rng(42)
 
@@ -529,42 +615,40 @@ def test_row_by_row_assimilation(inversion):
         size=num_outputs, scale=0.01
     )
 
-    # =========== Use the high level API ===========
+    # =========== Using one large batch ===========
     smoother = ESMDA(
         covariance=covariance,
         observations=observations,
         alpha=2,
-        inversion=inversion,
         seed=1,
     )
     X = np.copy(X_prior)
     for iteration in range(smoother.num_assimilations()):
-        X = smoother.assimilate(X, g(X))
+        smoother.prepare_assimilation(Y=g(X))
+        X = smoother.assimilate_batch(X=X)
 
-    X_posterior_highlevel_API = np.copy(X)
+    X_posterior_one_batch = np.copy(X)
 
-    # =========== Use the low-level level API ===========
+    # =========== Using many small batches ===========
     smoother = ESMDA(
         covariance=covariance,
         observations=observations,
         alpha=2,
-        inversion=inversion,
         seed=1,
     )
     X = np.copy(X_prior)
-    for alpha_i in smoother.alpha:
-        K = smoother.compute_transition_matrix(Y=g(X), alpha=alpha_i)
 
-        # Here we could loop over each row in X and multiply by K
-        X += X @ K
+    for iteration in range(smoother.num_assimilations()):
+        smoother.prepare_assimilation(Y=g(X))
+        for idx in range(X.shape[0]):
+            X[[idx], :] = smoother.assimilate_batch(X=X[[idx], :])
 
-    X_posterior_lowlevel_API = np.copy(X)
+    X_posterior_many_batches = np.copy(X)
 
-    assert np.allclose(X_posterior_highlevel_API, X_posterior_lowlevel_API)
+    assert np.allclose(X_posterior_one_batch, X_posterior_many_batches)
 
 
-@pytest.mark.parametrize("inversion", ESMDA._inversion_methods.keys())
-def test_row_by_row_assimilation_order(inversion):
+def test_row_by_row_assimilation_order():
     """A regression test for issue #232.
 
     The problem was that in a SVD call we had
@@ -603,7 +687,6 @@ def test_row_by_row_assimilation_order(inversion):
         covariance=covariance,
         observations=observations,
         alpha=2,
-        inversion=inversion,
         seed=1,
     )
 
@@ -611,19 +694,81 @@ def test_row_by_row_assimilation_order(inversion):
         covariance=covariance,
         observations=observations,
         alpha=2,
-        inversion=inversion,
         seed=1,
     )
 
-    X = np.copy(X_prior)
-    alpha_i = 2.5
+    X1 = np.copy(X_prior)
+    X2 = np.copy(X_prior)
 
-    # Test that no matter which order the input is in, the output is equal
-    K1 = smoother1.compute_transition_matrix(
-        Y=np.ascontiguousarray(g(X)), alpha=alpha_i
+    for iteration in range(smoother1.num_assimilations()):
+        smoother1.prepare_assimilation(Y=np.ascontiguousarray(g(X1)))
+        X1 = smoother1.assimilate_batch(X=X1)
+
+        smoother2.prepare_assimilation(Y=np.asfortranarray(g(X2)))
+        X2 = smoother2.assimilate_batch(X=X2)
+
+    assert np.allclose(X1, X2)
+
+
+def test_that_mixing_float32_and_float64_fails():
+    """Passing mixed floats, like one array of float16 and another float32 is
+    likely a user error. Better to raise than silently upcast."""
+    rng = np.random.default_rng(42)
+
+    num_outputs = 4
+    num_inputs = 5
+    num_ensemble = 3
+
+    A = rng.normal(size=(num_outputs, num_inputs))
+
+    def g(X):
+        return A @ X
+
+    X_prior = rng.normal(size=(num_inputs, num_ensemble))
+    covariance = np.exp(rng.normal(size=num_outputs))
+    observations = A @ np.linspace(0, 1, num=num_inputs) + rng.normal(
+        size=num_outputs, scale=0.01
     )
-    K2 = smoother2.compute_transition_matrix(Y=np.asfortranarray(g(X)), alpha=alpha_i)
-    assert np.allclose(K1, K2)
+
+    # Test that we cannot initialize with different dtypes
+    with pytest.raises(ValueError, match="dtype mismatch"):
+        ESMDA(
+            covariance=covariance.astype(np.float32),
+            observations=observations.astype(np.float64),
+        )
+
+    # Test that integer dtypes are not allowed
+    with pytest.raises(ValueError, match="unsupported dtype"):
+        ESMDA(
+            covariance=np.arange(num_outputs) + 1,  # <- Integer
+            observations=observations,
+        )
+
+    smoother = ESMDA(
+        covariance=covariance,
+        observations=observations,
+    )
+    with pytest.raises(ValueError, match="class was initialized with dtype"):
+        smoother.prepare_assimilation(Y=g(X_prior).astype(np.float32))
+
+    smoother.prepare_assimilation(Y=g(X_prior))
+
+    with pytest.raises(ValueError, match="class was initialized with dtype"):
+        smoother.assimilate_batch(X=X_prior.astype(np.float16))
+
+
+def test_zero_covariance_raises():
+    """A zero element in a 1D covariance causes division by zero in invert_subspace."""
+    covariance = np.array([1.0, 0.0, 1.0])
+    observations = np.array([1.0, 2.0, 3.0])
+    with pytest.raises(
+        ValueError,
+        match=(
+            "All elements of `covariance` must be strictly positive "
+            "when it is a 1D array."
+        ),
+    ):
+        ESMDA(covariance, observations)
 
 
 if __name__ == "__main__":
@@ -633,6 +778,7 @@ if __name__ == "__main__":
         args=[
             __file__,
             "-v",
-            "-k TestESMDARealizationsDying",
+            "-k TestOverwriteMemory",
+            "-x",
         ]
     )
