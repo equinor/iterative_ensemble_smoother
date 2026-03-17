@@ -22,8 +22,6 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION = True
-
 
 class RowScaledESMDA(ESMDA):
     """Subclass ESMDA to apply strength "alpha" to row updates."""
@@ -394,9 +392,6 @@ class DistanceESMDA(ESMDA):
             self.D = D
         return
 
-    @memory_usage_decorator(
-        enabled=ENABLE_MEMORY_LOGGING_FOR_DISTANCE_BASED_LOCALIZATION
-    )
     def assimilate_batch(
         self,
         *,
