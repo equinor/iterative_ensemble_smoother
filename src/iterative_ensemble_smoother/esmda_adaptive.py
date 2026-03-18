@@ -350,9 +350,9 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
         >>> corr_XY
         array([0. , 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1. ])
         >>> TaperedAdaptiveESMDA.inflation_scale(corr_XY, 5)
-        array([1.        , 1.        , 1.        , 1.        , 1.04335093,
-               1.4651216 , 2.88908419, 8.        , 8.        , 8.        ,
-               8.        ])
+        array([8.        , 8.        , 8.        , 8.        , 2.88908419,
+               1.4651216 , 1.04335093, 1.        , 1.        , 1.        ,
+               1.        ])
         """
         # The inflation function f(x) = exp(x^2) is a mapping from the domain
         # [0, 1]. We shift and scale the function and impose constraints:
@@ -363,11 +363,12 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
         d = 0.7  # Distance to stop inflating at (reaches E_max)
         beta = 0.5  # beta * d is the distance x where f(x) is at minimum
 
-        answer = np.ones_like(corr_XY)
-        exponent = ((corr_XY - beta * d) / ((1 - beta) * d)) ** 2
-        answer[corr_XY >= d * beta] = np.power(E_max, exponent)[corr_XY >= d * beta]
-        answer[corr_XY >= d] = E_max
-        return answer
+        dist = 1 - np.abs(corr_XY)  # Correlation distance
+        scales = np.ones_like(corr_XY)
+        exponent = ((dist - beta * d) / ((1 - beta) * d)) ** 2
+        scales[dist >= d * beta] = np.power(E_max, exponent)[dist >= d * beta]
+        scales[dist >= d] = E_max
+        return scales
 
     def assimilate_batch(
         self,
