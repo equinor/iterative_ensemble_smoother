@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import collections
 import logging
+import numbers
 from typing import TYPE_CHECKING, Iterator
 
 import numpy as np
@@ -71,6 +72,88 @@ def groupby_rows(
     for indices in groups.values():
         first_idx = indices[0]
         yield np.array(indices, dtype=np.int_), A[first_idx, :]
+
+
+def groupby_rows_float(
+    A: npt.NDArray[np.bool_], resolution: int = 8
+) -> Iterator[npt.NDArray[np.int_]]:
+    """Yields integer arrays with row_indices, such that rows are similar.
+
+    The `resolution` is the number of buckets to group the floating point
+    numbers into. For instance, if the entries of A are in the range [-1, 1],
+    then a resolution of 8 will bucket the numbers into
+    [(-1, -0.75), (-0.75, -0.5), ..., (0.75, 1.0)].
+    If the resolution is 8, then 3 bits will be used, since 2**3 = 8.
+    The resolution must be a power of two.
+
+    The usage is that A is a float matrix with shape (params, responses)
+    indicating for each parameter which responses to keep. This function
+    tells us, for each group of parameters, which responses to update.
+
+    Examples
+    --------
+    >>> A = np.array([[-1.0,  -0.9],
+    ...               [-1.0,  -0.9],
+    ...               [-0.96,  0.24],
+    ...               [ 0.22,  0.23],
+    ...               [ 0.23,  0.23],
+    ...               [ 0.26,  0.99],
+    ...               [ 0.39,  0.99],
+    ...               [ 0.49,  0.99],
+    ...               [-0.58, -0.74],
+    ...               [-0.37,  1.0]])
+    >>> for param_idx in groupby_rows_float(A):
+    ...     print(param_idx)
+    [0 1]
+    [2]
+    [3 4]
+    [5 6 7]
+    [8]
+    [9]
+    """
+    if not np.issubdtype(A.dtype, np.floating):
+        raise ValueError(f"A must be a float array, got dtype: {A.dtype}")
+    if not isinstance(resolution, numbers.Integral):
+        raise TypeError("`resolution` must be a integer")
+    if resolution < 2 or resolution > 256:
+        raise ValueError("`resolution` must be in the range [2, 256]")
+    if (resolution & (resolution - 1)) != 0:
+        raise ValueError("`resolution` must be a power of two, e.g. 2, 4, 8, ...")
+
+    minimum = np.min(A)
+    maximum = np.max(A)
+    difference = maximum - minimum
+    assert resolution <= 256
+    assert (resolution & (resolution - 1)) == 0, "Must be a power of two"
+    # Map to integers in 0...num_bits-1 (bucket the floats)
+    A_integer = np.round((A - minimum) / difference * (resolution - 1)).astype(np.uint8)
+
+    # Number of bits in the resolution
+    num_bits = (resolution - 1).bit_length()
+
+    # Extract each bit from the matrix A. Example with 0b101 = 5 and num_bits=3:
+    # shift by 2:  101 >> 2 = 001  ->  & 1 = 1
+    # shift by 1:  101 >> 1 = 010  ->  & 1 = 0
+    # shift by 0:  101 >> 0 = 101  ->  & 1 = 1
+    shift_vector = np.arange(num_bits - 1, -1, -1)  # 3 bits => [2, 1, 0]
+
+    # (n_rows, n_cols, 3) -> each value becomes its 3 bit decomposition
+    bits = ((A_integer[:, :, None] >> shift_vector) & 1).astype(np.uint8)
+
+    # Flatten the bit axis into columns: (n_rows, n_cols * 3)
+    bits = bits.reshape(A.shape[0], -1)
+    packed = np.packbits(bits, axis=1)
+
+    key_dtype = np.dtype((np.void, packed.shape[1]))
+    keys = np.ascontiguousarray(packed).view(key_dtype).ravel()
+    _, inverse = np.unique(keys, return_inverse=True)
+
+    groups = collections.defaultdict(list)
+    for row_idx, group in enumerate(inverse):
+        groups[group].append(row_idx)
+
+    for indices in groups.values():
+        yield np.array(indices, dtype=np.int_)
 
 
 def masked_std(
