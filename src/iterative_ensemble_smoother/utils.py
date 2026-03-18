@@ -106,10 +106,10 @@ def groupby_rows_float(
     ...     print(param_idx)
     [0 1]
     [2]
-    [3 4]
-    [5 6 7]
     [8]
     [9]
+    [3 4]
+    [5 6 7]
     """
     if not np.issubdtype(A.dtype, np.floating):
         raise ValueError(f"A must be a float array, got dtype: {A.dtype}")
@@ -126,34 +126,19 @@ def groupby_rows_float(
     assert resolution <= 256
     assert (resolution & (resolution - 1)) == 0, "Must be a power of two"
     # Map to integers in 0...num_bits-1 (bucket the floats)
-    A_integer = np.round((A - minimum) / difference * (resolution - 1)).astype(np.uint8)
+    A_integer = np.floor((A - minimum) / difference * resolution).astype(np.uint8)
+    A_integer = np.minimum(A_integer, resolution - 1, out=A_integer)
 
-    # Number of bits in the resolution
-    num_bits = (resolution - 1).bit_length()
-
-    # Extract each bit from the matrix A. Example with 0b101 = 5 and num_bits=3:
-    # shift by 2:  101 >> 2 = 001  ->  & 1 = 1
-    # shift by 1:  101 >> 1 = 010  ->  & 1 = 0
-    # shift by 0:  101 >> 0 = 101  ->  & 1 = 1
-    shift_vector = np.arange(num_bits - 1, -1, -1)  # 3 bits => [2, 1, 0]
-
-    # (n_rows, n_cols, 3) -> each value becomes its 3 bit decomposition
-    bits = ((A_integer[:, :, None] >> shift_vector) & 1).astype(np.uint8)
-
-    # Flatten the bit axis into columns: (n_rows, n_cols * 3)
-    bits = bits.reshape(A.shape[0], -1)
-    packed = np.packbits(bits, axis=1)
-
-    key_dtype = np.dtype((np.void, packed.shape[1]))
-    keys = np.ascontiguousarray(packed).view(key_dtype).ravel()
+    keys = np.ascontiguousarray(A_integer)
+    key_dtype = np.dtype((np.void, A_integer.shape[1]))
+    keys = keys.view(key_dtype).ravel()
     _, inverse = np.unique(keys, return_inverse=True)
 
-    groups = collections.defaultdict(list)
-    for row_idx, group in enumerate(inverse):
-        groups[group].append(row_idx)
-
-    for indices in groups.values():
-        yield np.array(indices, dtype=np.int_)
+    # Group row indices using argsort instead of a Python loop
+    order = np.argsort(inverse, kind="stable")
+    splits = np.flatnonzero(np.diff(inverse[order])) + 1
+    for group in np.split(order, splits):
+        yield group
 
 
 def masked_std(
