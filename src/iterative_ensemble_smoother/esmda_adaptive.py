@@ -400,7 +400,7 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
             then all entries are assumed to be valid.
         correlation_callback : callable, optional
             A callable with signature
-            ``(corr_XY, ensemble_members_per_parameter) -> mask``.
+            ``(corr_XY, ensemble_members_per_parameter) -> inflation_factors``.
             *corr_XY* is a cross-correlation 2D array of shape
             (num_parameters_batch, num_observations).
             *ensemble_members_per_parameter* is either an int (when there are
@@ -408,7 +408,7 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
             of shape (num_parameters_batch,) giving the number of non-missing
             ensemble members for each parameter.
             The returned array must have the same shape as *corr_XY* and
-            represents any kind of correlation thresholding or softening.
+            each row represents scaling values for the observations.
         overwrite: bool
             If False (the default), the input arrays will not be overwritten (mutated).
             If True, the method may overwrite the input arrays.
