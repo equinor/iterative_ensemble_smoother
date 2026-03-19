@@ -253,65 +253,6 @@ import numpy.typing as npt
 import scipy as sp  # type: ignore
 
 
-def empirical_cross_covariance(
-    X: npt.NDArray[np.floating], Y: npt.NDArray[np.floating]
-) -> npt.NDArray[np.floating]:
-    """Both X and Y have shape (parameters, ensemble_size).
-
-    We use this function instead of np.cov to handle cross-correlation,
-    where X and Y have a different number of parameters.
-
-    Examples
-    --------
-    >>> X = np.array([[-2.4, -0.3,  0.7],
-    ...               [ 0.2,  1.1, -1.5]])
-    >>> Y = np.array([[ 0.4, -0.4, -0.9],
-    ...               [ 1. , -0.1, -0.4],
-    ...               [-0. , -0.5,  1.1],
-    ...               [-1.8, -1.1,  0.3]])
-    >>> empirical_cross_covariance(X, Y)
-    array([[-1.035     , -1.15833333,  0.66      ,  1.56333333],
-           [ 0.465     ,  0.36166667, -1.08      , -1.09666667]])
-
-    Verify against numpy.cov
-
-    >>> np.cov(X, rowvar=True, ddof=1)
-    array([[ 2.50333333, -0.99666667],
-           [-0.99666667,  1.74333333]])
-    >>> empirical_cross_covariance(X, X)
-    array([[ 2.50333333, -0.99666667],
-           [-0.99666667,  1.74333333]])
-
-    """
-    assert X.shape[1] == Y.shape[1], "Ensemble size must be equal"
-    if X.shape[1] <= 1:
-        raise ValueError("Need at least two observations to compute covariance")
-
-    # https://en.wikipedia.org/wiki/Estimation_of_covariance_matrices
-    # Subtract mean. Even though the equation says E[(X - E[X])(Y - E[Y])^T],
-    # we actually only need to subtract the mean value from one matrix, since
-    # (X - E[X])(Y - E[Y])^T = E[(X - E[X])Y] - E[(X - E[X])E[Y]^T]
-    # = E[(X - E[X])Y] - E[(0)E[Y]^T] = E[(X - E[X])Y]
-    # We choose to subtract from the matrix with the smaller number of rows
-    if X.shape[0] > Y.shape[0]:
-        Y = Y - np.mean(Y, axis=1, keepdims=True)
-    else:
-        X = X - np.mean(X, axis=1, keepdims=True)
-
-    # Compute outer product and divide
-    # If X is a large matrix, it might be stored as a float32 array to save memory.
-    # However, if Y is of type float64,
-    # the resulting cross-covariance matrix will be float64,
-    # potentially doubling the memory usage even if X is float32.
-    # To prevent unnecessary memory consumption,
-    # we cast Y to the same data type as X before computing the dot product.
-    # This ensures that the output cross-covariance matrix uses memory efficiently
-    # while retaining the precision dictated by X's data type.
-    cov: npt.NDArray[np.floating] = X @ Y.astype(X.dtype).T / (X.shape[1] - 1)
-    assert cov.shape == (X.shape[0], Y.shape[0])
-    return cov
-
-
 def normalize_alpha(alpha: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
     """Assure that sum_i (1/alpha_i) = 1.
 

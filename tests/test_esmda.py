@@ -24,7 +24,6 @@ import numpy as np
 import pytest
 
 from iterative_ensemble_smoother.esmda import ESMDA
-from iterative_ensemble_smoother.esmda_inversion import empirical_cross_covariance
 
 
 def test_ESMDA_snapshot():
@@ -486,7 +485,10 @@ class TestESMDA:
 
         # TODO: The errors in the covariance matrix estimation is always pretty high
         # why is this?
-        covariance = empirical_cross_covariance(X_i, X_i)
+        covariance = (
+            (X_i - np.mean(X_i, axis=1, keepdims=True)) @ X_i.T / (X_i.shape[1] - 1)
+        )
+
         relative_error_covariance = np.linalg.norm((covariance - COV)) / np.linalg.norm(
             COV
         )
