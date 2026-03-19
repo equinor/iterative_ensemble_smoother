@@ -194,15 +194,16 @@ class AdaptiveESMDA(BaseESMDA):
         # Step 1: COMPUTE THE CROSS-COVARIANCE/CORRELATION AND APPLY CALLBACK
         # ===================================================================
 
-        # Compute cross correlation matrix
-        corr_XY = (delta_M @ self.delta_DT) / (N_e - 1)
+        std_Y = np.std(self.delta_DT, axis=0, ddof=1)
 
         # Deal with potentially missing values in the parameters
-        std_Y = np.std(self.delta_DT, axis=0, ddof=1)
         if missing is not None:
             std_X = masked_std(X, missing=missing)
         else:
             std_X = np.std(X, axis=1, ddof=1)
+
+        # Compute cross correlation matrix
+        corr_XY = (delta_M @ self.delta_DT) / (N_e - 1)
 
         # Cross covariance to cross correlation (inplace)
         corr_XY /= std_X[:, None]
@@ -446,15 +447,16 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
         # Step 1: COMPUTE THE CROSS-COVARIANCE/CORRELATION AND APPLY CALLBACK
         # ===================================================================
 
-        # Compute cross correlation matrix
-        corr_XY = (delta_M @ self.delta_DT) / (N_e - 1)
+        std_Y = np.std(self.delta_DT, axis=0, ddof=1)
 
         # Deal with potentially missing values in the parameters
-        std_Y = np.std(self.delta_DT, axis=0, ddof=1)
         if missing is not None:
             std_X = masked_std(X, missing=missing)
         else:
             std_X = np.std(X, axis=1, ddof=1)
+
+        # Compute cross correlation matrix
+        corr_XY = (delta_M @ self.delta_DT) / (N_e - 1)
 
         # Cross covariance to cross correlation (inplace)
         corr_XY /= std_X[:, None]
