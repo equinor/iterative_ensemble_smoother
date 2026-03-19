@@ -313,7 +313,7 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
 
     Then we set up the TaperedAdaptiveESMDA instance and the prior realizations X:
 
-    >>> covariance = np.ones(3, dtype=float)  # Covariance of the observations / outputs
+    >>> covariance = np.ones(3, dtype=float)  # Covariance of the observations
     >>> observations = np.array([1, 2, 3], dtype=float)  # The observed data
     >>> smoother = TaperedAdaptiveESMDA(covariance=covariance,
     ...                                 observations=observations, alpha=3, seed=42)
@@ -342,7 +342,7 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
         corr_XY: npt.NDArray[np.floating],
         ensemble_members_per_parameter: Union[npt.NDArray[np.int_], int],
     ) -> npt.NDArray[np.floating]:
-        """Equation (9) from the paper.
+        """Equation (9) from the paper http://doi.org/10.1175/MWR-D-24-0269.1
 
         Examples
         --------
@@ -359,6 +359,7 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
         #  - f(x <= beta * d) = 1
         #  - f(x >= d) = E_max
 
+        # Numbers from the paper http://doi.org/10.1175/MWR-D-24-0269.1
         E_max = 8.0  # Maximum inflation factor
         d = 0.7  # Distance to stop inflating at (reaches E_max)
         beta = 0.5  # beta * d is the distance x where f(x) is at minimum
@@ -366,6 +367,8 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
         dist = 1 - np.abs(corr_XY)  # Correlation distance
         scales = np.ones_like(corr_XY)
         exponent = ((dist - beta * d) / ((1 - beta) * d)) ** 2
+        # Note: Using the rule exp(ln(a) * b) = a^b, the calculation is
+        # simplified to E_max ** exponent to avoid log/exp operations.
         scales[dist >= d * beta] = np.power(E_max, exponent)[dist >= d * beta]
         scales[dist >= d] = E_max
         return scales
