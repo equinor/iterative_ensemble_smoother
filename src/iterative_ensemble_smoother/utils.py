@@ -224,25 +224,6 @@ def adjust_for_missing(
     return result
 
 
-def _validate_inputs(
-    parameters: npt.NDArray[np.floating],
-    covariance: npt.NDArray[np.floating],
-    observations: npt.NDArray[np.floating],
-) -> None:
-    # Check types
-    inputs = [parameters, covariance, observations]
-    names = ["parameters", "covariances", "observations"]
-    for input_, name in zip(inputs, names):
-        if not isinstance(input_, np.ndarray):
-            raise TypeError(f"Argument '{name}' must be numpy nd.array")
-
-    assert covariance.ndim in (1, 2)
-    assert parameters.ndim == 2
-
-    assert covariance.shape[0] == observations.shape[0]
-    assert covariance.shape[0] == observations.shape[0]
-
-
 def sample_mvnormal(
     *,
     C_dd_cholesky: npt.NDArray[np.floating],
