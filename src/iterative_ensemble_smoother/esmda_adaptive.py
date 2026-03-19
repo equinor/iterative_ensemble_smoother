@@ -187,7 +187,7 @@ class AdaptiveESMDA(BaseESMDA):
 
             def correlation_callback(
                 corr_XY: npt.NDArray[np.floating],
-                observations_per_parameter: npt.NDArray[np.int_],
+                ensemble_members_per_parameter: npt.NDArray[np.int_],
             ) -> npt.NDArray[np.bool_]:
                 return np.ones_like(corr_XY, dtype=np.bool_)
 
@@ -440,7 +440,7 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
 
             def correlation_callback(
                 corr_XY: npt.NDArray[np.floating],
-                observations_per_parameter: npt.NDArray[np.int_],
+                ensemble_members_per_parameter: npt.NDArray[np.int_],
             ) -> npt.NDArray[np.bool_]:
                 return np.ones_like(corr_XY, dtype=np.bool_)
 
