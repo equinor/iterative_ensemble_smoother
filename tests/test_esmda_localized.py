@@ -185,8 +185,12 @@ class TestLocalizedESMDA:
             smoother_2D_covar.prepare_assimilation(Y=Y)
 
             # Apply assimilation step
-            X_1 = smoother_1D_covar.assimilate_batch(X=X, localization_callback=None)
-            X_2 = smoother_2D_covar.assimilate_batch(X=X, localization_callback=None)
+            X_1 = smoother_1D_covar.assimilate_batch(
+                X=X, localization_callback="identity"
+            )
+            X_2 = smoother_2D_covar.assimilate_batch(
+                X=X, localization_callback="identity"
+            )
             assert np.allclose(X_1, X_2), "Results should match exactly"
             X = X_1
 
@@ -254,7 +258,7 @@ class TestLocalizedESMDA:
 
             # Assimilate with LocalizedESMDA, using identity function as callback
             X_2 = lesmda.assimilate_batch(
-                X=X, localization_callback=None, missing=missing
+                X=X, localization_callback="identity", missing=missing
             )
             assert np.allclose(X_1, X_2), "LocalizedESMDA should match with ESMDA"
             X = X_1
@@ -298,7 +302,7 @@ class TestLocalizedESMDA:
             Y = F(X_1)
             # The call to `prepare_assimilation()` increments alpha
             esmda.prepare_assimilation(Y=Y, truncation=truncation)
-            X_1 = esmda.assimilate_batch(X=X_1, localization_callback=None)
+            X_1 = esmda.assimilate_batch(X=X_1, localization_callback="identity")
 
         # === APPROACH 2 : Create instance in each iteration, with manual alpha ===
         X_2 = X_prior.copy()
@@ -314,7 +318,7 @@ class TestLocalizedESMDA:
             )
             Y = F(X_2)
             esmda.prepare_assimilation(Y=Y, truncation=truncation)
-            X_2 = esmda.assimilate_batch(X=X_2, localization_callback=None)
+            X_2 = esmda.assimilate_batch(X=X_2, localization_callback="identity")
 
         assert np.allclose(X_1, X_2), "Posteriors should match"
 

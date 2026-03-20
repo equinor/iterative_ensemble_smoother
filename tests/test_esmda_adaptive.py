@@ -68,7 +68,7 @@ class TestAdaptiveESMDA:
             smoother.prepare_assimilation(Y=Y, truncation=1.0)
 
             X = smoother.assimilate_batch(
-                X=X, correlation_callback=smoother.three_over_sqrt_n
+                X=X, correlation_callback="three_over_sqrt_ensemble_members"
             )
 
         assert not np.allclose(X_prior, X), "AdaptiveESMDA must update the prior"
@@ -286,6 +286,10 @@ class TestAdaptiveESMDA:
             [True, False], size=(len(alpha), num_ensemble), p=[0.9, 0.1]
         )
 
+        def identity_callback(corr_XY, ensemble_members_per_parameter):
+            # Keep all observations
+            return np.ones_like(corr_XY, dtype=np.bool_)
+
         X_i = np.copy(X)
         for i in range(smoother.num_assimilations()):
             print(f"ESMDA iteration {i + 1}")
@@ -306,7 +310,7 @@ class TestAdaptiveESMDA:
                 # that are still alive. This step simulates fetching from disk.
                 mask = np.ix_(parameter_mask_j, alive_mask_i)
                 X_i[mask] = smoother.assimilate_batch(
-                    X=X_i[mask], correlation_callback=None
+                    X=X_i[mask], correlation_callback=identity_callback
                 )
 
             print()

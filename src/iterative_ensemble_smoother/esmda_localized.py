@@ -132,6 +132,14 @@ class LocalizedESMDA(BaseESMDA):
     ...                                                     localization_callback=func)
     """
 
+    @staticmethod
+    def identity(
+        K: npt.NDArray[np.floating],
+    ) -> npt.NDArray[np.floating]:
+        """Default localization callback, which leaves the Kalman gain
+        matrix unchanged."""
+        return K
+
     def assimilate_batch(
         self,
         *,
@@ -140,7 +148,7 @@ class LocalizedESMDA(BaseESMDA):
         localization_callback: Callable[
             [npt.NDArray[np.floating]], npt.NDArray[np.floating]
         ]
-        | None = None,
+        | str = "identity",
         overwrite: bool = False,
     ) -> npt.NDArray[np.floating]:
         """Assimilate a batch of parameters against all observations.
@@ -161,13 +169,13 @@ class LocalizedESMDA(BaseESMDA):
             happen if the ensemble members use different grids, where each
             ensemble member has a slightly different grid layout. If None,
             then all entries are assumed to be valid.
-        localization_callback : callable, optional
+        localization_callback : callable or str, optional
             A callable that takes as input a Kalman gain 2D array of shape
             (num_parameters_batch, num_observations) and returns a 2D array of
             the same shape. The typical use-case is to associate with each
             parameter and observation a localiation factor between 0 and 1,
-            and apply element multiplication. The default is None, which applies
-            the identity function (i.e. multiplication with 1 in every entry).
+            and apply element multiplication. The default is 'identity', which
+            performs elementwise multiplication with 1.
         overwrite: bool
             If False (the default), the input arrays will not be overwritten (mutated).
             If True, the method may overwrite the input arrays.
@@ -178,24 +186,30 @@ class LocalizedESMDA(BaseESMDA):
             2D array of shape (num_parameters_batch, ensemble_size).
 
         """
+        CALLBACKS = {"identity": self.identity}
+
         if not overwrite:
             X = X.copy()
         if not hasattr(self, "delta_DT"):
             raise Exception("The method `prepare_assmilation` must be called.")
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)
         assert N_e == self.delta_DT.shape[0], "Dimension mismatch"
-        assert localization_callback is None or callable(localization_callback)
+
+        if (
+            isinstance(localization_callback, str)
+            and localization_callback in CALLBACKS
+        ):
+            localization_callback = CALLBACKS[localization_callback]
+        elif callable(localization_callback):
+            pass
+        else:
+            raise TypeError(
+                "`localization_callback` must be a callable or a "
+                f"string in {set(CALLBACKS.keys())}"
+            )
 
         # In standard ESMDA, we simplify compute the product in a good order
         delta_M = self._compute_delta_M(X=X, missing=missing)
-
-        # The default localization is no localization (identity function)
-        if localization_callback is None:
-
-            def localization_callback(
-                K: npt.NDArray[np.floating],
-            ) -> npt.NDArray[np.floating]:
-                return K
 
         # Create Kalman gain of shape (num_parameters_batch, num_observations),
         # then apply the localization callback elementwise
