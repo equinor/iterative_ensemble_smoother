@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections
 import logging
 import numbers
+import warnings
 from typing import TYPE_CHECKING, Iterator
 
 import numpy as np
@@ -12,6 +13,23 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
 logger = logging.getLogger(__name__)
+
+
+def clip_correlation_matrix(
+    corr_XY: npt.NDArray[np.floating],
+) -> npt.NDArray[np.floating]:
+    """Clip correlation array to range [-1, 1]."""
+
+    # Perform checks and clip values to [-1, 1]
+    eps = 1e-8
+    min_value, max_value = corr_XY.min(), corr_XY.max()
+    if not ((max_value <= 1 + eps) and (min_value >= -1 - eps)):
+        msg = "Cross-correlation matrix has entries not in [-1, 1]."
+        msg += f"The min and max values are: {min_value} and {max_value}"
+        msg += "Entries will be clipped to the range [-1, 1]."
+        warnings.warn(msg)
+
+    return np.clip(corr_XY, a_min=-1, a_max=1, out=corr_XY)
 
 
 def groupby_rows(

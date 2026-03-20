@@ -26,7 +26,6 @@ that share the same correlation pattern with the responses.
 """
 
 import logging
-import warnings
 from typing import Callable, Union
 
 import numpy as np
@@ -35,7 +34,11 @@ import scipy as sp
 
 from iterative_ensemble_smoother.esmda import BaseESMDA
 from iterative_ensemble_smoother.esmda_inversion import invert_subspace
-from iterative_ensemble_smoother.utils import groupby_rows, masked_std
+from iterative_ensemble_smoother.utils import (
+    clip_correlation_matrix,
+    groupby_rows,
+    masked_std,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -92,15 +95,15 @@ class AdaptiveESMDA(BaseESMDA):
     ...         return np.ones_like(corr_XY, dtype=np.bool_)
     ...
     ...     for param_idx in yield_param_indices():
-    ...         X[param_idx, :] = smoother.assimilate_batch(X=X[param_idx, :],
-    ...                           correlation_callback=smoother.three_over_sqrt_n)
+    ...         X[param_idx, :] = smoother.assimilate_batch(X=X[param_idx, :])
+    ...
     """
 
     @staticmethod
-    def three_over_sqrt_n(
+    def three_over_sqrt_ensemble_members(
         corr_XY: npt.NDArray[np.floating],
         ensemble_members_per_parameter: Union[npt.NDArray[np.int_], int],
-    ) -> npt.NDArray[np.floating]:
+    ) -> npt.NDArray[np.bool_]:
         """Use the correlation threshold 3 / sqrt(n). Note that unless
         the number of ensemble members is > 9, all responses are removed
         and no update happens at all.
@@ -116,7 +119,7 @@ class AdaptiveESMDA(BaseESMDA):
             3 / np.sqrt(ensemble_members_per_parameter), a_min=0.0, a_max=1.0
         )
         # Keep those above threshold
-        result: npt.NDArray[np.floating] = (
+        result: npt.NDArray[np.bool_] = (
             np.abs(corr_XY) > np.atleast_1d(threshold)[:, None]
         )
         return result
@@ -127,9 +130,10 @@ class AdaptiveESMDA(BaseESMDA):
         X: npt.NDArray[np.floating],
         missing: Union[npt.NDArray[np.bool_], None] = None,
         correlation_callback: Callable[
-            [npt.NDArray[np.floating], npt.NDArray[np.int_]], npt.NDArray[np.bool_]
+            [npt.NDArray[np.floating], Union[npt.NDArray[np.int_], int]],
+            npt.NDArray[np.bool_],
         ]
-        | None = None,
+        | str = "three_over_sqrt_ensemble_members",
         overwrite: bool = False,
     ) -> npt.NDArray[np.floating]:
         """Assimilate a batch of parameters against all observations.
@@ -150,7 +154,7 @@ class AdaptiveESMDA(BaseESMDA):
             happen if the ensemble members use different grids, where each
             ensemble member has a slightly different grid layout. If None,
             then all entries are assumed to be valid.
-        correlation_callback : callable, optional
+        correlation_callback : callable or string, optional
             A callable with signature
             ``(corr_XY, ensemble_members_per_parameter) -> mask``.
             *corr_XY* is a cross-correlation 2D array of shape
@@ -171,6 +175,10 @@ class AdaptiveESMDA(BaseESMDA):
             2D array of shape (num_parameters_batch, ensemble_size).
 
         """
+        CALLBACKS = {
+            "three_over_sqrt_ensemble_members": self.three_over_sqrt_ensemble_members
+        }
+
         if not overwrite:
             X = X.copy()
         if not hasattr(self, "D_obs_minus_D"):
@@ -180,16 +188,19 @@ class AdaptiveESMDA(BaseESMDA):
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)
         assert N_e == self.delta_DT.shape[0], "Dimension mismatch"
 
+        callback_func: Callable[..., npt.NDArray[np.bool_]]
+        if isinstance(correlation_callback, str) and correlation_callback in CALLBACKS:
+            callback_func = CALLBACKS[correlation_callback]
+        elif callable(correlation_callback):
+            callback_func = correlation_callback
+        else:
+            raise TypeError(
+                "`correlation_callback` must be a callable or a "
+                f"string in {set(CALLBACKS.keys())}"
+            )
+
+        # Compute delta M, which is the centered X matrix
         delta_M = self._compute_delta_M(X=X, missing=missing)
-
-        # The default localization is no localization (identity function)
-        if correlation_callback is None:
-
-            def correlation_callback(
-                corr_XY: npt.NDArray[np.floating],
-                ensemble_members_per_parameter: npt.NDArray[np.int_],
-            ) -> npt.NDArray[np.bool_]:
-                return np.ones_like(corr_XY, dtype=np.bool_)
 
         # Step 1: COMPUTE THE CROSS-COVARIANCE/CORRELATION AND APPLY CALLBACK
         # ===================================================================
@@ -208,7 +219,7 @@ class AdaptiveESMDA(BaseESMDA):
         # Cross covariance to cross correlation (inplace)
         corr_XY /= std_X[:, None]
         corr_XY /= std_Y[None, :]
-        corr_XY = self._clip_correlation_matrix(corr_XY)
+        corr_XY = clip_correlation_matrix(corr_XY)
 
         # Number of ensemble members each entry in corr_XY is based on.
         # The source of missing data is only missing values in X, not Y.
@@ -216,7 +227,7 @@ class AdaptiveESMDA(BaseESMDA):
             N_e if missing is None else np.sum(np.logical_not(missing), axis=1)
         )
         # Apply localization function
-        mask_keep = correlation_callback(corr_XY, ensemble_members_per_parameter)
+        mask_keep = callback_func(corr_XY, ensemble_members_per_parameter)
         logger.debug(f"Percentage of (param, obs) pairs kept: {mask_keep.mean():.1%}")
 
         # Cross correlation to cross covariance (inplace)
@@ -270,25 +281,8 @@ class AdaptiveESMDA(BaseESMDA):
 
         return X
 
-    @staticmethod
-    def _clip_correlation_matrix(
-        corr_XY: npt.NDArray[np.floating],
-    ) -> npt.NDArray[np.floating]:
-        """Clip correlation array to range [-1, 1]."""
 
-        # Perform checks and clip values to [-1, 1]
-        eps = 1e-8
-        min_value, max_value = corr_XY.min(), corr_XY.max()
-        if not ((max_value <= 1 + eps) and (min_value >= -1 - eps)):
-            msg = "Cross-correlation matrix has entries not in [-1, 1]."
-            msg += f"The min and max values are: {min_value} and {max_value}"
-            msg += "Entries will be clipped to the range [-1, 1]."
-            warnings.warn(msg)
-
-        return np.clip(corr_XY, a_min=-1, a_max=1, out=corr_XY)
-
-
-class TaperedAdaptiveESMDA(AdaptiveESMDA):
+class TaperedAdaptiveESMDA(BaseESMDA):
     """
     Soft Thresholding Adaptive ESMDA.
 
@@ -334,12 +328,12 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
     ...     smoother.prepare_assimilation(Y=Y, truncation=0.99)
     ...
     ...     for param_idx in yield_param_indices():
-    ...         X[param_idx, :] = smoother.assimilate_batch(X=X[param_idx, :],
-    ...                           correlation_callback=smoother.inflation_scale)
+    ...         X[param_idx, :] = smoother.assimilate_batch(X=X[param_idx, :])
+    ...
     """
 
     @staticmethod
-    def inflation_scale(
+    def exponential_scale(
         corr_XY: npt.NDArray[np.floating],
         ensemble_members_per_parameter: Union[npt.NDArray[np.int_], int],
     ) -> npt.NDArray[np.floating]:
@@ -350,7 +344,7 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
         >>> corr_XY = np.linspace(0, 1, num=11)
         >>> corr_XY
         array([0. , 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1. ])
-        >>> TaperedAdaptiveESMDA.inflation_scale(corr_XY, 5)
+        >>> TaperedAdaptiveESMDA.exponential_scale(corr_XY, 5)
         array([8.        , 8.        , 8.        , 8.        , 2.88908419,
                1.4651216 , 1.04335093, 1.        , 1.        , 1.        ,
                1.        ])
@@ -380,9 +374,9 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
         X: npt.NDArray[np.floating],
         missing: Union[npt.NDArray[np.bool_], None] = None,
         correlation_callback: Callable[
-            [npt.NDArray[np.floating], npt.NDArray[np.int_]], npt.NDArray[np.bool_]
+            [npt.NDArray[np.floating], npt.NDArray[np.int_]], npt.NDArray[np.floating]
         ]
-        | None = None,
+        | str = "exponential_scale",
         overwrite: bool = False,
     ) -> npt.NDArray[np.floating]:
         """Assimilate a batch of parameters against all observations.
@@ -403,7 +397,7 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
             happen if the ensemble members use different grids, where each
             ensemble member has a slightly different grid layout. If None,
             then all entries are assumed to be valid.
-        correlation_callback : callable, optional
+        correlation_callback : callable or str, optional
             A callable with signature
             ``(corr_XY, ensemble_members_per_parameter) -> inflation_factors``.
             *corr_XY* is a cross-correlation 2D array of shape
@@ -424,6 +418,8 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
             2D array of shape (num_parameters_batch, ensemble_size).
 
         """
+        CALLBACKS = {"exponential_scale": self.exponential_scale}
+
         if not overwrite:
             X = X.copy()
         if not hasattr(self, "D_obs_minus_D"):
@@ -433,16 +429,21 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)
         assert N_e == self.delta_DT.shape[0], "Dimension mismatch"
 
+        callback_func: Callable[
+            [npt.NDArray[np.floating], npt.NDArray[np.int_]], npt.NDArray[np.floating]
+        ]
+        if isinstance(correlation_callback, str) and correlation_callback in CALLBACKS:
+            callback_func = CALLBACKS[correlation_callback]
+        elif callable(correlation_callback):
+            callback_func = correlation_callback
+        else:
+            raise TypeError(
+                "`correlation_callback` must be a callable or a "
+                f"string in {set(CALLBACKS.keys())}"
+            )
+
+        # Compute delta M, which is the centered X matrix
         delta_M = self._compute_delta_M(X=X, missing=missing)
-
-        # The default localization is no localization (identity function)
-        if correlation_callback is None:
-
-            def correlation_callback(
-                corr_XY: npt.NDArray[np.floating],
-                ensemble_members_per_parameter: npt.NDArray[np.int_],
-            ) -> npt.NDArray[np.bool_]:
-                return np.ones_like(corr_XY, dtype=np.bool_)
 
         # Step 1: COMPUTE THE CROSS-COVARIANCE/CORRELATION AND APPLY CALLBACK
         # ===================================================================
@@ -461,7 +462,7 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
         # Cross covariance to cross correlation (inplace)
         corr_XY /= std_X[:, None]
         corr_XY /= std_Y[None, :]
-        corr_XY = self._clip_correlation_matrix(corr_XY)
+        corr_XY = clip_correlation_matrix(corr_XY)
 
         # Number of ensemble members each entry in corr_XY is based on.
         # The source of missing data is only missing values in X, not Y.
@@ -470,9 +471,7 @@ class TaperedAdaptiveESMDA(AdaptiveESMDA):
         )
         # Apply localization function
         logger.debug(f"Average correlation: {corr_XY.mean():.1%}")
-        inflation_factors = correlation_callback(
-            corr_XY, ensemble_members_per_parameter
-        )
+        inflation_factors = callback_func(corr_XY, ensemble_members_per_parameter)
         logger.debug(f"Average inflation factor: {inflation_factors.mean():.2f}")
 
         # Cross correlation to cross covariance (inplace)
