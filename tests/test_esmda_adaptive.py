@@ -5,7 +5,10 @@ import numpy as np
 import pytest
 
 from iterative_ensemble_smoother import ESMDA
-from iterative_ensemble_smoother.esmda_adaptive import AdaptiveESMDA
+from iterative_ensemble_smoother.esmda_adaptive import (
+    AdaptiveESMDA,
+    TaperedAdaptiveESMDA,
+)
 from iterative_ensemble_smoother.esmda_inversion import (
     normalize_alpha,
 )
@@ -340,6 +343,60 @@ class TestAdaptiveESMDA:
         )
 
         print("------------------------------------------")
+
+
+class TestTaperedAdaptiveESMDA:
+    @pytest.mark.parametrize(
+        "linear_problem",
+        range(25),
+        indirect=True,
+        ids=[f"seed-{i + 1}" for i in range(25)],
+    )
+    def test_that_adaptive_tapered_localization_with_scale_1_equals_ESMDA(
+        self, linear_problem
+    ):
+        # Create a problem
+        X, g, observations, covariance, rng = linear_problem
+
+        # Create missing mask
+        missing = rng.random(size=X.shape) > 0.9
+        missing[:, :2] = False  # At least two realizations have all params
+
+        # =============================================================================
+        # SETUP ESMDA FOR LOCALIZATION AND SOLVE PROBLEM
+        # =============================================================================
+
+        smoother = TaperedAdaptiveESMDA(
+            covariance=covariance, observations=observations, seed=1, alpha=5
+        )
+
+        def correlation_callback(corr_XY, observations):
+            # Multiplicative factors of 1 means we make no change
+            return np.ones_like(corr_XY)
+
+        X_i = np.copy(X)
+        for _ in range(smoother.num_assimilations()):
+            smoother.prepare_assimilation(Y=g(X_i))
+            X_i = smoother.assimilate_batch(
+                X=X_i, correlation_callback=correlation_callback, missing=missing
+            )
+
+        # =============================================================================
+        # VERIFY RESULT AGAINST NORMAL ESMDA ITERATIONS
+        # =============================================================================
+        smoother = ESMDA(
+            covariance=covariance,
+            observations=observations,
+            alpha=5,
+            seed=1,
+        )
+
+        X_i2 = np.copy(X)
+        for _ in range(smoother.num_assimilations()):
+            smoother.prepare_assimilation(Y=g(X_i2))
+            X_i2 = smoother.assimilate_batch(X=X_i2, missing=missing)
+
+        assert np.allclose(X_i, X_i2)
 
 
 if __name__ == "__main__":
