@@ -217,7 +217,7 @@ for i in range(adaptive_smoother.num_assimilations()):
     # Assimilate data
     adaptive_smoother.prepare_assimilation(Y=Y_i)
     X_i = adaptive_smoother.assimilate_batch(
-        X=X_i, correlation_callback=AdaptiveESMDA.three_over_sqrt_n
+        X=X_i, correlation_callback="three_over_sqrt_ensemble_members"
     )
 
 
@@ -330,7 +330,7 @@ for ensemble_size in ENSEMBLE_SIZES:
         for _ in range(adaptive_smoother.num_assimilations()):
             adaptive_smoother.prepare_assimilation(Y=g(X_i))
             X_i = adaptive_smoother.assimilate_batch(
-                X=X_i, correlation_callback=AdaptiveESMDA.three_over_sqrt_n
+                X=X_i, correlation_callback="three_over_sqrt_ensemble_members"
             )
 
         AdaptiveESMDA_means.append(np.mean(X_i, axis=1))
