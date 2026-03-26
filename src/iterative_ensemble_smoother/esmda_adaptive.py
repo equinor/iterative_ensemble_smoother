@@ -31,6 +31,7 @@ from typing import Callable, Union
 import numpy as np
 import numpy.typing as npt
 import scipy as sp
+from joblib import Parallel, delayed
 
 from iterative_ensemble_smoother.esmda import BaseESMDA
 from iterative_ensemble_smoother.esmda_inversion import invert_subspace
@@ -41,6 +42,78 @@ from iterative_ensemble_smoother.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _update_group(
+    param_idx: npt.NDArray[np.int_],
+    response_idx: npt.NDArray[np.bool_],
+    delta_D: npt.NDArray[np.floating],
+    C_D: npt.NDArray[np.floating],
+    alpha: float,
+    truncation: float,
+    corr_XY: npt.NDArray[np.floating],
+    D_obs_minus_D: npt.NDArray[np.floating],
+) -> tuple[npt.NDArray[np.int_], npt.NDArray[np.floating]]:
+    """Worker for AdaptiveESMDA: update a group of parameters."""
+    delta_D_i = delta_D[response_idx, :]
+
+    if C_D.ndim == 1:
+        C_D_L_i = np.sqrt(C_D[response_idx])
+    else:
+        cov_mask = np.ix_(response_idx, response_idx)
+        C_D_L_i = sp.linalg.cholesky(C_D[cov_mask], lower=False)
+
+    _, factor1, factor2 = invert_subspace(
+        delta_D=delta_D_i,
+        C_D_L=C_D_L_i,
+        alpha=alpha,
+        truncation=truncation,
+    )
+
+    corr_mask = np.ix_(param_idx, response_idx)
+    return param_idx, np.linalg.multi_dot(
+        [
+            corr_XY[corr_mask],
+            factor1,
+            factor2,
+            D_obs_minus_D[response_idx, :],
+        ]
+    )
+
+
+def _update_param(
+    i: int,
+    inflation_factors: npt.NDArray[np.floating],
+    C_D_L: npt.NDArray[np.floating],
+    delta_D: npt.NDArray[np.floating],
+    alpha: float,
+    truncation: float,
+    corr_XY: npt.NDArray[np.floating],
+    D_obs_minus_D: npt.NDArray[np.floating],
+) -> tuple[int, npt.NDArray[np.floating]]:
+    """Worker for TaperedAdaptiveESMDA: update a single parameter."""
+    inflation_factor_i = inflation_factors[i, :]
+
+    if C_D_L.ndim == 1:
+        C_D_L_i = C_D_L * inflation_factor_i
+    else:
+        C_D_L_i = C_D_L * inflation_factor_i[:, None] * inflation_factor_i[None, :]
+
+    _, factor1, factor2 = invert_subspace(
+        delta_D=delta_D,
+        C_D_L=C_D_L_i,
+        alpha=alpha,
+        truncation=truncation,
+    )
+
+    return i, np.linalg.multi_dot(
+        [
+            corr_XY[[i]],
+            factor1,
+            factor2,
+            D_obs_minus_D,
+        ]
+    )
 
 
 class AdaptiveESMDA(BaseESMDA):
@@ -135,6 +208,7 @@ class AdaptiveESMDA(BaseESMDA):
         ]
         | str = "three_over_sqrt_ensemble_members",
         overwrite: bool = False,
+        n_jobs: int = -1,
     ) -> npt.NDArray[np.floating]:
         """Assimilate a batch of parameters against all observations.
 
@@ -168,6 +242,10 @@ class AdaptiveESMDA(BaseESMDA):
         overwrite: bool
             If False (the default), the input arrays will not be overwritten (mutated).
             If True, the method may overwrite the input arrays.
+        n_jobs : int
+            Number of parallel jobs for the update loop. Use -1 for
+            all available CPU cores, or 1 for sequential execution.
+            Default is -1.
 
         Returns
         -------
@@ -239,45 +317,35 @@ class AdaptiveESMDA(BaseESMDA):
 
         alpha = self.alpha[self.iteration]
         delta_D = self.delta_DT.T
-        # Loop over observation indices (integer mask) and param idx (bool mask)
-        for param_idx, response_idx in groupby_rows(mask_keep):
-            # Skip parameters if no responses have correlations
-            if not np.any(response_idx):
-                continue
 
+        # Collect groups, filtering out those with no correlated responses
+        groups = [
+            (param_idx, response_idx)
+            for param_idx, response_idx in groupby_rows(mask_keep)
+            if np.any(response_idx)
+        ]
+
+        for g in groups:
             logger.debug(
-                f"Assimilating {len(param_idx)} parameters that share "
+                f"Assimilating {len(g[0])} parameters that share "
                 "the same correlation structure with observations."
             )
 
-            # Centered responses for this param group
-            delta_D_i = delta_D[response_idx, :]
-
-            # Index on the responses in this param group, then factor covariance
-            if self.C_D.ndim == 1:
-                C_D_L_i = np.sqrt(self.C_D[response_idx])
-            else:
-                cov_mask = np.ix_(response_idx, response_idx)
-                C_D_L_i = sp.linalg.cholesky(self.C_D[cov_mask], lower=False)
-
-            # Compute (Y[idx, :] @ Y[idx, :].T + C_D[idx, idx])^-1
-            _, factor1, factor2 = invert_subspace(
-                delta_D=delta_D_i,
-                C_D_L=C_D_L_i,
-                alpha=alpha,
-                truncation=self.truncation,
+        results = Parallel(n_jobs=n_jobs)(
+            delayed(_update_group)(
+                param_idx,
+                response_idx,
+                delta_D,
+                self.C_D,
+                alpha,
+                self.truncation,
+                corr_XY,
+                self.D_obs_minus_D,
             )
-
-            # Multiply together and store results
-            corr_mask = np.ix_(param_idx, response_idx)
-            X[param_idx, :] += np.linalg.multi_dot(
-                [
-                    corr_XY[corr_mask],
-                    factor1,
-                    factor2,
-                    self.D_obs_minus_D[response_idx, :],
-                ]
-            )
+            for param_idx, response_idx in groups
+        )
+        for pidx, update in results:
+            X[pidx, :] += update
 
         return X
 
@@ -378,6 +446,7 @@ class TaperedAdaptiveESMDA(BaseESMDA):
         ]
         | str = "exponential_scale",
         overwrite: bool = False,
+        n_jobs: int = -1,
     ) -> npt.NDArray[np.floating]:
         """Assimilate a batch of parameters against all observations.
 
@@ -411,6 +480,10 @@ class TaperedAdaptiveESMDA(BaseESMDA):
         overwrite: bool
             If False (the default), the input arrays will not be overwritten (mutated).
             If True, the method may overwrite the input arrays.
+        n_jobs : int
+            Number of parallel jobs for the update loop. Use -1 for
+            all available CPU cores, or 1 for sequential execution.
+            Default is -1.
 
         Returns
         -------
@@ -483,38 +556,23 @@ class TaperedAdaptiveESMDA(BaseESMDA):
         alpha = self.alpha[self.iteration]
         delta_D = self.delta_DT.T
 
-        # Loop over every parameter index i
-        for i in range(corr_XY.shape[0]):
-            # How much each response should be inflated
-            inflation_factor_i = inflation_factors[i, :]
+        n_params = corr_XY.shape[0]
 
-            # Inflate the covariance
-            if self.C_D_L.ndim == 1:
-                C_D_L_i = self.C_D_L * inflation_factor_i
-            else:
-                C_D_L_i = (
-                    self.C_D_L
-                    * inflation_factor_i[:, None]
-                    * inflation_factor_i[None, :]
-                )
-
-            # Compute (Y[idx, :] @ Y[idx, :].T + C_D[idx, idx])^-1
-            _, factor1, factor2 = invert_subspace(
-                delta_D=delta_D,
-                C_D_L=C_D_L_i,
-                alpha=alpha,
-                truncation=self.truncation,
+        results = Parallel(n_jobs=n_jobs)(
+            delayed(_update_param)(
+                i,
+                inflation_factors,
+                self.C_D_L,
+                delta_D,
+                alpha,
+                self.truncation,
+                corr_XY,
+                self.D_obs_minus_D,
             )
-
-            # Multiply together and store results
-            X[[i], :] += np.linalg.multi_dot(
-                [
-                    corr_XY[[i]],
-                    factor1,
-                    factor2,
-                    self.D_obs_minus_D,
-                ]
-            )
+            for i in range(n_params)
+        )
+        for idx, update in results:
+            X[[idx], :] += update
 
         return X
 
