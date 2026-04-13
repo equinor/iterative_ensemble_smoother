@@ -529,7 +529,6 @@ source = { editable = "." }
 dependencies = [
     { name = "joblib" },
     { name = "numpy" },
-    { name = "psutil" },
     { name = "scipy" },
 ]
 
@@ -593,7 +592,6 @@ requires-dist = [
     { name = "pandas", marker = "extra == 'dev'" },
     { name = "pandas", marker = "extra == 'doc'" },
     { name = "pre-commit", marker = "extra == 'dev'" },
-    { name = "psutil" },
     { name = "pydata-sphinx-theme", marker = "extra == 'doc'" },
     { name = "pygments", marker = "extra == 'doc'" },
     { name = "pylint", marker = "extra == 'dev'" },

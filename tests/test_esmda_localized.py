@@ -323,6 +323,52 @@ class TestLocalizedESMDA:
         assert np.allclose(X_1, X_2), "Posteriors should match"
 
 
+def calculate_rho_1d(
+    N_m: int, obs_index: int, localization_radius: float, xinc: float = 1.0
+):
+    model_grid = np.arange(N_m) * xinc
+    distances = np.abs(model_grid - obs_index * xinc)
+    return np.exp(-3.0 * (distances / localization_radius) ** 2).reshape(-1, 1)
+
+
+@pytest.mark.parametrize("seed", list(range(9)))
+def test_distance_based_localization_on_1D_case_with_single_observation(seed):
+    """LocalizedESMDA with a distance-based localization callback should
+    leave distant parameters unchanged."""
+
+    N_m = 100  # Number of model parameters (grid points)
+    N_e = 50  # Ensemble size
+    j_obs = 50  # Index of the single observation
+
+    true_observations = np.array([1.0])
+    C_D = np.array([0.01])
+
+    rng = np.random.default_rng(seed)
+    X_prior = rng.normal(loc=0.0, scale=0.5, size=(N_m, N_e))
+    Y = X_prior[[j_obs], :]  # Identity forward model at j_obs
+
+    localization_radius = 20.0
+    rho = calculate_rho_1d(N_m, j_obs, localization_radius)
+
+    smoother = LocalizedESMDA(
+        covariance=C_D,
+        observations=true_observations,
+        alpha=1,
+        seed=rng,
+    )
+    smoother.prepare_assimilation(Y=Y)
+    X_posterior = smoother.assimilate_batch(
+        X=X_prior, localization_callback=lambda K: rho * K
+    )
+
+    # Distant parameters (rho ≈ 0) should be unchanged
+    distant = np.where(rho.ravel() < 1e-5)[0]
+    assert np.allclose(X_posterior[distant, :], X_prior[distant, :], atol=1e-2)
+
+    # Parameter at observation should be updated
+    assert not np.allclose(X_posterior[j_obs, :], X_prior[j_obs, :])
+
+
 if __name__ == "__main__":
     pytest.main(
         args=[
