@@ -4,7 +4,7 @@ features of iterative_ensemble_smoother
 """
 
 import logging
-from typing import List, Tuple, TypeVar, Union
+from typing import Union
 
 import numpy as np
 import numpy.typing as npt
@@ -19,108 +19,6 @@ from iterative_ensemble_smoother.utils import (
 )
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar("T")
-
-
-class RowScaledESMDA(ESMDA):
-    """Subclass ESMDA to apply strength "alpha" to row updates."""
-
-    def assimilate_batch(
-        self,
-        *,
-        X: npt.NDArray[np.floating],
-        missing: Union[npt.NDArray[np.bool_], None] = None,
-        alpha: float = 1.0,
-    ) -> npt.NDArray[np.floating]:
-        """Apply a scaling `alpha` to the update."""
-        if not hasattr(self, "delta_DT"):
-            raise Exception("The method `prepare_assmilation` must be called.")
-        N_m, N_e = X.shape  # (num_parameters, ensemble_size)
-        assert N_e == self.delta_DT.shape[0], "Dimension mismatch"
-        delta_M = self._compute_delta_M(X=X, missing=missing)
-
-        # Mutate in place
-        X[:, :] += alpha * np.linalg.multi_dot(
-            [delta_M, self.delta_DT, self.term_diag, self.termT, self.D_obs_minus_D]
-        )
-
-
-class RowScaling:
-    # Illustration of how row scaling works, `multiply` is the important part
-    # For the actual implementation, which is more involved, see:
-    # https://github.com/equinor/ert/blob/84aad3c56e0e52be27b9966322d93dbb85024c1c/src/clib/lib/enkf/row_scaling.cpp
-    def __init__(self, alpha=1.0):
-        """Alpha is the strength of the update."""
-        assert 0 <= alpha <= 1.0
-        self.alpha = alpha
-
-    def multiply(self, X, smoother):
-        """Takes a matrix X and a matrix K and performs alpha * X @ K."""
-        # This implementation merely mimics how RowScaling::multiply behaves
-        # in the C++ code. It mutates the input argument X instead of returning.
-        smoother.assimilate_batch(X=X, alpha=self.alpha)
-
-
-def ensemble_smoother_update_step_row_scaling(
-    *,
-    covariance: npt.NDArray[np.floating],
-    observations: npt.NDArray[np.floating],
-    X_with_row_scaling: List[Tuple[npt.NDArray[np.floating], RowScaling]],
-    Y: npt.NDArray[np.floating],
-    seed: Union[np.random.Generator, int, None] = None,
-    truncation: float = 1.0,
-):
-    """Perform a single ESMDA update (ES) with row scaling.
-    The matrices in X_with_row_scaling WILL BE MUTATED.
-    See the ESMDA class for information about input arguments.
-
-
-    Explanation of row scaling
-    --------------------------
-
-    The ESMDA update can be written as:
-
-        X_post = X_prior + X_prior @ K
-
-    where K is a transition matrix. The core of the row scaling approach is that
-    for each row i in the matrix X, we apply an update with strength alpha:
-
-        X_post = X_prior + alpha * X_prior @ K
-        X_post = X_prior @ (I + alpha * K)
-
-    Clearly 0 <= alpha <= 1 denotes the 'strength' of the update; alpha == 1
-    corresponds to a normal smoother update and alpha == 0 corresponds to no
-    update. With the per row transformation of X the operation is no longer matrix
-    multiplication but the pseudo code looks like:
-
-        for i in rows:
-            X_i_post = X_i_prior @ (I + alpha_i * K)
-
-    See also original code:
-        https://github.com/equinor/ert/blob/84aad3c56e0e52be27b9966322d93dbb85024c1c/src/clib/lib/enkf/row_scaling.cpp#L51
-
-    """
-
-    # Create ESMDA instance and set alpha=1 => run single assimilation (ES)
-    smoother = RowScaledESMDA(
-        covariance=covariance,
-        observations=observations,
-        seed=seed,
-        alpha=1,
-    )
-
-    smoother.prepare_assimilation(Y=Y, truncation=truncation)
-
-    # Loop over groups of rows (parameters)
-    for X, row_scale in X_with_row_scaling:
-        # ESMDA computes:
-        # X_posterior = X_prior + X_prior @ ... @ (D- Y)
-        # Here we compute
-        # X_prior += X_prior @ ... @ (D- Y)
-        row_scale.multiply(X, smoother)
-
-    return X_with_row_scaling
 
 
 class DistanceESMDA(ESMDA):

@@ -1,16 +1,10 @@
-from copy import deepcopy
-
 import numpy as np
 import pytest
 from numpy import typing as npt
 from numpy.testing import assert_allclose
 
 from iterative_ensemble_smoother import ESMDA
-from iterative_ensemble_smoother.experimental import (
-    DistanceESMDA,
-    RowScaling,
-    ensemble_smoother_update_step_row_scaling,
-)
+from iterative_ensemble_smoother.experimental import DistanceESMDA
 from iterative_ensemble_smoother.utils import (
     calc_max_number_of_layers_per_batch_for_distance_localization,
     calc_rho_for_2d_grid_layer,
@@ -42,87 +36,6 @@ def linear_problem(request):
     X = rng.normal(size=(num_parameters, num_ensemble))
     covariance = rng.triangular(0.1, 1, 1, size=num_observations)
     return X, g, observations, covariance, rng
-
-
-class TestRowScaling:
-    def test_that_row_scaling_updates_parameters(self):
-        # Example showing how to use row scaling
-        num_parameters = 100
-        num_observations = 20
-        num_ensemble = 10
-
-        rng = np.random.default_rng(42)
-
-        X = rng.normal(size=(num_parameters, num_ensemble))
-        Y = rng.normal(size=(num_observations, num_ensemble))
-        covariance = np.exp(rng.normal(size=num_observations))
-        observations = rng.normal(size=num_observations, loc=1)
-
-        # Split up X into groups of parameters as needed
-        row_groups = [(0,), (1, 2), (4, 5, 6), tuple(range(7, 100))]
-        X_with_row_scaling = [
-            (X[idx, :], RowScaling(alpha=1 / (i + 1)))
-            for i, idx in enumerate(row_groups)
-        ]
-        # Make a copy so we can check that update happened, since input is mutated
-        X_before = deepcopy(X_with_row_scaling)
-
-        X_with_row_scaling_updated = ensemble_smoother_update_step_row_scaling(
-            covariance=covariance,
-            observations=observations,
-            X_with_row_scaling=X_with_row_scaling,
-            Y=Y,
-            seed=rng,
-        )
-
-        # Check that an update happened
-        assert not np.allclose(X_before[-1][0], X_with_row_scaling_updated[-1][0])
-
-    @pytest.mark.parametrize("num_ensemble", [5, 25, 200])
-    def test_that_row_scaling_equal_single_ES_update(self, num_ensemble):
-        # Create data
-        num_parameters = 100
-        num_observations = 20
-
-        rng = np.random.default_rng(num_ensemble)
-
-        X = rng.normal(size=(num_parameters, num_ensemble))
-        Y = rng.normal(size=(num_observations, num_ensemble))
-        covariance = np.exp(rng.normal(size=num_observations))
-        observations = rng.normal(size=num_observations, loc=1)
-
-        # Split up X into groups of parameters
-        row_groups = [tuple(range(17)), tuple(range(17, 100))]
-        # When alpha=1 in row scaling, we perform a full update
-        X_with_row_scaling = [
-            (X[idx, :], RowScaling(alpha=1)) for _, idx in enumerate(row_groups)
-        ]
-
-        # Perform an update using row scaling
-        X_with_row_scaling_updated = ensemble_smoother_update_step_row_scaling(
-            covariance=covariance,
-            observations=observations,
-            X_with_row_scaling=X_with_row_scaling,
-            Y=Y,
-            seed=1,
-            truncation=1.0,
-        )
-
-        # Perform an update using ESMDA API
-        smoother = ESMDA(
-            covariance=covariance,
-            observations=observations,
-            alpha=1,
-            seed=1,
-        )
-        for _ in range(smoother.num_assimilations()):
-            smoother.prepare_assimilation(Y=Y, truncation=1.0)
-            X_posterior = smoother.assimilate_batch(X=X)
-
-        # The result should be the same
-        assert np.allclose(
-            X_posterior, np.vstack([X_i for (X_i, _) in X_with_row_scaling_updated])
-        )
 
 
 def assert_tests_for_distance_based_localization(
