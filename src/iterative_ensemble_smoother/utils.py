@@ -7,7 +7,6 @@ import warnings
 from typing import TYPE_CHECKING, Iterator
 
 import numpy as np
-import psutil
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -352,109 +351,6 @@ def sample_mvnormal(
 
     # A 1D diagonal of a covariance matrix was passed
     return C_dd_cholesky.reshape(-1, 1) * z
-
-
-def calc_max_number_of_layers_per_batch_for_distance_localization(
-    nx: int,
-    ny: int,
-    nz: int,
-    num_obs: int,
-    nreal: int,
-    bytes_per_float: int = 8,  # float64 as default here
-) -> int:
-    """Calculate number of layers from a 3D field parameter that can be updated
-    within available memory. Distance-based localization requires two large matrices
-    the Kalman gain matrix K and the localization scaling matrix RHO, both have size
-    equal to number of field parameter values times number of observations.
-    Therefore, a batching algorithm is used where only a subset of parameters
-    is used when calculating the Schur product of RHO and K matrix in the update
-    algorithm. This function calculates number of batches and
-    number of grid layers of field parameter values that can fit
-    into the available memory for one batch accounting for a safety margin.
-
-    The available memory is checked using the `psutil` library, which provides
-    information about system memory usage.
-    From `psutil` documentation:
-    - available:
-        the memory that can be given instantly to processes without the
-        system going into swap.
-        This is calculated by summing different memory values depending
-        on the platform and it is supposed to be used to monitor actual
-        memory usage in a cross platform fashion.
-
-    Parameters
-    ----------
-    nx : int
-        Grid size in I-direction (local x-axis direction).
-    ny : int
-        Grid size in J-direction (local y-axis direction).
-    nz : int
-        Grid size in K-direction (number of layers).
-    num_obs : int
-        Number of observations.
-    nreal : int
-        Number of realizations.
-    bytes_per_float : int, optional
-        Number of bytes per float (4 or 8). Default is 8.
-
-    Returns
-    -------
-    int
-        Max number of layers that can be updated in one batch to
-        avoid memory problems.
-    """
-
-    memory_safety_factor = 0.8
-    num_params = nx * ny * nz
-    num_param_per_layer = nx * ny
-
-    # Rough estimate of necessary number of float variables
-    sum_floats = 0
-    sum_floats += num_params * num_obs  # K matrix before Schur product
-    sum_floats += num_params * num_obs  # RHO matrix
-    sum_floats += num_params * num_obs  # K matrix after Schur product
-    sum_floats += int(num_params * nreal * 2.5)  # X_prior, X_prior_batch, M_delta
-    sum_floats += int(num_params * nreal * 1.5)  # X_post and X_post_batch
-    sum_floats += num_obs * nreal * 2  # D matrix and internal matrices
-    sum_floats += num_obs * nreal * 2  # Y matrix and internal matrices
-
-    # Check available memory
-    available_memory_in_bytes = psutil.virtual_memory().available * memory_safety_factor
-
-    # Required memory
-    total_required_memory_per_field_param = sum_floats * bytes_per_float
-
-    # Minimum number of batches
-    min_number_of_batches = int(
-        np.ceil(total_required_memory_per_field_param / available_memory_in_bytes)
-    )
-
-    max_nlayer_per_batch = int(nz / min_number_of_batches)
-
-    if max_nlayer_per_batch == 0:
-        # Batch size cannot be less than 1 layer
-        memory_one_batch = num_param_per_layer * bytes_per_float
-        raise MemoryError(
-            "The required memory to update one grid layer or one 2D surface is "
-            "larger than available memory.\n"
-            "Cannot split the update into batch size less than one complete "
-            "grid layer for 3D field or one surface for 2D fields."
-            f"Required memory for one batch is about: {memory_one_batch / 10**9} GB\n"
-            f"Available memory is about: {available_memory_in_bytes / 10**9} GB"
-        )
-
-    logger.debug(
-        "Calculate batch size for updating of field parameter:\n"
-        f" Number of parameters in field param: {num_params}\n"
-        f" Required number of floats to update one field parameter: {sum_floats}\n"
-        " Available memory per field param update: "
-        f"{available_memory_in_bytes / 10**9} GB\n"
-        " Required memory total to update a field parameter: "
-        f"{total_required_memory_per_field_param / 10**9} GB\n"
-        f" Number of layers in one batch: {max_nlayer_per_batch}"
-    )
-
-    return max_nlayer_per_batch
 
 
 def gaspari_cohn(
