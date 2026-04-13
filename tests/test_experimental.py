@@ -1322,15 +1322,15 @@ def test_update_params_3D(
 
     # Calculate rho_for one layer
     rho_2D = calc_rho_for_2d_grid_layer(
-        nx,
-        ny,
-        xinc,
-        yinc,
-        obs_xpos,
-        obs_ypos,
-        obs_main_range,
-        obs_perp_range,
-        obs_anisotropy_angle,
+        nx=nx,
+        ny=ny,
+        xinc=xinc,
+        yinc=yinc,
+        obs_xpos=obs_xpos,
+        obs_ypos=obs_ypos,
+        obs_main_range=obs_main_range,
+        obs_perp_range=obs_perp_range,
+        obs_anisotropy_angle=obs_anisotropy_angle,
         right_handed_grid_indexing=True,
     )
     # Set responses for each observation equal to the X_prior for simplicity
