@@ -458,8 +458,8 @@ def calc_max_number_of_layers_per_batch_for_distance_localization(
 
 
 def gaspari_cohn(
-    distances: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
+    distances: npt.NDArray[np.floating],
+) -> npt.NDArray[np.floating]:
     """Gaspari--Cohn distance-based localization scaling function.
 
     For each normalised distance d, returns a scaling factor in [0, 1]
@@ -533,17 +533,18 @@ def gaspari_cohn(
 
 
 def calc_rho_for_2d_grid_layer(
+    *,
     nx: int,
     ny: int,
     xinc: float,
     yinc: float,
-    obs_xpos: npt.NDArray[np.float64],
-    obs_ypos: npt.NDArray[np.float64],
-    obs_main_range: npt.NDArray[np.float64],
-    obs_perp_range: npt.NDArray[np.float64],
-    obs_anisotropy_angle: npt.NDArray[np.float64],
+    obs_xpos: npt.NDArray[np.floating],
+    obs_ypos: npt.NDArray[np.floating],
+    obs_main_range: npt.NDArray[np.floating],
+    obs_perp_range: npt.NDArray[np.floating],
+    obs_anisotropy_angle: npt.NDArray[np.floating],
     right_handed_grid_indexing: bool = True,
-) -> npt.NDArray[np.float64]:
+) -> npt.NDArray[np.floating]:
     """Calculate elements of the localization matrix (rho) for a 2D grid layer.
 
     For each observation, the distance to every grid cell centre is computed
@@ -559,12 +560,16 @@ def calc_rho_for_2d_grid_layer(
     (obs_xpos[n], obs_ypos[n]) and its localization ellipse
     (obs_main_range[n], obs_perp_range[n], obs_anisotropy_angle[n]).
 
-    Grid cells are addressed by a flat index m that encodes the 2D cell index (i, j):
+    Grid cells are addressed by a flat index m that encodes the 2D cell
+    index (i, j):
         m = j + i * ny                (left-handed grid indexing)
         m = (ny - j - 1) + i * ny    (right-handed grid indexing)
 
     The 2D distance from observation n to grid cell m = (i, j) is:
-        d[m, n] = dist((obs_xpos[n], obs_ypos[n]), ((i + 0.5) * xinc, (j + 0.5) * yinc))
+        d[m, n] = dist(
+            (obs_xpos[n], obs_ypos[n]),
+            ((i + 0.5) * xinc, (j + 0.5) * yinc),
+        )
 
     where (i + 0.5) * xinc and (j + 0.5) * yinc are the x- and y-coordinates
     of the centre of grid cell (i, j) in the local coordinate system.
@@ -588,15 +593,16 @@ def calc_rho_for_2d_grid_layer(
         Observations y coordinates in local coordinates.
     obs_main_range : np.ndarray
         Semi-axis length of the localization ellipse along the principal axis
-        (the axis oriented at ``obs_anisotropy_angle`` relative to the local x-axis).
+        (the axis oriented at ``obs_anisotropy_angle`` relative to the
+        local x-axis).
     obs_perp_range : np.ndarray
-        Semi-axis length of the localization ellipse perpendicular to the principal
-        axis. Equal to ``obs_main_range`` gives a circle; smaller gives an elongated
-        ellipse.
+        Semi-axis length of the localization ellipse perpendicular to the
+        principal axis. Equal to ``obs_main_range`` gives a circle; smaller
+        gives an elongated ellipse.
     obs_anisotropy_angle : np.ndarray
-        Orientation of the principal axis of the localization ellipse in degrees
-        relative to the local x-axis. An angle of 0 aligns the principal axis with
-        the x-axis of the local coordinate system.
+        Orientation of the principal axis of the localization ellipse in
+        degrees relative to the local x-axis. An angle of 0 aligns the
+        principal axis with the x-axis of the local coordinate system.
     right_handed_grid_indexing : bool, optional
         Whether to use right-handed grid indexing. Default is True.
 
@@ -606,6 +612,16 @@ def calc_rho_for_2d_grid_layer(
         Localization matrix (rho) of shape ``(nx, ny, nobs)`` for one
         layer of a 3D grid or for a 2D surface grid.
     """
+    if nx <= 0:
+        raise ValueError("`nx` must be positive")
+    if ny <= 0:
+        raise ValueError("`ny` must be positive")
+
+    if xinc <= 0.0:
+        raise ValueError("`xinc` must be positive")
+    if yinc <= 0.0:
+        raise ValueError("`yinc` must be positive")
+
     # Center points of each grid cell in field parameter grid
     x_local = (np.arange(nx) + 0.5) * xinc
     if right_handed_grid_indexing:
@@ -615,28 +631,43 @@ def calc_rho_for_2d_grid_layer(
         # y coordinate increases from min to max
         y_local = (np.arange(ny) + 0.5) * yinc
 
-    # Number of observations
-    nobs = len(obs_xpos)
-    assert nobs == len(obs_ypos), (
-        "Number of coordinates must match number of observations"
-    )
-    assert nobs == len(obs_anisotropy_angle), (
-        "Number of ellipse orientation angles must match number of observations"
-    )
-    assert nobs == len(obs_main_range), (
-        "Number of ellipse main range values must match number of observations"
-    )
-    assert nobs == len(obs_perp_range), (
-        "Number of ellipse second range values must match number of observations"
-    )
-    assert np.all(obs_main_range > 0.0), (
-        "All range values for all observations must be positive"
-    )
-    assert np.all(obs_perp_range > 0.0), (
-        "All range values for all observations must be positive"
-    )
+    # Validate that all observation arrays are 1-D
+    for name, arr in [
+        ("obs_xpos", obs_xpos),
+        ("obs_ypos", obs_ypos),
+        ("obs_main_range", obs_main_range),
+        ("obs_perp_range", obs_perp_range),
+        ("obs_anisotropy_angle", obs_anisotropy_angle),
+    ]:
+        if arr.ndim != 1:
+            raise ValueError(f"`{name}` must be 1-D, got {arr.ndim}-D")
 
-    # Build flattened grid coordinates directly, avoiding intermediate (nx, ny) arrays.
+    # Number of observations
+    nobs = obs_xpos.shape[0]
+    if obs_ypos.shape[0] != nobs:
+        raise ValueError("Number of coordinates must match number of observations")
+    if obs_anisotropy_angle.shape[0] != nobs:
+        raise ValueError(
+            "Number of ellipse orientation angles must match number of observations"
+        )
+    if obs_main_range.shape[0] != nobs:
+        raise ValueError(
+            "Number of ellipse main range values must match number of observations"
+        )
+    if obs_perp_range.shape[0] != nobs:
+        raise ValueError(
+            "Number of ellipse perpendicular range values must match number"
+            " of observations"
+        )
+    if np.any(obs_main_range <= 0.0):
+        raise ValueError("All main-range values for all observations must be positive")
+    if np.any(obs_perp_range <= 0.0):
+        raise ValueError(
+            "All perpendicular-range values for all observations must be positive"
+        )
+
+    # Build flattened grid coordinates directly, avoiding intermediate
+    # (nx, ny) arrays.
     # With "ij" indexing, meshgrid followed by flatten is equivalent to:
     #   x repeated ny times per x-value: [x0,x0,...,x1,x1,...,xn,xn,...]
     #   y tiled nx times:                [y0,y1,...,y0,y1,...,y0,y1,...]
@@ -659,9 +690,10 @@ def calc_rho_for_2d_grid_layer(
     cos_angle = np.cos(rotation)  # (1, nobs)
     sin_angle = np.sin(rotation)  # (1, nobs)
 
-    # Rotate and scale displacements to local coordinate system defined
-    # by the two half axes of the influence ellipse. First coordinate (local x) is in
-    # direction defined by anisotropy angle and local y is perpendicular to that.
+    # Rotate and scale displacements to local coordinate system defined by
+    # the two half axes of the influence ellipse. First coordinate (local x)
+    # is in direction defined by anisotropy angle and local y is
+    # perpendicular to that.
     # Scale the distance by the ranges to get a normalized distance
     # (with value 1 at the edge of the ellipse)
     dX_ellipse = (dX * cos_angle + dY * sin_angle) / obs_main_range  # (nx * ny, nobs)
