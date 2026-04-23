@@ -365,7 +365,7 @@ def invert_subspace(
     >>> C_D = F.T @ F
     >>> C_D_L = sp.linalg.cholesky(C_D, lower=False)
 
-    Now compute delta_D.T @ inv(delta_D @ delta_D.T + alpha (N_1 - 1) C_D)
+    Now compute delta_D.T @ inv(delta_D @ delta_D.T + alpha (N_e - 1) C_D)
     naively:
 
     >>> N_e = Y.shape[1]
