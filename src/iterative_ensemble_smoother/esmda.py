@@ -214,6 +214,7 @@ class BaseESMDA(ABC):
         Y: npt.NDArray[np.floating],
         truncation: float = 0.99,
         overwrite: bool = False,
+        observation_perturbations: Union[npt.NDArray[np.floating], None] = None,
     ) -> None:
         r"""Prepare assimilation of one or several batches of parameters.
 
@@ -236,6 +237,13 @@ class BaseESMDA(ABC):
         overwrite: bool
             If False (the default), the input array will not be overwritten (mutated).
             If True, the method may overwrite the input array.
+        observation_perturbations: np.ndarray or None
+            2D array of shape (num_observations, ensemble_size) containing
+            additive perturbations drawn from the observation error distribution,
+            i.e. ``observation_perturbations ~ N(0, C_D)``.
+            The method will apply the ``sqrt(alpha)`` scaling internally,
+            consistent with :meth:`perturb_observations`.
+            If None, perturbed observations are generated internally.
 
         Returns
         -------
@@ -253,7 +261,7 @@ class BaseESMDA(ABC):
         This method call corresponds to computing:
 
             - The next-to-last factors: (\delta D)^T [(\delta D) (\delta D)^T +
-                                                      \alpha (N_e - 1) C_D]^(-1)
+                                                       \alpha (N_e - 1) C_D]^(-1)
             - The last factor: (D_obs - D)
 
         The total internal storage is: 2 * ensemble_size * num_observations,
@@ -288,7 +296,25 @@ class BaseESMDA(ABC):
 
         # Compute the last factor
         alpha = self.alpha[self.iteration]
-        D_obs = self.perturb_observations(ensemble_size=N_e, alpha=alpha)
+        if observation_perturbations is not None:
+            if observation_perturbations.shape != D.shape:
+                raise ValueError(
+                    "observation_perturbations must have shape "
+                    f"{D.shape}, got {observation_perturbations.shape}"
+                )
+            if observation_perturbations.dtype != self.observations.dtype:
+                raise ValueError(
+                    f"'observation_perturbations' must have dtype "
+                    f"{self.observations.dtype}, got {observation_perturbations.dtype}"
+                )
+            # Scale the perturbations by sqrt(alpha),
+            # consistent with perturb_observations.
+            D_obs = (
+                self.observations[:, np.newaxis]
+                + (alpha**0.5) * observation_perturbations
+            )
+        else:
+            D_obs = self.perturb_observations(ensemble_size=N_e, alpha=alpha)
         self.D_obs_minus_D = D_obs - D
 
         # Compute parts of the Kalman gain
