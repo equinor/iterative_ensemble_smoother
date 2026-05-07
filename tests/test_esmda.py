@@ -771,6 +771,73 @@ def test_that_observations_and_responses_must_have_matching_float_dtypes():
     assert result.dtype == np.float32
 
 
+def test_prepare_assimilation_scales_observation_perturbations_by_alpha():
+    """When observation perturbations are provided, prepare_assimilation must scale
+    it by sqrt(alpha), matching the internal perturb_observations path.
+
+    Uses a two-step scenario (alpha=[2.0, 2.0]) so that alpha != 1 in each step.
+    The unscaled observation perturbations are recovered from the first smoother's
+    stored D_obs and provided to a second smoother; both should produce identical
+    results.
+    """
+    rng = np.random.default_rng(7)
+
+    num_outputs = 4
+    num_inputs = 5
+    num_ensemble = 6
+
+    A = rng.normal(size=(num_outputs, num_inputs))
+
+    def g(X):
+        return A @ X
+
+    X_prior = rng.normal(size=(num_inputs, num_ensemble))
+    covariance = np.exp(rng.normal(size=num_outputs))
+    observations = rng.normal(size=num_outputs, loc=1)
+    alpha = np.array([2.0, 2.0])
+
+    def run_smoother(seed, observation_perturbations_per_step=None):
+        smoother = ESMDA(
+            covariance=covariance,
+            observations=observations,
+            alpha=alpha,
+            seed=seed,
+        )
+        X = np.copy(X_prior)
+        d_obs_list = []
+        for step in range(smoother.num_assimilations()):
+            Y = g(X)
+            kwargs = {}
+            if observation_perturbations_per_step is not None:
+                kwargs["observation_perturbations"] = (
+                    observation_perturbations_per_step[step]
+                )
+            smoother.prepare_assimilation(Y=Y, **kwargs)
+            d_obs_list.append(smoother.D_obs_minus_D + Y)
+            X = smoother.assimilate_batch(X=X)
+        return X, d_obs_list
+
+    # First run: generate D_obs internally.
+    X1, d_obs_list = run_smoother(seed=1)
+
+    # Recover unscaled observation perturbations from the stored D_obs values.
+    # D_obs = observations + sqrt(alpha_val) * observation_perturbations
+    # => observation_perturbations = (D_obs - observations) / sqrt(alpha_val)
+    alpha_val = alpha[0]  # both steps have the same alpha after normalization
+    observation_perturbations_per_step = [
+        (d_obs - observations[:, np.newaxis]) / (alpha_val**0.5) for d_obs in d_obs_list
+    ]
+
+    # Second run: provide externally computed unscaled observation perturbations.
+    # Use a different seed so this also verifies the provided values are used.
+    X2, _ = run_smoother(
+        seed=999,
+        observation_perturbations_per_step=observation_perturbations_per_step,
+    )
+
+    assert np.allclose(X1, X2)
+
+
 def test_zero_covariance_raises():
     """A zero element in a 1D covariance causes division by zero in invert_subspace."""
     covariance = np.array([1.0, 0.0, 1.0])
