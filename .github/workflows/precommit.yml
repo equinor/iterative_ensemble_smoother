@@ -1,4 +1,6 @@
 name: Pre-commit tests
+permissions:
+  contents: read
 
 on: [push, pull_request]
 
