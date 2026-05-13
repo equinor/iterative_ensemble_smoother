@@ -31,13 +31,16 @@ The package also supports two methods of localization: correlation-based (`Adapt
 pip install iterative_ensemble_smoother
 ```
 
-If you want to do development, then run:
+
+If you want to do development, we use uv to have one synchronized development
+environment for all packages. See [installing uv](https://docs.astral.sh/uv/getting-started/installation/). We recommend
+installing uv using your system's package manager, or into a small dedicated
+virtual environment.
 
 ```text
 git clone https://github.com/equinor/iterative_ensemble_smoother.git
 cd iterative_ensemble_smoother
-<create environment>
-pip install --editable '.[doc,dev]'
+uv sync --all-extras
 ```
 
 ## Usage
@@ -49,8 +52,7 @@ Check out the examples section to see how to use it.
 
 ```bash
 apt install pandoc # Pandoc is required to build the documentation.
-pip install .[doc]
-sphinx-build -c docs/source/ -b html docs/source/ docs/build/html/
+uv run sphinx-build -c docs/source/ -b html docs/source/ docs/build/html/
 ```
 
 ## Releasing a new version
