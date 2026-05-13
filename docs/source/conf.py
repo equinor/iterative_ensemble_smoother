@@ -41,7 +41,6 @@ extensions = [
     "sphinxcontrib.bibtex",
     "jupyter_sphinx",
     "numpydoc",
-    "m2r2",  # compatibility with markdown
     "myst_nb",  # to include jupyter notebooks
 ]
 
