@@ -44,6 +44,7 @@ doc = [
     "docutils",
     "pydata_sphinx_theme",
     "jupyter_sphinx",
+    "nbconvert>=7.17.1",
     "sphinxcontrib.bibtex",
     "matplotlib",
     "pygments",
