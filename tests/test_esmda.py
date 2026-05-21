@@ -64,6 +64,50 @@ def test_ESMDA_snapshot():
     assert np.allclose(np.diag(X)[:4], expected)
 
 
+def test_scaling_and_shifting_parameters():
+    """
+    Check that ESMDA is invariant under per-parameter standardization.
+    Forward model is applied to the NON-standardized X in both cases.
+
+      (1) assimilate X directly
+      (2) standardize X, assimilate, inverse-transform
+    """
+    rng = np.random.default_rng(42)
+    n_params, n_ens, n_obs = 10, 100, 3
+    A = rng.normal(size=(n_obs, n_params))
+
+    def forward(X_unscaled):
+        return A @ X_unscaled
+
+    # Pull X far from N(0,1) so standardization is non-trivial
+    X = rng.normal(loc=50.0, scale=7.0, size=(n_params, n_ens))
+    covariance = np.ones(n_obs)
+    observations = np.array([1.0, 2.0, 3.0])
+
+    # --- ESMDA on X ---
+    esmda1 = ESMDA(covariance, observations, alpha=3, seed=0)
+    X1 = X.copy()
+    for _ in range(esmda1.num_assimilations()):
+        esmda1.prepare_assimilation(Y=forward(X1))
+        X1 = esmda1.assimilate_batch(X=X1)
+
+    # --- standardize -> ESMDA -> inverse ---
+    mu = np.mean(X, axis=1, keepdims=True)  # per row (parameter) means
+    sigma = np.std(X, axis=1, keepdims=True)  # per row (parameter) sigmas
+    X2_std = (X - mu) / sigma  # transform to standardized
+
+    esmda2 = ESMDA(covariance, observations, alpha=3, seed=0)
+    for _ in range(esmda2.num_assimilations()):
+        X2_unscaled = X2_std * sigma + mu  # Inverse transform
+        Y = forward(X2_unscaled)  # Apply forward model in original space
+        esmda2.prepare_assimilation(Y=Y)
+        X2_std = esmda2.assimilate_batch(X=X2_std)  # in standardized space
+
+    X2 = X2_std * sigma + mu  # Inverse transform
+
+    assert np.allclose(X1, X2), "Assimilating in standardized space should match"
+
+
 @pytest.fixture
 def setup_small():
     """Small problem for correctness tests."""
