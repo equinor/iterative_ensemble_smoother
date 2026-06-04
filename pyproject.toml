@@ -172,6 +172,3 @@ max-complexity = 10
 [tool.uv]
 fork-strategy = "requires-python"
 exclude-newer = "7 days"
-
-[tool.uv.exclude-newer-package]
-urllib3 = false # Needed until 14.05 for security update
