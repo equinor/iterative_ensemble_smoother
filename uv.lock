@@ -828,6 +828,7 @@ dependencies = [
     { name = "networkx" },
     { name = "numpy" },
     { name = "scikit-learn" },
+    { name = "scikit-sparse" },
     { name = "scipy" },
 ]
 
@@ -900,6 +901,7 @@ requires-dist = [
     { name = "pytest-memray", marker = "extra == 'dev'" },
     { name = "pytest-snapshot", marker = "extra == 'dev'" },
     { name = "scikit-learn" },
+    { name = "scikit-sparse", specifier = "==0.4.16" },
     { name = "scipy" },
     { name = "scipy", marker = "extra == 'dev'" },
     { name = "scipy", marker = "extra == 'doc'" },
@@ -2751,6 +2753,16 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/fb/de/b650b4d69b84468cfa2e28a3ff7b8103743029e6446ce1a97fe060ef688c/scikit_learn-1.9.0-cp314-cp314t-win_amd64.whl", hash = "sha256:78fc56eafd4edb9575d2d8950d1dd152061abb573341a1cb7e099fc40f6c6666", size = 8963204, upload-time = "2026-06-02T11:54:27.428Z" },
     { url = "https://files.pythonhosted.org/packages/ee/f3/ff83d76d7418112e5a61326443cdda87be3545dd8d6599c95b2481a4419e/scikit_learn-1.9.0-cp314-cp314t-win_arm64.whl", hash = "sha256:051075bda8b7aab87b1906ab3d4740a1e1224a19d7b3781a576736edc94e76aa", size = 8222661, upload-time = "2026-06-02T11:54:30.192Z" },
 ]
+
+[[package]]
+name = "scikit-sparse"
+version = "0.4.16"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/33/f2/b391faf6120b72b994b574caef9dac5ea2b7667de59fbd3c8336c07403b3/scikit_sparse-0.4.16.tar.gz", hash = "sha256:3baf49ac98ae8cc4357005af49a0df93a6a53f4e61708705da2942ea4fa61a56", size = 214435, upload-time = "2025-04-27T18:20:37.052Z" }
 
 [[package]]
 name = "scipy"

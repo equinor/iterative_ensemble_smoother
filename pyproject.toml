@@ -16,7 +16,9 @@ classifiers=[
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
-dependencies = ["numpy", "scipy", "joblib", "networkx", "scikit-learn"]
+
+# 'scikit-sparse' version and SuiteSparse must match (depends on Ubuntu)
+dependencies = ["numpy", "scipy", "joblib", "networkx", "scikit-learn", "scikit-sparse==0.4.16"]
 dynamic=["version"] # setuptools_scm extracts Python package versions from git
 
 authors = [
