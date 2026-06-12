@@ -425,16 +425,13 @@ class ESMDA(BaseESMDA):
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)
         assert N_e == self.delta_DT.shape[0], "Dimension mismatch"
 
-        # In standard ESMDA, we compute the product in a good order.
-        # First compute the ensemble-space update in observation precision
-        # (small: N_e × N_e), then cast to X's dtype before multiplying with
-        # delta_M so that no parameter-sized float64 intermediate is created.
+        # Compute the product in a good order
         input_dtype = X.dtype
         delta_M = self._compute_delta_M(X=X, missing=missing)
         ensemble_update = np.linalg.multi_dot(
-            [self.delta_DT, self.term_diag, self.termT, self.D_obs_minus_D]
+            [delta_M, self.delta_DT, self.term_diag, self.termT, self.D_obs_minus_D]
         )
-        X += delta_M @ ensemble_update.astype(input_dtype)
+        X += ensemble_update.astype(input_dtype)
         return X
 
 
