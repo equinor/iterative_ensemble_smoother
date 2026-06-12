@@ -32,6 +32,8 @@ jobs:
           prune-cache: false
           python-version: ${{ matrix.python-version }}
 
+      - name: Install SuiteSparse
+        run: sudo apt-get install -y libsuitesparse-dev
 
       - name: Build docs
         run: |
