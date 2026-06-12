@@ -69,7 +69,6 @@ from scipy.integrate import quad
 from scipy.stats import chi2
 from sklearn.linear_model import LassoCV
 from sklearn.preprocessing import StandardScaler
-from tqdm import tqdm
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
@@ -116,7 +115,7 @@ def linear_l1_regression(
 
     # Loop over features
     i_H, j_H, values_H = [], [], []
-    for j in tqdm(range(m), desc="Learning sparse linear map for each response"):
+    for j in range(m):
         y_j = Y_scaled[:, j]
 
         # Learn individual regularization and fit
@@ -336,7 +335,7 @@ def linear_boost_ic_regression(
             learning_rate=learning_rate,
             effective_dimension=effective_dimension,
         )
-        for j in tqdm(range(m), desc="Learning sparse linear map for each response")
+        for j in range(m)
     )
 
     # Assemble sparse matrix from results
