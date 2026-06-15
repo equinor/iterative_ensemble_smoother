@@ -5,6 +5,30 @@ Precision estimation
 This module contains functions for solving the following problem:
     Given a known sparsity pattern in a precision matrix,
     as well as a data set, how can we estimate the precision matrix values?
+
+
+Examples
+--------
+>>> from sklearn.datasets import make_sparse_spd_matrix
+>>> import networkx as nx
+>>> import scipy as sp
+
+>>> p = 100
+>>> Prec = make_sparse_spd_matrix(p, random_state=42, alpha=0.95)
+>>> int(np.sum(~np.isclose(Prec, 0.0)))
+1228
+
+>>> Cov = np.linalg.inv(Prec)
+>>> rng = np.random.default_rng(0)
+>>> U = rng.multivariate_normal(mean=np.zeros(p), cov=Cov, size=25)
+
+>>> mask_u = sp.sparse.csc_array(~np.isclose(Prec, 0.0))
+>>> Graph_u = nx.from_scipy_sparse_array(mask_u)
+
+>>> Prec_est = fit_precision_cholesky(U=U, Graph_u=Graph_u).todense()
+>>> int(np.sum(~np.isclose(Prec_est, 0.0)))
+2764
+
 """
 
 import logging
