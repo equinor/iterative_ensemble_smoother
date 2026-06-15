@@ -85,6 +85,7 @@ from typing import Union
 
 import numpy as np
 import numpy.typing as npt
+import scipy as sp
 
 from iterative_ensemble_smoother.enif_utils import SPDSolver
 from iterative_ensemble_smoother.esmda import BaseESMDA
@@ -122,7 +123,6 @@ class EnIF(BaseESMDA):
     ...     smoother.prepare_assimilation(Y=Y)
     ...     X = smoother.assimilate(X=X, linearized_model=H,
     ...                             residual_covariance=np.zeros(3))
-    ...     parameter_precision = smoother.parameter_precision
     >>> X[:3, :5].round(1)
     array([[ 1.8, -0.5, -0. , -0. ,  0.8],
            [-0.8, -1.2,  0.5,  0.6, -1.1],
@@ -137,7 +137,7 @@ class EnIF(BaseESMDA):
         parameter_precision: npt.NDArray[np.floating],
         alpha: Union[int, npt.NDArray[np.floating]] = 5,
         seed: Union[np.random.Generator, int, None] = None,
-        solver: str = "cg",
+        solver: str = "dense",
         solver_options: Union[dict["str", object], None] = None,
     ) -> None:
         """
@@ -180,6 +180,13 @@ class EnIF(BaseESMDA):
         self.solver = solver
         self.solver_options = solver_options
         self.parameter_precision = parameter_precision
+        # To avoid anything other than: prepare(), assimilate(), prepare(), ...
+        self.prepared = False
+
+        if not isinstance(parameter_precision, (np.ndarray, sp.sparse.sparray)):
+            raise TypeError(
+                "'parameter_precision' must be a NumPy array or scipy sparse array"
+            )
 
         # Defaults for solvers
         if self.solver_options is None and self.solver == "cholesky":
@@ -222,9 +229,12 @@ class EnIF(BaseESMDA):
 
         Returns
         -------
-        self
-            The instance with mutated state.
+        None
         """
+        if self.prepared:
+            raise Exception("Must call .prepare_assimilation() only once")
+        self.prepared = True
+
         assert Y.ndim == 2
         if not np.issubdtype(Y.dtype, np.floating):
             raise TypeError("Argument `Y` must contain floats")
@@ -234,10 +244,10 @@ class EnIF(BaseESMDA):
                 f"'Y' must have dtype {self.observations.dtype}, got {Y.dtype}"
             )
 
+        self.iteration += 1
+
         if self.iteration >= self.num_assimilations():
             raise Exception("No more assimilation steps to run.")
-
-        self.iteration += 1
 
         D = Y  # Switch from API notation to paper notation
         N_d, N_e = D.shape  # (num_observations, ensemble_size)
@@ -306,6 +316,10 @@ class EnIF(BaseESMDA):
             2D array of shape (num_parameters, ensemble_size).
 
         """
+        if not self.prepared:
+            raise Exception("Must call .prepare_assimilation()")
+        self.prepared = False
+
         # Switch from API notation to more dense mathematical notation
         H = linearized_model
         Cov_r = residual_covariance
@@ -319,6 +333,8 @@ class EnIF(BaseESMDA):
         else:
             Cov_r = Cov_r if Cov_r.ndim == 2 else np.diag(Cov_r)
             Cov_eps = Cov_eps if Cov_eps.ndim == 2 else np.diag(Cov_eps)
+            # TODO: Here we can avoid forming inverse, but so far in all
+            # use-cases Cov_r and Cov_eps are 1D (diagonal), so not prioritized
             Prec_eps_r = np.linalg.inv(Cov_r + Cov_eps)
             RHS = H.T @ Prec_eps_r @ innovation
 

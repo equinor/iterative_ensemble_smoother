@@ -247,8 +247,7 @@ class BaseESMDA(ABC):
 
         Returns
         -------
-        self
-            The instance with mutated state.
+        None
 
         Notes
         -----
@@ -280,14 +279,14 @@ class BaseESMDA(ABC):
                 f"'Y' must have dtype {self.observations.dtype}, got {Y.dtype}"
             )
 
-        if self.iteration >= self.num_assimilations():
-            raise Exception("No more assimilation steps to run.")
-
         if not overwrite:
             Y = Y.copy()
 
         self.truncation = truncation
         self.iteration += 1
+
+        if self.iteration >= self.num_assimilations():
+            raise Exception("No more assimilation steps to run.")
 
         D = Y  # Switch from API notation to paper notation
         N_d, N_e = D.shape  # (num_observations, ensemble_size)

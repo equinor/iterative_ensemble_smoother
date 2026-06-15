@@ -27,8 +27,9 @@ class SPDSolver:
         (a) Use conjugate gradients, but never explicitly form the LHS.
             Prefer many matvec operations over forming matrix (matmat).
             This is much faster, and saves storage.
-        (b) Use Cholesky, but update the factor with a low-rank update
-            instead of recomputing it in every MDA iteration.
+        (b) Use Cholesky factorization of the sparse matrix
+            (re-computing permutation and factorization was found to be
+             faster than low-rank update)
 
     On a problem with 5000 parameters, 2500 responses and 250 realizations:
         "dense" takes 2 seconds, "cholesky" 3 seconds and "cg" 17 seconds
@@ -67,7 +68,7 @@ class SPDSolver:
         self,
         *,
         Prec_x: Union[npt.NDArray[np.floating], sp.sparse.sparray],
-        solver: str = "cg",
+        solver: str = "dense",
         solver_options: Union[dict[str, object], None] = None,
     ) -> None:
         assert solver in ("dense", "cg", "cholesky")
@@ -93,6 +94,19 @@ class SPDSolver:
             # while 'rest' refers to the low-rank updates
             self.first = Prec_x.copy()
             self.rest = []
+
+    def left_hand_side(self) -> Union[npt.NDArray[np.floating], sp.sparse.sparray]:
+        """Returns the left hand side, which is the posterior precision matrix."""
+        # Depending on the solver, we keep different state
+        if self.solver == "cholesky":
+            return self.lhs.copy()
+        LHS = self.first.copy()
+        for H, Prec_eps_r in self.rest:
+            if Prec_eps_r.ndim == 1:
+                LHS += (H.T * Prec_eps_r) @ H
+            else:
+                LHS += H.T @ Prec_eps_r @ H
+        return LHS
 
     def add(
         self,
@@ -214,6 +228,7 @@ class SPDSolver:
         X = np.zeros(shape=(n_params, n_samples))  # answer
         x0 = np.zeros(n_params)
         cg_iterations = []  # Iteration counters per column of b
+        # TODO: log CG errors?
 
         for i in range(n_samples):
             # Count number of iters to solve this column of b
