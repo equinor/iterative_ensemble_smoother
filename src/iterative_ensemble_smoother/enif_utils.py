@@ -1,6 +1,8 @@
 import logging
+from typing import Any, Union
 
 import numpy as np
+import numpy.typing as npt
 import scipy as sp
 
 log = logging.getLogger(__name__)
@@ -61,7 +63,13 @@ class SPDSolver:
            [ 0.43076923,  0.40923077]])
     """
 
-    def __init__(self, *, Prec_x, solver="cg", solver_options=None):
+    def __init__(
+        self,
+        *,
+        Prec_x: Union[npt.NDArray[np.floating], sp.sparse.sparray],
+        solver: str = "cg",
+        solver_options: Union[dict[str, object], None] = None,
+    ) -> None:
         assert solver in ("dense", "cg", "cholesky")
         self.solver = solver
         self.solver_options = solver_options or dict()
@@ -79,14 +87,19 @@ class SPDSolver:
             self.lhs_factor = cholesky(self.lhs, **self.solver_options)
         elif self.solver == "cg":
             self.first = Prec_x.copy()
-            self.rest = []
+            self.rest: list[tuple[Any, Any]] = []
         else:
             # Here 'first' refers to the 'Prec_x' term in the LHS,
             # while 'rest' refers to the low-rank updates
             self.first = Prec_x.copy()
             self.rest = []
 
-    def add(self, *, H, Prec_eps_r):
+    def add(
+        self,
+        *,
+        H: Union[npt.NDArray[np.floating], sp.sparse.sparray],
+        Prec_eps_r: Union[npt.NDArray[np.floating], sp.sparse.sparray],
+    ) -> None:
         """Add H.T @ Prec_eps_r @ H to the left-hand side of the equation."""
         if self.solver == "cholesky":
             from sksparse.cholmod import cholesky  # noqa: PLC0415
@@ -115,7 +128,9 @@ class SPDSolver:
         else:
             self.rest.append((H.copy(), Prec_eps_r.copy()))
 
-    def solve(self, b):
+    def solve(
+        self, b: Union[npt.NDArray[np.floating], sp.sparse.sparray]
+    ) -> npt.NDArray[np.floating]:
         """Solve (Prec_x + H.T @ Prec_eps_r @ H + ...) X = b for unknown X."""
 
         if self.solver == "dense":
@@ -126,7 +141,9 @@ class SPDSolver:
             return self._solve_cholesky(b)
         raise ValueError(f"Unknown solver: {self.solver=}")
 
-    def _solve_dense(self, b):
+    def _solve_dense(
+        self, b: Union[npt.NDArray[np.floating], sp.sparse.sparray]
+    ) -> npt.NDArray[np.floating]:
         """Solve by forming dense matrices. Consumes a lot of memory, but
         is surprisingly fast for small problems."""
         LHS = self.first.copy()
@@ -139,22 +156,32 @@ class SPDSolver:
         # Densify input for the scipy cholesky solver
         LHS = LHS.todense() if isinstance(LHS, sp.sparse.sparray) else LHS
         b = b.todense() if isinstance(b, sp.sparse.sparray) else b
-        return sp.linalg.solve(LHS, b, assume_a="pos", overwrite_a=True)
+        result: npt.NDArray[np.floating] = sp.linalg.solve(
+            LHS, b, assume_a="pos", overwrite_a=True
+        )
+        return result
 
-    def _solve_cholesky(self, b):
+    def _solve_cholesky(
+        self, b: Union[npt.NDArray[np.floating], sp.sparse.sparray]
+    ) -> npt.NDArray[np.floating]:
         """Solve using sparse Cholesky factorization."""
         b = sp.sparse.csc_array(b)
-        return sp.sparse.csc_array(self.lhs_factor.solve_A(b)).todense()
+        result: npt.NDArray[np.floating] = sp.sparse.csc_array(
+            self.lhs_factor.solve_A(b)
+        ).todense()
+        return result
 
-    def _solve_cg(self, b):
+    def _solve_cg(
+        self, b: Union[npt.NDArray[np.floating], sp.sparse.sparray]
+    ) -> npt.NDArray[np.floating]:
         """Solve using conjugate gradients on each column in the
         right-hand-side b."""
         assert b.ndim == 2
         b = b.todense() if isinstance(b, sp.sparse.sparray) else b
 
-        def matvec_A(v):
+        def matvec_A(v: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
             """Implement operator A @ v without forming A."""
-            result = self.first @ v
+            result: npt.NDArray[np.floating] = self.first @ v
             for H, Prec_eps_r in self.rest:
                 if Prec_eps_r.ndim == 1:
                     # Its important to apply product right-to-left
@@ -164,11 +191,11 @@ class SPDSolver:
 
             return result
 
-        def matvec_M(v):
+        def matvec_M(v: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
             """Implement M ~= inv(A) without forming M."""
             # using diagonal only seems faster and better than e.g.
             # cholesky factoring Prec_x
-            diag = self.first.diagonal().copy()
+            diag: npt.NDArray[np.floating] = self.first.diagonal().copy()
             for H, Prec_eps_r in self.rest:
                 if Prec_eps_r.ndim == 1:
                     # Equivalent to: ((H.T * Prec_eps_r) @ H).diagonal()
@@ -177,7 +204,8 @@ class SPDSolver:
                     # Equivalent to: ((H.T @ Prec_eps_r) @ H).diagonal()
                     diag += (H * (Prec_eps_r @ H)).sum(axis=0)
 
-            return v / diag
+            preconditioned: npt.NDArray[np.floating] = v / diag
+            return preconditioned
 
         n_params, n_samples = self.first.shape[0], b.shape[1]
         A = sp.sparse.linalg.LinearOperator(shape=(n_params, n_params), matvec=matvec_A)
@@ -191,7 +219,7 @@ class SPDSolver:
             # Count number of iters to solve this column of b
             iters_i = 0
 
-            def callback(xk):
+            def callback(xk: npt.NDArray[np.floating]) -> None:
                 nonlocal iters_i
                 iters_i = iters_i + 1
 

@@ -198,7 +198,7 @@ class EnIF(BaseESMDA):
             covariance=covariance, observations=observations, alpha=alpha, seed=seed
         )
 
-    def prepare_assimilation(
+    def prepare_assimilation(  # type: ignore[override]
         self,
         *,
         Y: npt.NDArray[np.floating],
@@ -267,7 +267,9 @@ class EnIF(BaseESMDA):
             D_obs = self.perturb_observations(ensemble_size=N_e, alpha=alpha)
         self.D_obs_minus_D = D_obs - D
 
-    def assimilate_batch(self, *args, **kwargs):
+    def assimilate_batch(
+        self, *args: object, **kwargs: object
+    ) -> npt.NDArray[np.floating]:
         # Override the base class method so users do not call it
         msg = "The EnIF class cannot assimilate batches\n Use .assimilate()"
         raise NotImplementedError(msg)
@@ -325,7 +327,8 @@ class EnIF(BaseESMDA):
 
         # Solve for change in X
         delta_X = self.spd_solver.solve(RHS)
-        return X + delta_X
+        X_posterior: npt.NDArray[np.floating] = X + delta_X
+        return X_posterior
 
 
 if __name__ == "__main__":
