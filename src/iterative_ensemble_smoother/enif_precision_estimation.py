@@ -25,9 +25,9 @@ Examples
 >>> mask_u = sp.sparse.csc_array(~np.isclose(Prec, 0.0))
 >>> Graph_u = nx.from_scipy_sparse_array(mask_u)
 
->>> Prec_est = fit_precision_cholesky(U=U, Graph_u=Graph_u).todense()
->>> int(np.sum(~np.isclose(Prec_est, 0.0)))
-2764
+>>> Prec_est = fit_precision_cholesky(U, Graph_u, ordering_method="nesdis")
+>>> int(np.sum(~np.isclose(Prec_est.todense(), 0.0)))
+2644
 
 """
 
