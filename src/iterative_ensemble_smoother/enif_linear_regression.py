@@ -10,12 +10,14 @@ to responses y. There are three requirements:
 >>> import numpy as np
 >>> from sklearn.datasets import make_regression
 >>> from sklearn.model_selection import train_test_split
->>> (X_full, y_full, coef) = make_regression(n_samples=100, n_features=1000, n_informative=10,
+>>> (X_full, y_full, coef) = make_regression(n_samples=100, n_features=1000,
+...                                          n_informative=10,
 ...                                          noise=0.3, coef=True, random_state=1)
 >>> (~np.isclose(coef, 0.0)).sum()
 np.int64(10)
 
->>> X, X_test, y, y_test = train_test_split(X_full, y_full, test_size=0.5, random_state=2)
+>>> X, X_test, y, y_test = train_test_split(X_full, y_full, test_size=0.5,
+...                                         random_state=2)
 
 Let us see how many non-zero coefficients sklearn finds:
 
