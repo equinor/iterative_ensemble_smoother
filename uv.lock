@@ -828,7 +828,6 @@ dependencies = [
     { name = "networkx" },
     { name = "numpy" },
     { name = "scikit-learn" },
-    { name = "scikit-sparse" },
     { name = "scipy" },
 ]
 
@@ -869,6 +868,9 @@ doc = [
     { name = "sphinx", version = "9.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "sphinxcontrib-bibtex" },
 ]
+sparse = [
+    { name = "scikit-sparse" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -901,7 +903,7 @@ requires-dist = [
     { name = "pytest-memray", marker = "extra == 'dev'" },
     { name = "pytest-snapshot", marker = "extra == 'dev'" },
     { name = "scikit-learn" },
-    { name = "scikit-sparse", specifier = "==0.4.16" },
+    { name = "scikit-sparse", marker = "extra == 'sparse'", specifier = "==0.4.16" },
     { name = "scipy" },
     { name = "scipy", marker = "extra == 'dev'" },
     { name = "scipy", marker = "extra == 'doc'" },
@@ -910,7 +912,7 @@ requires-dist = [
     { name = "sphinxcontrib-bibtex", marker = "extra == 'doc'" },
     { name = "tox", marker = "extra == 'dev'" },
 ]
-provides-extras = ["doc", "dev"]
+provides-extras = ["doc", "dev", "sparse"]
 
 [[package]]
 name = "jedi"

@@ -15,7 +15,6 @@ import numpy as np
 import scipy.sparse as sp
 from numpy.typing import NDArray
 from scipy.sparse import csc_array, tril
-from sksparse.cholmod import cholesky
 from tqdm import tqdm
 
 log = logging.getLogger(__name__)
@@ -66,6 +65,8 @@ def reverse_cholesky(
     >>> float(np.mean(np.abs(diff)))
     1.3323...e-16
     """
+    from sksparse.cholmod import cholesky  # noqa: PLC0415
+
     cholesky_factor = cholesky(A, *args, **kwargs)
     L = cholesky_factor.L()
     permutation_idx = cholesky_factor.P()
