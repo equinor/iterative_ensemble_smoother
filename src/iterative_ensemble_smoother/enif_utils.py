@@ -76,7 +76,8 @@ def generate_gaussian_noise(
     # becomes the system (P.T @ L).T @ eps = z, which we solve for eps below
     factor = cholesky(Prec)
     v = factor.solve_Lt(z, use_LDLt_decomposition=False)
-    return factor.apply_Pt(v).T
+    answer: NDArray[np.floating] = factor.apply_Pt(v).T
+    return answer
 
 
 if __name__ == "__main__":

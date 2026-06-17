@@ -151,14 +151,14 @@ def expected_max_chisq(p: int) -> float:
     """Expected maximum of p central chi-square(1) random variables."""
 
     def dmaxchisq(x: float) -> float:
-        return 1.0 - np.exp(p * chi2.logcdf(x, df=1))
+        return float(1.0 - np.exp(p * chi2.logcdf(x, df=1)))
 
     expectation, _ = quad(dmaxchisq, 0, np.inf)
-    return expectation
+    return float(expectation)
 
 
 def mse(residuals: NDArray[np.floating]) -> float:
-    return 0.5 * np.mean(residuals**2)
+    return float(0.5 * np.mean(residuals**2))
 
 
 def calculate_psi_M(

@@ -279,7 +279,7 @@ def fit_precision_cholesky(
     *,
     ordering_method: str = "metis",
     use_tqdm: bool = True,
-) -> tuple[csc_array, nx.Graph, NDArray[np.integer], csc_array, csc_array]:
+) -> csc_array:
     """
     Estimate the precision matrix using Cholesky decomposition.
     An l2-regularized negative log-likelihood is minimized.
