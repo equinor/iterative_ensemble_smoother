@@ -18,7 +18,7 @@ classifiers=[
 ]
 
 # 'scikit-sparse' version and SuiteSparse must match (depends on Ubuntu)
-dependencies = ["numpy", "scipy", "joblib", "networkx", "scikit-learn", "scikit-sparse==0.4.16"]
+dependencies = ["numpy", "scipy", "joblib", "networkx", "scikit-learn"]
 dynamic=["version"] # setuptools_scm extracts Python package versions from git
 
 authors = [
@@ -75,6 +75,7 @@ dev = [
     "pylint",
     "gaussianfft"
 ]
+sparse = ["scikit-sparse==0.4.16"]
 # setuptools_scm also writes the version to a file so that one can use the
 # __version__ attribute from the package
 [tool.setuptools_scm]
