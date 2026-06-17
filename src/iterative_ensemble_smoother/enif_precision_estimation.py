@@ -402,19 +402,8 @@ if __name__ == "__main__":
     import pytest
 
     pytest.main(args=[__file__, "--doctest-modules", "-v"])
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+
+
 """Gaussian graphical model with a known (fixed) edge structure.
 
 Estimates a sparse precision (inverse-covariance) matrix whose zero pattern is
@@ -426,7 +415,6 @@ import warnings
 
 import numpy as np
 from scipy import linalg, sparse
-
 from sklearn.covariance import EmpiricalCovariance, empirical_covariance
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_array
@@ -548,8 +536,8 @@ class StructuredGraphicalModel(EmpiricalCovariance):
         G = np.asarray(G).astype(bool)
         if G.ndim != 2 or G.shape[0] != G.shape[1]:
             raise ValueError("adjacency_matrix must be a square (p, p) matrix.")
-        G = G | G.T                  # precision is symmetric
-        np.fill_diagonal(G, False)   # diagonal entries are always free
+        G = G | G.T  # precision is symmetric
+        np.fill_diagonal(G, False)  # diagonal entries are always free
         return G
 
     def _column_update(self, W, emp_cov, j, nbr):
@@ -569,7 +557,7 @@ class StructuredGraphicalModel(EmpiricalCovariance):
             col = np.zeros(W.shape[0])
             col[j] = W[j, j]
             return np.empty(0), col
-        A = W[np.ix_(nbr, nbr)]          # q x q (advanced indexing -> own copy)
+        A = W[np.ix_(nbr, nbr)]  # q x q (advanced indexing -> own copy)
         if self.ridge:
             A[np.diag_indices(q)] += self.ridge
         b = emp_cov[nbr, j]
@@ -577,8 +565,8 @@ class StructuredGraphicalModel(EmpiricalCovariance):
             beta = linalg.solve(A, b, assume_a="pos")
         except linalg.LinAlgError:
             beta = linalg.lstsq(A, b)[0]
-        col = W[:, nbr] @ beta           # length p; w12 over the off-diagonal rows
-        col[j] = W[j, j]                 # keep w22 == s22 (diagonal is unpenalised)
+        col = W[:, nbr] @ beta  # length p; w12 over the off-diagonal rows
+        col[j] = W[j, j]  # keep w22 == s22 (diagonal is unpenalised)
         return beta, col
 
     # ------------------------------------------------------------------- fit
@@ -610,7 +598,7 @@ class StructuredGraphicalModel(EmpiricalCovariance):
             W_old = W.copy()
             for j in range(p):
                 _, col = self._column_update(W, emp_cov, j, neighbours[j])
-                W[:, j] = col          # diagonal slot already preserved in col
+                W[:, j] = col  # diagonal slot already preserved in col
                 W[j, :] = col
             if np.abs(W - W_old).max() < self.tol:
                 break
@@ -640,54 +628,41 @@ class StructuredGraphicalModel(EmpiricalCovariance):
         self.precision_ = precision
         self.n_iter_ = n_iter
         return self
-    
-    
+
+
 if __name__ == "__main__":
     import pytest
 
     pytest.main(args=[__file__, "--doctest-modules", "-v"])
-    
-    
-    
-    
-    
-    
+
+    import time
+
     import numpy as np
     from sklearn.datasets import make_sparse_spd_matrix
-    import time
-    
+
     p = 500
     prec = make_sparse_spd_matrix(p, alpha=1 - 8 / p, random_state=0)
     G = prec != 0
     rng = np.random.default_rng(42)
-    cov = np.diag(1/np.diag(prec))
+    cov = np.diag(1 / np.diag(prec))
     cov = np.linalg.inv(prec)
     X = rng.multivariate_normal(np.zeros(p), cov, size=100)
     st = time.perf_counter()
-    model = StructuredGraphicalModel(adjacency_matrix=G, max_iter=10, ridge=0.001).fit(X)
-    #model.precision_.round(2)
-    print(f"Ran in: {time.perf_counter() - st:.4f}")
-    
-    
+    model = StructuredGraphicalModel(adjacency_matrix=G, max_iter=10, ridge=0.001).fit(
+        X
+    )
+    # model.precision_.round(2)
+
     import networkx as nx
     import scipy
-    
-    
+
     st = time.perf_counter()
     prec2 = fit_precision_cholesky(
         U=X,
         Graph_u=nx.from_scipy_sparse_array(scipy.sparse.csc_array(G)),
-        use_tqdm = False,
+        use_tqdm=False,
     )
-    print(f"Berent ran in: {time.perf_counter() - st:.4f}")
-    
-    G = prec < 99999
-    print("RMSE sklearn", np.sqrt(np.mean((prec[G] - model.precision_[G])**2)))
-    
-    
-    prec_naive = np.linalg.pinv(np.cov(X, rowvar=False))
-    print("RMSE naive", np.sqrt(np.mean((prec[G] - prec_naive[G])**2)))
-    
-    
-    print("RMSE berent ", np.sqrt(np.mean((prec[G] - prec2[G])**2)))
 
+    G = prec < 99999
+
+    prec_naive = np.linalg.pinv(np.cov(X, rowvar=False))

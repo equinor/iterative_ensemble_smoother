@@ -241,13 +241,12 @@ def boost_linear_regression(
         # Check for convergence
         if np.abs(coef_change) < tol:
             break
-        else:
-            # Update
-            residuals -= coef_change * X_best
-            coefficients[best_feature] += coef_change
+        # Update
+        residuals -= coef_change * X_best
+        coefficients[best_feature] += coef_change
 
-            # loo update
-            residuals_loo = residuals_full_loo
+        # loo update
+        residuals_loo = residuals_full_loo
 
     # ensure cutoff values -- very small if data standardized
     # prefer sparsity
