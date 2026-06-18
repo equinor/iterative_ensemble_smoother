@@ -88,13 +88,7 @@ def reverse_cholesky(
     >>> float(np.mean(np.abs(diff)))
     1.3323...e-16
     """
-
-    try:
-        from sksparse.cholmod import cholesky  # noqa: PLC0415
-    except ModuleNotFoundError:
-        msg = "scikit-sparse and SuiteSparse must be installed\n"
-        msg += "See: https://scikit-sparse.readthedocs.io/en/latest/overview.html"
-        raise ModuleNotFoundError(msg)
+    from sksparse.cholmod import cholesky  # noqa: PLC0415
 
     cholesky_factor = cholesky(A, *args, **kwargs)
     L = cholesky_factor.L()
