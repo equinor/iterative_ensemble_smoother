@@ -459,7 +459,7 @@ In summary, we have shown that if we use \cref{eqn:ensemble_smoother_update} to 
 % If any of these assumptions are violated, then the posterior is an approximation.
 
 \subsection{Computation}
-To implement ES, or any ES-like algorithm, we must compute the ES update \cref{eqn:ensemble_smoother_update} given in \cref{statement:es}.
+To implement ES we must compute \cref{eqn:ensemble_smoother_update} given in \cref{statement:es}.
 Substituting empirical population estimates for $\hat{\Sigma}_{xy}$ and $\hat{\Sigma}_y$, the update equation becomes
 \begin{equation}
     \nonumber
@@ -470,22 +470,26 @@ Substituting empirical population estimates for $\hat{\Sigma}_{xy}$ and $\hat{\S
     \Sigma_\epsilon + \frac{YY^T}{r-1}
     \right)^{-1} \left( \bm{d} \bm{1}^T - (Y + E) \right).
 \end{equation}
-We should not, under any circumstance, implement this equation as-is.
-With some knowledge of practical linear algebra, massive improvements in both numerical accuracy and speed are possible over the naïve implementation.
-For instance:
-\begin{itemize}
-    \item Do not explicitly form the inverse of $(\Sigma_\epsilon + YY^T / (r-1))$.
-    Instead formulate it as the solution to a linear system.
-    \item The order matrix multiplications matters a lot.
-    For instance, avoid forming the huge $XY^T$ cross-covariance matrix of shape $m \times n$ (parameters $\times$ responses).
-    \item The best way I have found to compute the update is to first take the Cholesky factor of $\Sigma_\epsilon$, which is needed to draw the columns of $E$ (recall $E_{\cdot, j} \sim \mathcal{N}(\bm{0}, \Sigma_\epsilon)$) anyway, and call it $L L^T = \Sigma_\epsilon$.
-    Then use that to ``whiten'' $(\Sigma_\epsilon + YY^T / (r-1))$ so and then do so-called subspace inversion.
-    This approach is extensively documented \href{https://github.com/equinor/iterative_ensemble_smoother/blob/140522402eb13ff3df5ec51027c8faca974252ae/src/iterative_ensemble_smoother/esmda_inversion.py}{iterative\_ensemble\_smoother}.
-\end{itemize}
+This equation should never be implemented naïvely.
+For instance, the inverse should not be explicitly formed and neither should the huge cross-covariance matrix $XY^T$ (order of matrix multiplication matters).
 
-\subsection{Extensions}
+\citet[Appendix~A]{emerick2012esmda} write about computation, and explain two tricks: (1) scaling the system of equations and (2) subspace inversion.
+\citet[Appendix~B]{emerick2016analysis} also discusses computation.
+But their sentence ``it is computationally more efficient to rescale based only on the diagonal elements'' is not as clear as it could be: using only the diagonal elements means we don't solve the original equation.
 
-TODO: Here i could write a very short section about extension: localization, etc
+The best way I know to solve this system is to scale with the Cholesky factor of $\Sigma_{\epsilon}$, then do a subspace inversion with a single SVD.
+This is different from both papers above, and is documented \href{https://github.com/equinor/iterative_ensemble_smoother/blob/140522402eb13ff3df5ec51027c8faca974252ae/src/iterative_ensemble_smoother/esmda_inversion.py}{iterative\_ensemble\_smoother}.
+
+%\subsection{Regularization}
+%
+%One path to improving ES is to improve the estimates $\hat{\Sigma}_{xy}$ and $\hat{\Sigma}_y$, and therefore the Kalmain gain esimate $\hat{K}$.
+%
+%There is rich literature on high dimensional covariance estimation, for instance \citet{ledoit2004honey} and \citet{bickel2008covariance}.
+%
+
+
+
+
 
 \section{The Ensemble Information Filter}
 
