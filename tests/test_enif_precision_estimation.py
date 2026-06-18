@@ -122,6 +122,7 @@ def get_precision_data():
     return U, Graph_u, G_matrix
 
 
+@pytest.mark.suitesparse
 def test_snapshot_fit_precision_cholesky():
     U, Graph_u, G_matrix = get_precision_data()
 
@@ -162,6 +163,7 @@ def test_snapshot_fit_precision_cholesky_approximate():
     np.testing.assert_allclose(entries_at_zero[::9], desired, atol=1e-8)
 
 
+@pytest.mark.suitesparse
 @pytest.mark.parametrize("seed", range(99))
 def test_precision_cholesky_roundtrip(seed):
     """Starting from a known, sparse precision matrix, we generate data,

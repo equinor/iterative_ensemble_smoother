@@ -33,13 +33,25 @@ jobs:
           prune-cache: false
           python-version: ${{ matrix.python-version }}
 
+      # Run tests WITHOUT libsuitesparse and scikit-sparse
+
+      - run: uv sync --extra dev
+
+      - name: pytest
+        run: uv run pytest -ra -m 'not suitesparse' --durations=5
+
+      - name: doctest
+        run: uv run pytest src/ --doctest-modules --ignore-glob='**/enif*'
+
+      # Run tests WITH libsuitesparse and scikit-sparse
+
       - name: Install SuiteSparse
         run: sudo apt-get install -y libsuitesparse-dev
 
       - run: uv sync --extra dev --extra sparse
 
       - name: pytest
-        run: uv run pytest -ra --durations=5
+        run: uv run pytest -ra -m 'suitesparse'
 
       - name: doctest
-        run: uv run pytest src/ --doctest-modules --ignore-glob='**/enif*'
+        run: uv run pytest src/ --doctest-modules
