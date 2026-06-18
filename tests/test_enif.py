@@ -106,14 +106,67 @@ class TestEnIF:
         # Verify that we get the same answer
         np.testing.assert_allclose(X_raw, X_std)
 
-    @pytest.mark.parametrize("solver", ["dense", "cg"])
-    def test_solver_equivalence(self, solver):
-        pass
-
-    @pytest.mark.parametrize("seed", range(9))
+    @pytest.mark.parametrize("seed", range(99))
     def test_against_gauss_linear(self, seed):
-        """Test against section XX in bishop. With many ensemble members,
-        the posterior mean and posterior cov should match analytical."""
+        """Bishop (PRML, 2.3.3) Gauss-linear posterior.
+
+        p(x)   = N(x | mu, C_M)
+        p(d|x) = N(d | A x, C_D)
+        =>  COV  = inv(inv(C_M) + A^T inv(C_D) A)
+            MEAN = COV (A^T inv(C_D) d + inv(C_M) mu)
+                 = mu + C_M A^T (A C_M A^T + C_D)^{-1} A (x_true - mu)
+
+        EnIF uses the *exact* prior precision inv(C_M) and exact H, so its gain is
+        the analytic Kalman gain; the only error is finite-ensemble sampling.
+        Mean converges tightly; covariance is checked loosely.
+        """
+        rng = np.random.default_rng(seed)
+        num_ensemble = 10_000
+        num_inputs, num_outputs = rng.choice([2, 4, 8]), 4
+
+        mu = rng.normal(size=num_inputs)
+        C_M_factor = rng.normal(size=(num_inputs, num_inputs))
+        C_M = C_M_factor.T @ C_M_factor + np.eye(num_inputs)
+
+        A = rng.normal(size=(num_outputs, num_inputs))
+
+        C_D_factor = rng.normal(size=(num_outputs, num_outputs))
+        C_D = C_D_factor.T @ C_D_factor + np.eye(num_outputs)
+
+        inv = np.linalg.inv
+        X_true = mu + 10.0
+        d = A @ X_true
+
+        COV = inv(inv(C_M) + A.T @ inv(C_D) @ A)
+        MEAN = COV @ (A.T @ inv(C_D) @ d + inv(C_M) @ mu)
+        MEAN2 = mu + C_M @ A.T @ inv(A @ C_M @ A.T + C_D) @ A @ (X_true - mu)
+        # Sanity-check the reference itself: two derivations must agree.
+        np.testing.assert_allclose(MEAN, MEAN2)
+
+        X_prior = rng.multivariate_normal(mean=mu, cov=C_M, size=num_ensemble).T
+        Lambda_x = inv(C_M)
+
+        enif = EnIF(
+            covariance=C_D,
+            observations=d,
+            parameter_precision=Lambda_x,
+            alpha=1,
+            seed=rng,
+            solver="dense",
+        )
+        enif.prepare_assimilation(Y=A @ X_prior)
+        X_post = enif.assimilate(
+            X=np.copy(X_prior),
+            linearized_model=A,
+            residual_covariance=np.zeros(num_outputs),
+        )
+
+        rel_mean = np.linalg.norm(X_post.mean(axis=1) - MEAN) / np.linalg.norm(MEAN)
+        assert rel_mean < 0.02, f"mean relative error {rel_mean}"
+
+        cov_post = np.cov(X_post, ddof=1)
+        rel_cov = np.linalg.norm(cov_post - COV) / np.linalg.norm(COV)
+        assert rel_cov < 0.75, f"cov relative error {rel_cov}"
 
 
 if __name__ == "__main__":
