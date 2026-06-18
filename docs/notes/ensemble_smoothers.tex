@@ -80,13 +80,14 @@
 
 \begin{abstract}
     \noindent
-This article contains my notes on ensemble smoother algorithms.
-They are used to approximate a posterior distribution using a set of samples.
-By far the most common use-case is when the model is black-box and expensive to evaluate, for instance with petroleum reservoir models.
+
+Ensemble smoother algorithms are used to approximate a posterior distribution.
+Given a prior over parameters, a forward model (e.g. a petroleum reservoir model) and real-world observations; what is the posterior over the parameters?
+Ensemble-based algorithms describe the posterior with a set of samples, and the most common use-case is when the forward model is black-box and expensive to evaluate.
 
 The notes are organized as follows: first we examine the Gauss-linear case, where we can compute an analytical posterior in arbitrarily high dimensions.
-The equation that governs the Gaussian posterior is the foundation for ensemble methods.
-Sadly reservoir models are not linear, so next we derive the Ensemble Smoother (ES)---an algorithm based on the Gauss-linear case.
+The equation for the Gaussian posterior is the starting point for all ensemble methods.
+We derive the Ensemble Smoother (ES)---an algorithm that retains some properties of the Gauss-linear case.
 Finally we examine EnIF, which is similar to ES but works with precision matrices rather than covariances, and leans on the statistical theory of high-dimensional estimation.
 \end{abstract}
 
@@ -106,9 +107,9 @@ Another variant is the Ensemble Smoother with Multiple Data Assimilation (ESMDA)
 It also makes several small steps, but shortens step length implicitly by increasing the covariance matrix of the observations.
 Either way, the core idea is that linearizing, taking a small step, re-linearizing, taking another step, etc. is better than one linearization followed by one large step.
 
-In high dimensions with few samples, empirical correlation matrices are mostly noise and very little signal.
-All of the methods above suffer from this issue.
-Many procedures have been proposed, such as setting all correlations that are below a $3 / \sqrt{r}$ to zero \citep{vossepoel2025adaptive}.
+In high dimensions with few samples, empirical correlations are mostly noise and very little signal.
+This phenomenon is called \emph{spurious correlations}, and all the methods above suffer from it.
+Many procedures have been proposed to alleviate it, such as, e.g., setting all correlations that are below a $3 / \sqrt{r}$ to zero \citep{vossepoel2025adaptive}.
 Another idea is to look towards the statistics of high-dimensional models, see for instance \citet[Chapter~18]{hastie2009elements}.
 This is what \citet{lunde2025ensemble} does in the Ensemble Information Filter (EnIF), which uses graph properties to estimate sparse precision matrices and high-dimensional regression to estimate a sparse linearization of the forward model.
 
@@ -120,6 +121,9 @@ You can find well-documented and production-ready Python code for many of these 
 
 \section{The Gaussian posterior}
 
+With a Gaussian prior, a Gaussian noise model and a linear forward model, we're in the happy Gauss-linear case where an analytical expression for the posterior can be derived.
+In this section we establish notation and illustrate several expressions for the posterior.
+
 % m = parameters, n = responses, r = realizations
 
 Let $\bm{x} \in \R^m$ be a vector of \emph{parameters}.
@@ -130,11 +134,11 @@ The full equation is then $\bm{d} = h(\bm{x}) + \bm{\epsilon}_d$,
 where $\bm{\epsilon}_d \sim \mathcal{N}(\bm{0}, \Sigma_{\epsilon})$.
 
 Think for instance of a petroleum reservoir model.
-The parameters $\bm{x}$ are uncertain static properties of the subsurface, such as log-permeability and porosity in every cell of the simulation grid.
+The parameters $\bm{x}$ are uncertain static properties of the subsurface, e.g., porosity.
 The forward model $h$ is a reservoir flow simulator.
-It solves the fluid flow equations over the grid and reports predicted production data $\bm{y}$, for instance oil rate and bottom-hole pressure at each well over the producing history.
+It solves the fluid flow equations over the grid and reports predicted production data $\bm{y}$, for instance oil production at a well.
 A single evaluation of $h$ may take hours of compute, and we only have access to its inputs and outputs.
-The match is never exact: gauges drift, commingled flow must be allocated back to individual wells, and the grid only coarsely resembles the true geology, so the real-world observation $\bm{d}$ departs from the simulator response by a noise term $\bm{\epsilon}_d$.
+The match is never exact, so the real-world observation $\bm{d}$ departs from the simulator response by a noise term $\bm{\epsilon}_d$.
 The inverse problem of \emph{history matching} problem is: given the observed production $\bm{d}$, how can we update our knowledge of the parameters $\bm{x}$?
 Characterizing the posterior distribution of $\bm{x}$ given $\bm{d}$ is the subject of the rest of these notes.
 
@@ -152,7 +156,8 @@ In words, we will answer ``Suppose I have a prior belief over parameters $p(\bm{
     When both arguments are identical, we'll use a shorthand notation:  $\operatorname{Cov}\left[\bm{x}\right] := \operatorname{Cov}\left[\bm{x}, \bm{x}\right] = \operatorname{Var}\left[\bm{x}\right]$.
     Similarly, when there is no ambiguity we'll simply write $\Sigma_x$ instead of $\Sigma_{xx}$ for the covariance of $\bm{x}$.
 
-    The covariance in $\bm{d}$ is the covariance of $\bm{x}$, propagated through the linear map $H$, plus the covariance of the observation noise $\bm{\epsilon}_d$:
+    In both equations below we'll use the fact that $\bm{\epsilon}_d$ is independent of $\bm{x}$.
+    The covariance in $\bm{d}$ is the covariance of $\bm{x}$, propagated through the linear map $H$, plus the covariance of the observation noise $\bm{\epsilon}_d$.
     \begin{align*}
         \Sigma_{d} &=
         \operatorname{Cov}\left[ \bm{d} \right]
@@ -172,15 +177,21 @@ In words, we will answer ``Suppose I have a prior belief over parameters $p(\bm{
     &=
     \operatorname{Cov}\left[ \bm{x}, \bm{x} \right] H^T = \Sigma_x H^T
 \end{align*}
-In both equations above we used the fact that $\bm{\epsilon}_d$ is independent of both $\bm{x}$ and $\bm{y}$,
-which also means that $\Sigma_{xd} = \Sigma_{xy}$.
+Note also that $\Sigma_{xy} =
+\operatorname{Cov}\left[ \bm{x}, \bm{y} \right] =
+\operatorname{Cov}\left[ \bm{x}, H\bm{x} \right] =
+\operatorname{Cov}\left[\bm{x}, \bm{x}\right] H^T =
+ \Sigma_{xd}$.
 \end{remark}
 
-Suppose the prior over parameters $\bm{x}$ and the observation $\bm{d}$, conditioned on the parameters, are given by multivariate Gaussians:
-\begin{align*}
-    p(\bm{x}) &= \mathcal{N}\left( \bm{x} \mid \bm{\mu}_x, \Sigma_x \right) \\
-    p(\bm{d} \mid \bm{x}) &= \mathcal{N}( \bm{d} \mid H\bm{x}, \Sigma_{\epsilon})
-\end{align*}
+Suppose the prior over the parameters $\bm{x}$ and the observation $\bm{d}$, conditioned on the parameters, are given by multivariate Gaussians:
+\begin{equation}
+    \label{eqn:model_def_gaussian}
+    \begin{aligned}
+        p(\bm{x}) &= \mathcal{N}\left( \bm{x} \mid \bm{\mu}_x, \Sigma_x \right) \\
+        p(\bm{d} \mid \bm{x}) &= \mathcal{N}( \bm{d} \mid H\bm{x}, \Sigma_{\epsilon})
+    \end{aligned}
+\end{equation}
 Then the posterior distribution over parameters, conditioned on the response, is also a multivariate Gaussian $p(\bm{x} \mid \bm{d}) = \mathcal{N} (\bm{\mu}_{x \mid d}, \Sigma_{x \mid d})$.
 The posterior mean and covariance are:
 \begin{align}
@@ -200,7 +211,7 @@ $(\bm{d} - H \bm{x})^T \Sigma_\epsilon^{-1} (\bm{d} - H \bm{x})
 +
 (\bm{x} - \bm{\mu}_x)^T \Sigma_x^{-1} (\bm{x} - \bm{\mu}_x)
 $ with respect to $\bm{x}$, equate it to $\bm{0}$ and solve.}
-In the equations above, the posterior mean $\bm{\mu}_{x \mid d}$ is expressed in terms of precision matrices rather than covariance matrices.
+In the equations above, the posterior mean $\bm{\mu}_{x \mid d}$ is expressed in terms of precision matrices $\Sigma_x^{-1}$ and $\Sigma_\epsilon^{-1}$ rather than covariance matrices $\Sigma_x$ and $\Sigma_\epsilon$.
 % Conditional Gaussians are more naturally expressed in terms of precision, while marginals are more naturally expressed in terms of covariance.
 
 \begin{remark}[Posterior covariance]
@@ -217,14 +228,15 @@ In the equations above, the posterior mean $\bm{\mu}_{x \mid d}$ is expressed in
     H \Sigma_x \\
     &= \Sigma_x - \Sigma_{xd}
     \Sigma_d^{-1}
-    \Sigma_{dx} \\
+    \Sigma_{dx}
 \end{align*}
 \end{remark}
 
-In \cref{remark:posterior_covariance} we derived the Schur complement form of the update equation.
-We will now derive the Kalman gain form, which is given by:
+%In \cref{remark:posterior_covariance} we derived the Schur complement form of the update equation.
+The Kalman gain form is an alternative way to express the update equations above, and we'll spend the rest of this section deriving it.
+It's more commonly used in the Kalman filter literature, and the update is given by:
 \begin{align}
-    \nonumber
+    \label{eqn:posterior_mean_kalman}
     \bm{\mu}_{x \mid d} &= \bm{\mu}_{x} + K (\bm{d} - H \bm{\mu}_{x}) \\
     \label{eqn:kalman_gain}
     K &:= \Sigma_x H^T
@@ -232,14 +244,14 @@ We will now derive the Kalman gain form, which is given by:
     \Sigma_\epsilon + H \Sigma_x H^T
     \right)^{-1} = \Sigma_{xd} \Sigma_d^{-1}
 \end{align}
-In the equation above, $H \bm{\mu}_{x}$ is the predicted mean, $(\bm{d} - H \bm{\mu}_{x})$ is the \emph{innovation} term and $K$ is the Kalman gain.
+In the equation above, $H \bm{\mu}_{x}$ is the predicted mean, $(\bm{d} - H \bm{\mu}_{x})$ is the \emph{innovation} term and $K$ is the \emph{Kalman gain}.
 In words: the posterior equals the prior, plus a linear combination of the innovation (residuals).
 
-There are many ways to derive the Kalman update equation.
-One way is to look at \citet[Section~2.3.1]{BISH11}, but below we will take a different route.
-
+We will now derive the Kalman update in \cref{eqn:posterior_mean_kalman}.
+%There are many ways to derive the Kalman update equation.
+%One way is to look at \citet[Section~2.3.1]{BISH11}, but below we will take a different route.
 The first step is to show that $K = \Sigma_{x \mid d}H^T \Sigma_{\epsilon}^{-1}$.
-To see this, we will start by assuming that both expression are equal:
+To see this, we start by assuming that both expression are equal:
 \begin{equation}
     \label{eqn:push_through_kalman}
     \Sigma_{x \mid d}H^T \Sigma_{\epsilon}^{-1} =
@@ -253,7 +265,7 @@ We right-multiply both sides with $\left(
 \Sigma_\epsilon + H \Sigma_x H^T
 \right)$, then left-multiply both sides with $\Sigma_{x \mid d}^{-1}$ and finally expand both sides to show that they both equal $H^T + H^T \Sigma_\epsilon^{-1} H \Sigma_x H^T$.\footnote{A more direct, constructive way of showing this is to appeal to the \emph{push-through identity}, see for instance the Wikipedia page on the Woodbury matrix identity.}
 
-The second step is to realize that
+The second step is to realize that, using \cref{remark:posterior_covariance}, we can write
 \begin{align*}
     \Sigma_{x \mid d}\Sigma_{x}^{-1} &=
     \Sigma_{x \mid d}
@@ -261,7 +273,8 @@ The second step is to realize that
     &= I - \Sigma_{x \mid d}  H^T \Sigma_{\epsilon}^{-1} H =  I - KH.
 \end{align*}
 
-With these two results in hand, the update equation for the mean becomes
+With these two results in hand, we start with \cref{eqn:posterior_mean_precision} and show that it can indeed be transformed into \cref{eqn:posterior_mean_kalman}.
+The update equation for the mean becomes
 \begin{align*}
     \bm{\mu}_{x \mid d} &=
     \Sigma_{x \mid d} \left(
@@ -281,31 +294,32 @@ In summary then, the Kalman-style update equations are:
     \\
     \Sigma_{x \mid d} &= (I - KH) \Sigma_x
 \end{align*}
-We have seen that there are different way to express the update equations: the precision form of \cref{eqn:posterior_cov_precision}, the Schur form of \cref{remark:posterior_covariance} and the Kalman form above.
+We have seen that there are different way to express the update equations: the precision form of \cref{eqn:posterior_cov_precision}, the Schur form of \cref{remark:posterior_covariance} and the Kalman form in \cref{eqn:posterior_mean_kalman}.
 Which one should we use?
 It depends on what we wish to show or prove, or how we want to structure our computations.
-For instance, the Ensemble Smoother---which we will discuss next---uses a Kalman style update with covariances.
+For instance, the Ensemble Smoother---which we discuss next---uses a Kalman style update with covariances.
 
 \section{The Ensemble Smoother}
 % Above we described the posterior as a multivariate Gaussian specified by the mean $\bm{\mu}_{x \mid d}$ and covariance $\Sigma_{x \mid d}$.
 % What if we instead describe the posterior by a set of samples?
 The Ensemble Smoother (ES) describes the posterior with an \emph{ensemble} of \emph{realizations} (i.e., a set of samples) instead of $\bm{\mu}_{x \mid d}$ and $\Sigma_{x \mid d}$.
 First we draw $r$ realizations $\{\bm{x}_j\}_{j=1}^{r}$ from the prior distribution $p(\bm{x})$.
-Then we propagate them through the forward model $h$ and obtain $\bm{y}_j = h(\bm{x}_j)$ for each realization $j$.
-Finally, we perform \emph{data assimilation}; a Kalman-style update that transforms the prior ensemble to the posterior ensemble.
+Then we propagate them through the forward model $h$ and obtain $\bm{y}_j = h(\bm{x}_j)$ for each realization $j=1, \ldots, r$.
+Finally, we perform \emph{data assimilation}; a Kalman-style update that transforms the prior ensemble to the posterior ensemble by conditioning on the observation.
 
 The upside of ES is that we don't need knowledge of the forward model $h$ to compute a posterior; $h$ can be a black-box function.
 The downside is that the update equation is derived assuming (1) a linear $h$, (2) Gaussian distributions and (3) infinitely many realizations.
 ES won't actually sample the true, analytical posterior except in the happy case when conditions (1), (2) and (3) are all satisfied.
 Instead we approximate it.\footnote{This approximation comes without any guarantees, so engineering judgment is often required. We potentially perform an update so full of noise that keeping the prior would've been better.}
-Since forward model is expensive to compute, the number of realizations $r$ is much smaller than the number of parameters $m$ and responses $n$.
-This leads to poor estimates of covariances, a phenomenon often called \emph{spurious correlations}.
+Since the forward model is expensive to compute, the number of realizations $r$ is much smaller than the number of parameters $m$ and responses $n$.
+This leads to poor estimates of covariances due to spurious correlations.
 
 We will now derive the update equation for ES, which computes the posterior realizations given the prior realizations.
 First, some notation: let $X \in \R^{m \times r}$ be a matrix with $r$ realizations (ensemble members); one per column.\footnote{In statistics and machine learning, samples are typically associated with rows and features with columns. Here that convention is transposed; each parameter gets a row and each realization a column.}
 Let $Y = h(X) = [ h(\bm{x}_1) \mid h(\bm{x}_2) \mid \cdots \mid h(\bm{x}_r)] \in \R^{n \times r}$ be a matrix of responses, where $h$ is applied to each column.
 
 \begin{statement}
+    \label{statement:es}
 The matrix form of the ES update equation, which updates every realization (column) in $X$, is
 \begin{equation}
     \label{eqn:ensemble_smoother_update}
@@ -318,13 +332,17 @@ The matrix form of the ES update equation, which updates every realization (colu
 \end{equation}
 where each column of $E$ is independently sampled observation $\bm{\epsilon}_d$.
 In other words, $E_{\cdot, j} \sim \mathcal{N}(\bm{0}, \Sigma_\epsilon)$ for every column $j$.
-The matrices $\hat{\Sigma}_{xy}$ and $\hat{\Sigma}_y$ are estimates of the cross-correlation and the correlation.
-The most common estimate for, e.g.,  $\hat{\Sigma}_{xy}$ is the empirical cross correlation matrix $\bar{X}\bar{Y}^T / (r-1) \in \R^{m \times n}$,
+The vector $\bm{1}$ is a vector of $r$ ones, so $\bm{d} \bm{1}^T$ is a matrix with the observation $\bm{d}$ repeated in each of the $r$ columns.
+The matrices $\hat{\Sigma}_{xy}$ and $\hat{\Sigma}_y$ are estimates of the cross-covariance and the covariance.
+The most common estimate for, e.g.,  $\hat{\Sigma}_{xy}$ is the empirical cross covariance matrix $\bar{X}\bar{Y}^T / (r-1) \in \R^{m \times n}$,
 where $\bar{X}$ is a centered $X$ in which every parameter (row) has its mean subtracted.\footnote{Some authors write the centered matrix $\bar{X}$ as $X (I - \bm{1} \bm{1}^T / r)$.
 While centering can be expressed as matrix multiplication, it is both hard to read and an unwise implementation strategy.
 }
 $\bar{Y}$ is a centered $Y$ and $\hat{\Sigma}_{y}$ is computed similarly.
 \end{statement}
+
+We'll spend the rest of this section showing that \cref{eqn:ensemble_smoother_update} is the correct update equation in the following sense: when we use it on a linear model and the number of realizations $r$ goes to infinity, the posterior mean and posterior covariance matches the analytical posterior.
+
 To derive \cref{eqn:ensemble_smoother_update}, we start by examining the Gaussian update equation for the mean:
 \begin{align*}
     \bm{\mu}_{x \mid d}
@@ -346,7 +364,7 @@ This gives us Kalman gain in the form $K = \Sigma_{xy}
 \Sigma_\epsilon + \Sigma_y
 \right)^{-1}$.
 
-The update equation for each realization $j$, is given by
+The update equation for each realization $j$, based on \cref{eqn:ensemble_smoother_update}, is given by
 \begin{equation*}
     \bm{x}^{j}_{\text{posterior}}
     =
@@ -362,10 +380,12 @@ We update each realization with the equation
     &=
     \bm{x}_{\text{prior}} + K(\bm{d} - (H \bm{x}_{\text{prior}} + \bm{\epsilon}_d)) \\
     \bm{x}_{\text{prior}} &\sim \mathcal{N}(\bm{\mu}_x, \Sigma_x) \\
-    \bm{\epsilon}_d &\sim \mathcal{N}(\bm{0}, \Sigma_\epsilon)
+    \bm{\epsilon}_d &\sim \mathcal{N}(\bm{0}, \Sigma_\epsilon),
 \end{align*}
+where $\bm{d}$ is no longer a random variable, but an actual real-world observation.
+The residual term $(\bm{d} - (H \bm{x}_{\text{prior}} + \bm{\epsilon}_d))$ is the actual value minus the predicted value.
 
-First we show that the posterior mean equals \cref{eqn:posterior_mean_precision}:
+First we show that the posterior mean equals \cref{eqn:posterior_mean_kalman}:
 \begin{align*}
     \mathbb{E} \left[ \bm{x}_{\text{posterior}}  \right]
     &= \mathbb{E} \left[ \bm{x}_{\text{prior}} +
@@ -393,7 +413,7 @@ First we show that the posterior mean equals \cref{eqn:posterior_mean_precision}
 \end{align*}
 
 Second we show that the posterior covariance equals \cref{eqn:posterior_cov_precision}.
-More specifically, it will be equal to the Schur complement form derived in \cref{remark:posterior_covariance}.
+More specifically, we show it to be equal to the Schur complement form derived in \cref{remark:posterior_covariance}.
 Below we use the fact that $K\bm{d}$ is constant and that that $\operatorname{Cov} \left[ \bm{x}_{\text{prior}},  \bm{\epsilon}_d \right] = 0$ when we distribute the covariance over the terms.
 \begin{align*}
     \operatorname{Cov} \left[ \bm{x}_{\text{posterior}}  \right]
@@ -430,27 +450,47 @@ We are left with
 \begin{equation*}
     \operatorname{Cov} \left[ \bm{x}_{\text{posterior}}  \right]
     = \Sigma_{x}  - K \Sigma_{dx} = \Sigma_{x} - \Sigma_{xd} \Sigma_{d}^{-1} \Sigma_{dx}
-    = \Sigma_{x \mid d}.
+    = \Sigma_{x \mid d},
 \end{equation*}
-We have shown that if we use \cref{eqn:ensemble_smoother_update} to update the ensemble, then the resulting posterior mean and covariance over the realizations matches the analytical posterior in the Gauss-linear case.
+where the last equality follows from \cref{remark:posterior_covariance}.
+
+In summary, we have shown that if we use \cref{eqn:ensemble_smoother_update} to update the ensemble, then the resulting posterior mean and covariance over the realizations matches the analytical posterior in the Gauss-linear case.
 % Note again that this only holds when (1) $h$ is linear, (2) the prior and observation noise are Gaussian distributions and (3) we have infinitely many realizations.
 % If any of these assumptions are violated, then the posterior is an approximation.
 
 \subsection{Computation}
-
-TODO: Here I could write about practical computation, since it differs a lot from the naive equation. but it is already well documented in the code.
-% ES-MDA stands for Ensemble Smoother with Multiple Data Assimilation.
-% In our framework, it can be derived as follows:
+To implement ES, or any ES-like algorithm, we must compute the ES update \cref{eqn:ensemble_smoother_update} given in \cref{statement:es}.
+Substituting empirical population estimates for $\hat{\Sigma}_{xy}$ and $\hat{\Sigma}_y$, the update equation becomes
+\begin{equation}
+    \nonumber
+    X_{\text{posterior}}
+    = X_{\text{prior}} +
+    \frac{XY^T}{r-1}
+    \left(
+    \Sigma_\epsilon + \frac{YY^T}{r-1}
+    \right)^{-1} \left( \bm{d} \bm{1}^T - (Y + E) \right).
+\end{equation}
+We should not, under any circumstance, implement this equation as-is.
+With some knowledge of practical linear algebra, massive improvements in both numerical accuracy and speed are possible over the naïve implementation.
+For instance:
+\begin{itemize}
+    \item Do not explicitly form the inverse of $(\Sigma_\epsilon + YY^T / (r-1))$.
+    Instead formulate it as the solution to a linear system.
+    \item The order matrix multiplications matters a lot.
+    For instance, avoid forming the huge $XY^T$ cross-covariance matrix of shape $m \times n$ (parameters $\times$ responses).
+    \item The best way I have found to compute the update is to first take the Cholesky factor of $\Sigma_\epsilon$, which is needed to draw the columns of $E$ (recall $E_{\cdot, j} \sim \mathcal{N}(\bm{0}, \Sigma_\epsilon)$) anyway, and call it $L L^T = \Sigma_\epsilon$.
+    Then use that to ``whiten'' $(\Sigma_\epsilon + YY^T / (r-1))$ so and then do so-called subspace inversion.
+    This approach is extensively documented \href{https://github.com/equinor/iterative_ensemble_smoother/blob/140522402eb13ff3df5ec51027c8faca974252ae/src/iterative_ensemble_smoother/esmda_inversion.py}{iterative\_ensemble\_smoother}.
+\end{itemize}
 
 \subsection{Extensions}
 
 TODO: Here i could write a very short section about extension: localization, etc
 
-
 \section{The Ensemble Information Filter}
 
 One issue with ES is that in \cref{eqn:ensemble_smoother_update} we have to estimate $\Sigma_{xy}$ and $\Sigma_{y}$.
-When $m$ and $n$ are larger than $r$, empirical covariance is a poor estimator that picks up spurious correlations.
+When $m$ and $n$ are larger than $r$, empirical covariance is a poor estimator that picks up spurious correlations---the update ends up being dominated by noise.
 
 What if we avoid covariances and instead work with precision matrices and $H$?
 After all, there is a substantial literature on high-dimensional regression that we can lean on to estimate $H$.
@@ -459,8 +499,8 @@ The following ideas are due to \citet{lunde2025ensemble}:
 (1) estimate $H$ with sparse high dimensional regression and
 (2) think in terms of precision rather than covariance.
 We'll refer to his work as the Ensemble Information Filter (EnIF).
-The \emph{information} terminology means that we use precision rather than covariance.
-We're discussing smoothers, so the \emph{filter} does not exactly match this document---but we'll stick with EnIF rather than invent a new abbreviation.
+The \emph{information} terminology means that we parametrize in terms of precision rather than covariance.
+We're discussing smoothers, so the \emph{filter} does not exactly match this document---but we'll stick with EnIF rather than inventing a new abbreviation.
 
 Let us approximate $\bm{y} = h(\bm{x})$ as $\bm{y} = H \bm{x} + \bm{r}$.
 Here $\bm{r}$ is the residual (the non-linear part of $h$) and $H$ is a sparse matrix.\footnote{You might be wondering why we do not include a bias term in the approximation? It's not needed, since it will cancel in the innovation term in ES-style updates like \eqref{eqn:ensemble_smoother_update} anyway.}
@@ -504,12 +544,13 @@ $\operatorname{diag}\left( \operatorname{Cov}\left[ Y - HX \right] \right)$, whe
 Correcting for degrees of freedom is an option when estimating $\Sigma_{r}$.
 \end{statement}
 
-We will now sketch the proof of \cref{eqn:ensemble_smoother_update_inf} being the correct update equation, in the sense that posterior mean and covariance matches under the Gauss-linear model.
+We will now sketch why \cref{eqn:ensemble_smoother_update_inf} is the correct update equation, in the sense that posterior mean and covariance matches under the Gauss-linear model.
 The analytical model given the assumption $\bm{y} = H \bm{x} + \bm{r}$ becomes:
 \begin{align*}
     p(\bm{x}) &= \mathcal{N}\left( \bm{x} \mid \bm{\mu}_x, \Sigma_x \right) \\
     p(\bm{d} \mid \bm{x}) &= \mathcal{N}( \bm{d} \mid H\bm{x}, \Sigma_{\epsilon} + \Sigma_{r})
 \end{align*}
+This is analogous to \cref{eqn:model_def_gaussian}, but with $\Sigma_{\epsilon}$ replaced by $\Sigma_{\epsilon} + \Sigma_{r}$.
 The posterior distribution $p(\bm{x} \mid \bm{d}) = \mathcal{N} (\bm{\mu}_{x \mid d}, \Sigma_{x \mid d})$ over parameters is given by
 \begin{align}
     \bm{\mu}_{x \mid d} &=
@@ -528,7 +569,8 @@ From \cref{eqn:push_through_kalman} and the result in \cref{remark:response_cova
     = \Sigma_{x \mid d} H^T \Sigma_{d \mid x}^{-1}
     = ( \Lambda_x + H^T \tilde{\Lambda} H )^{-1} H^T \tilde{\Lambda}
 \end{equation*}
-where $\tilde{\Lambda}$ is defined as in \cref{eqn:ensemble_smoother_update_precision_def}.
+where $\tilde{\Lambda}$ is defined as in \cref{eqn:ensemble_smoother_update_precision_def}
+and $\Lambda_x = \Sigma_{x}^{-1}$ by definition.
 At this point it's quite easy to mimic the proof for the ES update equation, to show that \cref{eqn:ensemble_smoother_update_inf} also is correct, in the sense that
 \begin{equation*}
     \mathbb{E} \left[ \bm{x}_{\text{posterior}}  \right] = \bm{\mu}_{x \mid d}
@@ -536,8 +578,32 @@ At this point it's quite easy to mimic the proof for the ES update equation, to 
     \operatorname{Cov} \left[ \bm{x}_{\text{posterior}}  \right] = \Sigma_{x \mid d}
 \end{equation*}
 The two differences between EnIF and ES, under the gauss-Linear assumption, are that (1) the Kalman gain relies on precision and $H$ instead of covariance and (2) the covariance of $\bm{r}$ is accounted for.
+We have no theoretical guarantees that EnIF is better than ES, in the sense that the update equation is equivalent but written in a different form.
+The hope is that if we are able to compute high-quality estimates of $H$ and $\Lambda_x^{-1}$, the resulting update will also have high quality.
 
 \subsection{Computation}
+Here are some notes on computation of the EnIF update.
+
+\textbf{Subproblem 1 (Estimate $\Lambda_x$)}
+\begin{itemize}
+    \item If $X_\text{prior}$ is known to be multivariate Gaussian, e.g. $\bm{x}_\text{prior} \sim \mathcal{N}\left( \bm{x} \mid \bm{\mu}_x, \Sigma_x \right)$ with a known $\Sigma_x$, then $\Lambda_x = \Sigma_x^{-1}$ and no estimation is needed. % Often $\Sigma_x$ is diagonal.
+    \item Sometimes $X_\text{prior}$ is given without any information about its distribution, but the adjacency matrix $G$ is given ($G_{ij} = 1$ iff $(\Lambda_x)_{ij} \neq 0$) (e.g. a 5-point stencil).
+    Then we have to solve the problem ``estimate $\Lambda_x$, given $X_\text{prior}$ and $G$''.
+    This can for instance be done with the algorithm given in \citet[Chapter~17.3.1]{hastie2009elements} or the triangular transport approach given in \citet*{lunde2025ensemble}.
+    \item If $X_\text{prior}$ is given but no information about the graph structure $G$ is given, then the graph structure should be estimated.
+    A good starting point for information about this problem is \citet[Chapter~17.3.2]{hastie2009elements}.
+\end{itemize}
+
+\textbf{Subproblem 2 (Estimate $H$)}
+
+
+Three cases are relevant.
+Case one:
+If $X_\text{prior}$ is multivariate Gaussian, e.g. $\bm{x}_\text{prior} \sim \mathcal{N}\left( \bm{x} \mid \bm{\mu}_x, \Sigma_x \right)$ with a known $\Sigma_x$, then $\Lambda_x = \Sigma_x^{-1}$ and no estimation is needed.
+If $X_\text{prior}$ is given without any information about distribution, but the adjacency matrix $G$ is given ($G_{ij} = 1$ iff $(\Lambda_x)_{ij} \neq 0$)
+
+
+
 
 TODO: This section is still a sketch...
 
