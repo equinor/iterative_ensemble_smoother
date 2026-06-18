@@ -84,6 +84,10 @@ write_to = "src/iterative_ensemble_smoother/_version.py"
 testpaths = [
     "tests"
 ]
+markers = [
+    "suitesparse: marks tests that require libsuitesparse to be installed",
+]
+
 
 [tool.ruff]
 src = ["src", "tests", "docs"]
