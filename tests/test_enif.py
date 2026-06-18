@@ -14,13 +14,6 @@ from iterative_ensemble_smoother.esmda import ESMDA
 
 
 class TestEnIF:
-    def test_EnIF_snapshot(
-        self,
-    ):
-        """The purpose of this test is to alert the developer if any changes
-        change the behavior of EnIF. If this is intended, changing the
-        expected value is perfectly fine."""
-
     @pytest.mark.parametrize("seed", range(9))
     def test_against_ESMDA(self, seed):
         rng = np.random.default_rng(seed)
@@ -116,9 +109,8 @@ class TestEnIF:
             MEAN = COV (A^T inv(C_D) d + inv(C_M) mu)
                  = mu + C_M A^T (A C_M A^T + C_D)^{-1} A (x_true - mu)
 
-        EnIF uses the *exact* prior precision inv(C_M) and exact H, so its gain is
+        EnIF uses the exact prior precision inv(C_M) and exact A, so its gain is
         the analytic Kalman gain; the only error is finite-ensemble sampling.
-        Mean converges tightly; covariance is checked loosely.
         """
         rng = np.random.default_rng(seed)
         num_ensemble = 10_000
@@ -126,7 +118,7 @@ class TestEnIF:
 
         mu = rng.normal(size=num_inputs)
         C_M_factor = rng.normal(size=(num_inputs, num_inputs))
-        C_M = C_M_factor.T @ C_M_factor + np.eye(num_inputs)
+        C_M = C_M_factor.T @ C_M_factor + np.eye(num_inputs)  # privor covariance
 
         A = rng.normal(size=(num_outputs, num_inputs))
 
@@ -144,7 +136,7 @@ class TestEnIF:
         np.testing.assert_allclose(MEAN, MEAN2)
 
         X_prior = rng.multivariate_normal(mean=mu, cov=C_M, size=num_ensemble).T
-        Lambda_x = inv(C_M)
+        Lambda_x = inv(C_M)  # Prior precision
 
         enif = EnIF(
             covariance=C_D,
