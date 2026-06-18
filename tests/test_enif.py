@@ -10,6 +10,7 @@ from iterative_ensemble_smoother.enif_linear_regression import (
 from iterative_ensemble_smoother.enif_precision_estimation import (
     fit_precision_cholesky_approximate,
 )
+from iterative_ensemble_smoother.esmda import ESMDA
 
 
 class TestEnIF:
@@ -22,7 +23,43 @@ class TestEnIF:
 
     @pytest.mark.parametrize("seed", range(9))
     def test_against_ESMDA(self, seed):
-        pass
+        rng = np.random.default_rng(seed)
+
+        # (parameters, responses, realizations)
+        m, n, r = 12, rng.choice([8, 12, 26]), 50
+
+        H = rng.normal(size=(n, m))
+        X = rng.normal(size=(m, r))
+        Y = H @ X
+        covariance = np.exp(rng.normal(size=n))
+        observations = rng.normal(size=n, loc=1.0)
+
+        # Empirical prior precision
+        Lambda_x = np.linalg.inv(np.cov(X, ddof=1))
+
+        # --- ESMDA ---
+        esmda = ESMDA(covariance, observations, alpha=1, seed=seed)
+        esmda.prepare_assimilation(Y=Y, truncation=1.0)
+        X_esmda = esmda.assimilate_batch(X=X)
+
+        # --- EnIF ---
+        enif = EnIF(
+            covariance=covariance,
+            observations=observations,
+            parameter_precision=Lambda_x,
+            alpha=1,
+            seed=seed,
+            solver="dense",
+        )
+        enif.prepare_assimilation(Y=Y)
+        X_enif = enif.assimilate(
+            X=X,
+            linearized_model=H,
+            residual_covariance=np.zeros(n),
+        )
+
+        np.testing.assert_allclose(X_enif, X_esmda)
+        assert not np.allclose(X_enif, X), "Update was trivial"
 
     @pytest.mark.suitesparse
     @pytest.mark.parametrize("seed", range(10))
