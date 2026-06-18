@@ -27,7 +27,10 @@ jobs:
           prune-cache: false
           python-version: ${{ matrix.python-version }}
 
-      - run: uv sync --extra dev
+      - name: Install SuiteSparse
+        run: sudo apt-get install -y libsuitesparse-dev
+
+      - run: uv sync --extra dev --extra sparse
 
       - name: Check precommit
         run: uv run pre-commit run --all-files --show-diff-on-failure

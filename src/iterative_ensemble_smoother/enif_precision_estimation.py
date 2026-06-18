@@ -5,6 +5,30 @@ Precision estimation
 This module contains functions for solving the following problem:
     Given a known sparsity pattern in a precision matrix,
     as well as a data set, how can we estimate the precision matrix values?
+
+
+Examples
+--------
+>>> from sklearn.datasets import make_sparse_spd_matrix
+>>> import networkx as nx
+>>> import scipy as sp
+
+>>> p = 100
+>>> Prec = make_sparse_spd_matrix(p, random_state=42, alpha=0.95)
+>>> int(np.sum(~np.isclose(Prec, 0.0)))
+1228
+
+>>> Cov = np.linalg.inv(Prec)
+>>> rng = np.random.default_rng(0)
+>>> U = rng.multivariate_normal(mean=np.zeros(p), cov=Cov, size=25)
+
+>>> mask_u = sp.sparse.csc_array(~np.isclose(Prec, 0.0))
+>>> Graph_u = nx.from_scipy_sparse_array(mask_u)
+
+>>> Prec_est = fit_precision_cholesky(U, Graph_u, ordering_method="nesdis")
+>>> int(np.sum(~np.isclose(Prec_est.todense(), 0.0)))
+2644
+
 """
 
 import logging
@@ -15,7 +39,6 @@ import numpy as np
 import scipy.sparse as sp
 from numpy.typing import NDArray
 from scipy.sparse import csc_array, tril
-from tqdm import tqdm
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
@@ -135,7 +158,6 @@ def solve_row_closed_form(
 def optimize_sparse_affine_kr_map(
     U: NDArray[np.floating],
     G: nx.Graph,
-    use_tqdm: bool = True,
 ) -> csc_array:
     """Optimize the affine Knothe-Rosenblatt (KR) map with standard Gaussian
     reference and l2-regularized dependence using the closed-form row solve.
@@ -191,7 +213,7 @@ def optimize_sparse_affine_kr_map(
 
     Estimate the precision matrix from U and G:
 
-    >>> C = optimize_sparse_affine_kr_map(U=U, G=G, use_tqdm=False).todense()
+    >>> C = optimize_sparse_affine_kr_map(U=U, G=G).todense()
     >>> Prec_est = (C.T @ C)
     >>> Prec_est.round(2) # Estimated precision matrix
     array([[0.99, 0.46, 0.  , 0.  ],
@@ -202,7 +224,7 @@ def optimize_sparse_affine_kr_map(
     Demonstrate shift invariance. Notice that we get the same result as above:
 
     >>> U_shift = U +  np.array([1, 10, 100, 1000])
-    >>> C = optimize_sparse_affine_kr_map(U=U_shift, G=G, use_tqdm=False).todense()
+    >>> C = optimize_sparse_affine_kr_map(U=U_shift, G=G).todense()
     >>> (C.T @ C).round(2)
     array([[0.99, 0.46, 0.  , 0.  ],
            [0.46, 2.  , 1.03, 0.  ],
@@ -214,7 +236,7 @@ def optimize_sparse_affine_kr_map(
     >>> mu = np.array([5, 2, 3, 1])
     >>> sigma = np.array([1, 2, 4, 8])
     >>> U_scaled = (U + mu) * sigma
-    >>> C_scaled = optimize_sparse_affine_kr_map(U=U_scaled, G=G, use_tqdm=False)
+    >>> C_scaled = optimize_sparse_affine_kr_map(U=U_scaled, G=G)
     >>> C_scaled = C_scaled.todense()
     >>> Prec_est_scaled = (C_scaled.T @ C_scaled)
     >>> Prec_est_scaled.round(2)
@@ -245,13 +267,8 @@ def optimize_sparse_affine_kr_map(
     U_std = (U - mu) / sigma[None, :]
 
     C_full = sp.lil_array((p, p))  # lil_array for efficient row operations
-    loop_function = (
-        tqdm(range(p), desc="Learning precision Cholesky factor row-by-row")
-        if use_tqdm
-        else range(p)
-    )
 
-    for k in loop_function:
+    for k in range(p):
         non_zero_indices = [j for j in G.neighbors(k) if j < k] + [k]
 
         # Extract the reduced version of U
@@ -279,7 +296,6 @@ def fit_precision_cholesky(
     Graph_u: nx.Graph,
     *,
     ordering_method: str = "metis",
-    use_tqdm: bool = True,
 ) -> csc_array:
     """
     Estimate the precision matrix using Cholesky decomposition.
@@ -336,7 +352,6 @@ def fit_precision_cholesky(
     C = optimize_sparse_affine_kr_map(
         U=U_perm,
         G=Graph_C,
-        use_tqdm=use_tqdm,
     )
 
     # Compute log-determinant of estimate
@@ -360,7 +375,6 @@ def fit_precision_cholesky_approximate(
     U: NDArray[np.floating],
     Graph_u: nx.Graph,
     neighbourhood_expansion: int = 2,
-    use_tqdm: bool = True,
 ) -> csc_array:
     """
     Estimate the precision matrix using approximate Cholesky.
@@ -394,7 +408,6 @@ def fit_precision_cholesky_approximate(
     C = optimize_sparse_affine_kr_map(
         U=U,
         G=G,
-        use_tqdm=use_tqdm,
     )
     Prec_approx = C.T @ C
     return Prec_approx.tocsc()

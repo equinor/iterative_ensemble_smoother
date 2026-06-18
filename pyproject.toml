@@ -73,8 +73,8 @@ dev = [
     "pylint",
     "gaussianfft"
 ]
+# 'scikit-sparse' version and SuiteSparse must match (depends on Ubuntu)
 sparse = ["scikit-sparse==0.4.16"]
-
 # setuptools_scm also writes the version to a file so that one can use the
 # __version__ attribute from the package
 [tool.setuptools_scm]

@@ -1,496 +1,359 @@
-import logging
-from typing import Literal
+"""
+Ensemble Information Filter (EnIF)
+----------------------------------
 
-import networkx as nx
+The EnIF algorithm roughly consists of three main ideas:
+
+    1. Work with a form of the Kalman gain that requires (a) H, a linearization
+       of the forward map Y = h(X) and (b) Prec(X), the prior parameter precision.
+    2. Estimate H using sparse linear regression: Y = HX + r, where r are residuals
+    3. Estimate Prec(X) using graph adjacency information if possible
+
+The EnIF formulation estimates (H, Prec(X))
+while ESMDA estimates (Cov(X, Y), Cov(Y, Y)).
+
+The advantage of estimating H and Prec(X) is that we can lean on high-dimensional
+regression algorithms (Lasso, linear boosting, etc.) to estimate H and
+lean on covariance estimation algorithms (Graphical Lasso, Triangular Transport, etc.).
+In the implementation below the user is assumed to supply their own (H, Prec(X)).
+This decouples the estimation of (H, Prec(X)) from the main assimilation step.
+
+One could argue that we should call it an Information Smoother instead,
+but EnIF class name was chosen because it is the appreviation already in use.
+
+References
+----------
+
+- An Ensemble Information Filter:
+  Retrieving Markov-information from the SPDE discretisation
+  Berent Ånund Strømnes Lunde
+  https://arxiv.org/abs/2501.09016
+
+
+Examples
+--------
+>>> import numpy as np, scipy as sp
+>>> rng = np.random.default_rng(42)
+
+Create problem size with parameters >> responses >> realizations.
+
+>>> num_responses = 50
+>>> num_params = 100
+>>> num_realizations = 15
+>>> alpha = 3
+
+Create a true forward model:
+
+>>> H = sp.sparse.random_array(shape=(num_responses, num_params),
+...                            density=0.1, rng=rng)
+>>> def forward(X):
+...     linear = H @ X
+...     return linear + 1e-3 * linear**2
+
+Diagonal observation (measurement) errors, prior ensemble, observations:
+
+>>> covariance = np.logspace(-1, 1, num=num_responses)
+>>> X_prior = rng.normal(size=(num_params, num_realizations))
+>>> observations = forward(X_prior[:, 0] + 1).ravel()
+
+Prior parameter precision. Here we have generated X ~ N(0, 1), so we know
+that the prior parameter precision is eye(num_params) and do not need to
+estimate it from the prior.
+
+>>> parameter_precision = sp.sparse.diags_array(np.ones(num_params))
+
+Create the smoother:
+
+>>> enif = EnIF(covariance=covariance, observations=observations,
+...             parameter_precision=parameter_precision, alpha=alpha,
+...             seed=42, solver="cg")
+
+Assimilate data:
+
+>>> X = np.copy(X_prior)
+>>> for _ in range(enif.num_assimilations()):
+...
+...     # Apply the forward model
+...     Y = forward(X)
+...     enif.prepare_assimilation(Y=Y)
+...     residual_covariance = np.var(Y - H @ X, axis=1, ddof=1)
+...     X = enif.assimilate(X=X, linearized_model=H,
+...                         residual_covariance=residual_covariance)
+"""
+
+from typing import Union
+
 import numpy as np
+import numpy.typing as npt
 import scipy as sp
-from numpy.typing import NDArray
-from scipy.sparse import diags_array, sparray
-from scipy.sparse.linalg import bicgstab
-from tqdm import tqdm
 
-from iterative_ensemble_smoother import enif_linear_regression as lr
-from iterative_ensemble_smoother.enif_precision_estimation import (
-    fit_precision_cholesky,
-)
-from iterative_ensemble_smoother.enif_utils import generate_gaussian_noise
-
-log = logging.getLogger(__name__)
-log.addHandler(logging.NullHandler())
+from iterative_ensemble_smoother.enif_utils import SPDSolver
+from iterative_ensemble_smoother.esmda import BaseESMDA
 
 
-class EnIF:
-    """Initialize an Ensemble Information Filter (EnIF).
-
-    The filter is parametrized by the prior precision of the state `u` (or a
-    graph specifying its sparsity), the precision of the observation noise,
-    and optionally the linear map `H`. Anything left as `None` at initialization
-    can be learned from data via `fit`.
-
-    Parameters
-    ----------
-    Prec_u : sparray, optional
-        Prior precision matrix of the state, shape (params, params). If omitted,
-        it is estimated from data using `Graph_u` as the sparsity pattern.
-    Graph_u : nx.Graph, optional
-        Conditional-independence graph on the `params` state components,
-        defining the sparsity of `Prec_u`. Required when `Prec_u` is not
-        provided.
-    Prec_eps : sparray
-        Precision matrix of the observation noise, shape (responses, responses).
-    H : sparray, optional
-        Linear observation operator mapping state to responses, shape
-        (responses, params). If omitted, it is estimated from data by `fit`.
+class EnIF(BaseESMDA):
     """
+    Implement the Ensemble Information Filter (here really a *smoother*).
 
-    @staticmethod
-    def _validate_sparse_2d(name: str, value: sparray, square: bool = False) -> None:
-        if not (isinstance(value, sp.sparse.sparray) and value.ndim == 2):
-            raise TypeError(f"`{name}` must be a 2D sparse array")
-        if square and value.shape[0] != value.shape[1]:
-            raise ValueError(f"`{name}` must be a square 2D sparse array")
+    Examples
+    --------
+
+    A full example where the forward model maps 10 parameters to 3 responses.
+    We will use 100 realizations. First we define the forward model:
+
+    >>> rng = np.random.default_rng(42)
+    >>> H = rng.normal(size=(3, 10))
+    >>> def forward_model(x):
+    ...     return H @ x
+
+    Then we set up the EnIF instance and the prior realizations X:
+
+    >>> covariance = np.ones(3, dtype=float)
+    >>> observations = np.array([1, 2, 3], dtype=float)
+    >>> parameter_precision = np.eye(10)
+    >>> smoother = EnIF(covariance=covariance, observations=observations,
+    ...                 parameter_precision=np.eye(10), alpha=3, seed=42)
+    >>> X = rng.normal(size=(10, 100))
+
+    To assimilate data, we iterate over assimilation steps:
+
+    >>> for iteration in range(smoother.num_assimilations()):
+    ...     # Apply the forward model
+    ...     Y = forward_model(X)
+    ...     smoother.prepare_assimilation(Y=Y)
+    ...     X = smoother.assimilate(X=X, linearized_model=H,
+    ...                             residual_covariance=np.zeros(3))
+    >>> X[:3, :5].round(1)
+    array([[ 1.8, -0.5, -0. , -0. ,  0.8],
+           [-0.8, -1.2,  0.5,  0.6, -1.1],
+           [-0.3, -0.2,  1.2,  1.6, -0.4]])
+    """
 
     def __init__(
         self,
         *,
-        Prec_u: sparray | None = None,
-        Graph_u: nx.Graph | None = None,
-        Prec_eps: sparray,
-        H: sparray | None = None,
+        covariance: npt.NDArray[np.floating],
+        observations: npt.NDArray[np.floating],
+        parameter_precision: npt.NDArray[np.floating],
+        alpha: Union[int, npt.NDArray[np.floating]] = 5,
+        seed: Union[np.random.Generator, int, None] = None,
+        solver: str = "dense",
+        solver_options: Union[dict["str", object], None] = None,
     ) -> None:
-        assert Prec_u is not None or Graph_u is not None, (
-            "Provide either Prec_u or Graph_u"
+        """
+        Parameters
+        ----------
+        covariance : np.ndarray
+            Either a 1D array of diagonal covariances, or a 2D covariance matrix.
+            The shape is (num_observations,) or (num_observations, num_observations).
+            This is C_D in Emerick (2013), and represents observation or measurement
+            errors. We observe d from the real world, y from the model g(x), and
+            assume that d = y + e, where the error e is multivariate normal with
+            covariance given by `covariance`.
+        observations : np.ndarray
+            1D array of shape (num_observations,) representing real-world observations.
+            This is d_obs in Emerick (2013).
+        parameter_precision: sp.sparse.sparray
+            Sparse parameter precision of shape (num_parameters, num_parameters).
+        alpha : int or 1D np.ndarray, optional
+            Multiplicative factor for the covariance.
+            If an integer `alpha` is given, an array with length `alpha` and
+            elements `alpha` is constructed. If an 1D array is given, it is
+            normalized so sum_i 1/alpha_i = 1 and used. The default is 5, which
+            corresponds to np.array([5, 5, 5, 5, 5]).
+        seed : integer or numpy.random.Generator, optional
+            A seed or numpy.random.Generator used for random number
+            generation. The argument is passed to numpy.random.default_rng().
+            The default is None.
+        solver : str
+            Which solver to use. The options are:
+                - "cholesky" for a sparse cholesky factorization solver
+                - "cg" for conjugate gradients
+                - "dense" to cast all sparse matrices to dense and solve with scipy
+        solver_options : dict
+            Dictionary of solver options. The options are:
+                - "cholesky": "ordering_method" and other arguments are passed
+                  to "sksparse.cholmod.cholesky"
+                - "cg": "rtol", "atol", "maxiter" and other arguments are passed
+                  to "scipy.sparse.linalg.cg"
+        """
+        self.solver = solver
+        self.solver_options = solver_options
+        self.parameter_precision = parameter_precision
+        # To avoid anything other than: prepare(), assimilate(), prepare(), ...
+        self.prepared = False
+
+        if not isinstance(parameter_precision, (np.ndarray, sp.sparse.sparray)):
+            raise TypeError(
+                "'parameter_precision' must be a NumPy array or scipy sparse array"
+            )
+
+        # Defaults for solvers
+        if self.solver_options is None and self.solver == "cholesky":
+            self.solver_options = {"ordering_method": "metis"}
+        if self.solver_options is None and self.solver == "cg":
+            self.solver_options = {"maxiter": 15}
+
+        # Creat solver for solving the main sym. pos. def. equation:
+        # (Prec_x + H.T @ Prec @ H) X = H.T @ Prec @ (D - (Y + E))
+        self.spd_solver = SPDSolver(
+            Prec_x=parameter_precision,
+            solver=self.solver,
+            solver_options=self.solver_options,
+        )
+        super().__init__(
+            covariance=covariance, observations=observations, alpha=alpha, seed=seed
         )
 
-        if Prec_u is not None:
-            self._validate_sparse_2d("Prec_u", Prec_u, square=True)
-        if H is not None:
-            self._validate_sparse_2d("H", H)
-        self._validate_sparse_2d("Prec_eps", Prec_eps, square=True)
-
-        self.Prec_u = Prec_u
-        self.Graph_u = Graph_u
-        self.Prec_eps = Prec_eps
-        self.H = H
-        self.unexplained_variance: NDArray[np.floating] | None = None
-
-    def fit(
+    def prepare_assimilation(  # type: ignore[override]
         self,
-        U: NDArray[np.floating],
-        Y: NDArray[np.floating] | None = None,
-        learning_algorithm: Literal["LASSO", "influence-boost"] = "LASSO",
-        ordering_method: str = "metis",
+        *,
+        Y: npt.NDArray[np.floating],
+        observation_perturbations: Union[npt.NDArray[np.floating], None] = None,
     ) -> None:
-        """Fit the prior precision of `u` and, optionally the mapping `H`.
-
-        If `Prec_u` was not supplied at construction, it is estimated from `U`
-        using the sparsity pattern of `Graph_u`. If `Y` is supplied and `H` was
-        not set at construction, a sparse linear map `H` is learned from `U`
-        to `Y` and the per-response residual variance is stored on the
-        instance. Already-provided quantities are kept as-is.
+        r"""Prepare assimilation of parameters.
 
         Parameters
         ----------
-        U : ndarray of shape (realizations, parameters)
-            Prior ensemble: `n` realizations of the `p`-dimensional state.
-        Y : ndarray of shape (realizations, responses), optional
-            Response ensemble used to learn `H`. Must be omitted if `H` was
-            provided at construction.
-        learning_algorithm : {"LASSO", "influence-boost"}, default="LASSO"
-            Estimator used to fit `H`. Ignored when `Y` is not provided.
-        ordering_method : str, default="metis"
-            Fill-reducing ordering passed to the Cholesky factorization when
-            estimating `Prec_u`.
-        """
-
-        if self.Prec_u is None:
-            self.fit_precision(
-                U,
-                ordering_method=ordering_method,
-            )
-        else:
-            log.info("Precision u exists. Use `fit_precision` to refit if necessary")
-        if Y is not None:
-            assert self.H is None, "Y should not be provided if H exists"
-            self.fit_H(
-                U=U,
-                Y=Y,
-                learning_algorithm=learning_algorithm,
-            )
-        else:
-            log.info("H mapping exists. Use `fit_H` to refit if necessary")
-
-    def transport(
-        self,
-        U: NDArray[np.floating],
-        Y: NDArray[np.floating],
-        d: NDArray[np.floating],
-        update_indices: NDArray[np.integer] | None = None,
-        seed: int | None = None,
-        iterative: bool = False,
-    ) -> NDArray[np.floating]:
-        """Transport a prior ensemble to the posterior given observations `d`.
-
-        Each realization is mapped to the canonical (information) parametrization
-        `eta = Prec_u @ u`, updated with a perturbed-observation information
-        filter step using the current `H`, `Prec_u`, and `Prec_eps`, and then
-        mapped back to the state space. When `update_indices` is given, only
-        those components are solved for and the rest are copied from the
-        prior, which is the usual speed-up for localized updates.
-
-        Parameters
-        ----------
-        U : ndarray of shape (realizations, parameters)
-            Prior ensemble.
-        Y : ndarray of shape (realizations, responses)
-            Response ensemble evaluated on `U`.
-        d : ndarray of shape (responses,)
-            Observed data vector.
-        update_indices : ndarray of int, optional
-            Indices of state components to update. Defaults to all `parameter`
-            components.
-        seed : int, optional
-        iterative : bool, default=False
+        Y : np.ndarray
+            2D array of shape (num_observations, ensemble_size), containing
+            responses when evaluating the model at X. In other words, Y = g(X),
+            where g is the forward model.
+        observation_perturbations: np.ndarray or None
+            2D array of shape (num_observations, ensemble_size) containing
+            additive perturbations drawn from the observation error distribution,
+            i.e. ``observation_perturbations ~ N(0, C_D)``.
+            The method will apply the ``sqrt(alpha)`` scaling internally,
+            consistent with :meth:`perturb_observations`.
+            If None, perturbed observations are generated internally.
 
         Returns
         -------
-        U_post : ndarray of shape (realizations, parameters)
-            Posterior ensemble. Components not listed in `update_indices` are
-            equal to those in `U`.
+        None
         """
-        n, _ = U.shape
-        n_y, m = Y.shape
-        assert n == n_y, "Number of ensembles must be the same"
-        assert d.shape == (m,), "Observations must match responses"
+        if self.prepared:
+            raise Exception("Must call .prepare_assimilation() only once")
+        self.prepared = True
 
-        # Map parameters to canonical parametrization
-        canonical = self.pushforward_to_canonical(U)
+        assert Y.ndim == 2
+        if not np.issubdtype(Y.dtype, np.floating):
+            raise TypeError("Argument `Y` must contain floats")
 
-        # Work out residuals and associate unexplained variance
-        residuals = self.response_residual(U, Y)
-
-        # Due to observation error
-        eps = self.generate_observation_noise(
-            n,
-            seed=seed,
-        )
-        residual_noisy = residuals + eps
-
-        # Update in canonical parametrization
-        canonical_updated = self.update_canonical(
-            canonical=canonical,
-            residual_noisy=residual_noisy,
-            d=d,
-        )
-
-        # Bring realizations back
-        return self.pullback_from_canonical(
-            updated_canonical=canonical_updated,
-            update_indices=update_indices,
-            U_prior=U,
-            iterative=iterative,
-        )
-
-    # Low-level API methods
-    def fit_precision(
-        self,
-        U: NDArray[np.floating],
-        ordering_method: str = "metis",
-    ) -> None:
-        """
-        Estimate self.Prec_u from data U w.r.t. graph self.Graph_u
-        """
-        assert self.Graph_u is not None, "Graph_u must be set to fit precision"
-        self.Prec_u = fit_precision_cholesky(
-            U=U,
-            Graph_u=self.Graph_u,
-            ordering_method=ordering_method,
-        )
-        self._validate_sparse_2d("Prec_u", self.Prec_u, square=True)
-
-    def fit_H(
-        self,
-        U: NDArray[np.floating],
-        Y: NDArray[np.floating],
-        learning_algorithm: Literal["LASSO", "influence-boost"] = "LASSO",
-    ) -> None:
-        """
-        Estimate H from data U using (sparse) linear regression
-        """
-        if learning_algorithm not in ("LASSO", "influence-boost"):
+        if Y.dtype != self.observations.dtype:
             raise ValueError(
-                f"Argument `learning_algorithm` must be 'LASSO' or 'influence-boost'. "
-                f"Got: {learning_algorithm}"
+                f"'Y' must have dtype {self.observations.dtype}, got {Y.dtype}"
             )
 
-        if learning_algorithm == "LASSO":
-            self.H = lr.linear_l1_regression(
-                U,
-                Y,
+        self.iteration += 1
+
+        if self.iteration >= self.num_assimilations():
+            raise Exception("No more assimilation steps to run.")
+
+        D = Y  # Switch from API notation to paper notation
+        N_d, N_e = D.shape  # (num_observations, ensemble_size)
+        assert N_e >= 2, "Must have at least two ensemble members"
+        assert N_d == self.observations.shape[0], "Shape mismatch"
+
+        # Compute the last factor
+        alpha = self.alpha[self.iteration]
+        if observation_perturbations is not None:
+            if observation_perturbations.shape != D.shape:
+                raise ValueError(
+                    "observation_perturbations must have shape "
+                    f"{D.shape}, got {observation_perturbations.shape}"
+                )
+            if observation_perturbations.dtype != self.observations.dtype:
+                raise ValueError(
+                    f"'observation_perturbations' must have dtype "
+                    f"{self.observations.dtype}, got {observation_perturbations.dtype}"
+                )
+            # Scale the perturbations by sqrt(alpha),
+            # consistent with perturb_observations.
+            D_obs = (
+                self.observations[:, np.newaxis]
+                + (alpha**0.5) * observation_perturbations
             )
         else:
-            self.H = lr.linear_boost_ic_regression(
-                U,
-                Y,
-            )
-        self._validate_sparse_2d("H", self.H)
+            D_obs = self.perturb_observations(ensemble_size=N_e, alpha=alpha)
+        self.D_obs_minus_D = D_obs - D
 
-        # Sets the `unexplained_variance` attribute on self
-        self.response_residual(U=U, Y=Y)
+    def assimilate_batch(
+        self, *args: object, **kwargs: object
+    ) -> npt.NDArray[np.floating]:
+        # Override the base class method so users do not call it
+        msg = "The EnIF class cannot assimilate batches\n Use .assimilate()"
+        raise NotImplementedError(msg)
 
-    def pushforward_to_canonical(self, U: NDArray[np.floating]) -> NDArray[np.floating]:
-        """
-        Map each realization u in U to canonical space: eta = u @ Prec
-        """
-        log.info("Mapping realizations to canonical space")
-
-        assert self.Prec_u is not None, "Precision must exist to pushforward"
-        Eta: NDArray[np.floating] = (
-            U @ self.Prec_u
-        )  # Shapes: (r, param) = (r, param) @ (param, param)
-        assert Eta.shape == U.shape, "Eta preserves the shape of U"
-        return Eta
-
-    def Prec_residual_noisy(self) -> sparray:
-        if self.unexplained_variance is None:
-            raise ValueError("`unexplained_variance` is not set.")
-
-        # The equation below is only valid if Prec_eps is diagonal
-        row_idx, col_idx, _ = sp.sparse.find(self.Prec_eps)
-        if np.any(row_idx != col_idx):
-            raise ValueError("Precision matrix 'Prec_eps' must be diagonal")
-
-        eps_variances = 1.0 / self.Prec_eps.diagonal()
-        residual_noisy_var = self.unexplained_variance + eps_variances
-        Prec_r = diags_array(1.0 / residual_noisy_var, offsets=0, format="csc")
-        assert Prec_r.shape == self.Prec_eps.shape, (
-            "Residuals and noise precision should have same shape"
-        )
-
-        log.info("Total residual variance: %.4f", np.sum(residual_noisy_var))
-        log.info("Unexplained variance: %.4f", np.sum(self.unexplained_variance))
-        log.info("Measurement variance: %.4f", np.sum(eps_variances))
-        return Prec_r
-
-    def response_residual(
+    def assimilate(
         self,
-        U: NDArray[np.floating],
-        Y: NDArray[np.floating],
-    ) -> NDArray[np.floating]:
-        """Residual from regression self.H for Y on U: Y - U @ H.T"""
-        if self.H is None:
-            raise ValueError("H is not set.")
-
-        assert Y.shape[0] == U.shape[0], (
-            "Number of realizations (ensemble members) must be equal"
-        )
-        assert U.shape[1] == self.H.shape[1], "Shape mismatch"
-        assert Y.shape[1] == self.H.shape[0], "Shape mismatch"
-
-        log.info("Calculating response residuals")
-        # Has shape (realizations, responses)
-        response_residuals: NDArray[np.floating] = Y - U @ self.H.T
-
-        # Unexplained variance for each response
-        log.info("Calculating unexplained variance")
-        self.unexplained_variance = np.var(response_residuals, axis=0, ddof=0)
-
-        return response_residuals
-
-    def generate_observation_noise(
-        self,
-        n: int,
-        seed: int | None = None,
-    ) -> NDArray[np.floating]:
-        """Sample n realizations of observation noise."""
-
-        return generate_gaussian_noise(
-            n,
-            self.Prec_eps,
-            seed=seed,
-        )
-
-    def update_canonical(
-        self,
-        canonical: NDArray[np.floating],
-        residual_noisy: NDArray[np.floating],
-        d: NDArray[np.floating],
-    ) -> NDArray[np.floating]:
-        """
-        Use information-filter equations to update (eta, Prec) using perturbed
-        d
-        """
-        assert self.H is not None, "H must be provided of fitted"
-        assert self.Prec_u is not None, "Precision must be provided of fitted"
-
-        n, _p = canonical.shape
-        n_r, m = residual_noisy.shape
-        assert n == n_r, "canonical and residual_noisy must have equal samples"
-        assert d.shape == (m,), "d and residual_noisy must have matching dimension"
-
-        from sksparse.cholmod import cholesky  # noqa: PLC0415
-
-        # Only print this if logging is on. Cholesky can be heavy
-        if log.isEnabledFor(logging.INFO):
-            chol_LLT = cholesky(self.Prec_u, ordering_method="metis")
-            logdet_value = 2.0 * np.sum(np.log(chol_LLT.L().diagonal()))
-            log.info("Prior precision log-determinant: %.3f", logdet_value)
-
-        Prec_r = self.Prec_residual_noisy()  # This is a diagonal matrix
-
-        # posterior canonical params
-        # this is equation (46), but transposed to update each row (realizations)
-        # Equivalent to:
-        # upd_eta[i, :] = eta[i, :] + self.H.T @ Prec_r @ (d - residual_noisy[i, :])
-        updated_canonical: NDArray[np.floating] = (
-            canonical + (d - residual_noisy) @ Prec_r.T @ self.H
-        )
-
-        # posterior precision, equation (47)
-        self.Prec_u = self.Prec_u + self.H.T @ Prec_r @ self.H  # Eqn (47)
-
-        if log.isEnabledFor(logging.INFO):
-            chol_LLT = cholesky(self.Prec_u, ordering_method="metis")
-            logdet_value = 2.0 * np.sum(np.log(chol_LLT.L().diagonal()))
-            log.info("Posterior precision log-determinant: %.3f", logdet_value)
-
-        return updated_canonical
-
-    def pullback_from_canonical(
-        self,
-        updated_canonical: NDArray[np.floating],
-        update_indices: NDArray[np.integer] | None = None,
-        U_prior: NDArray[np.floating] | None = None,
-        iterative: bool = False,
-    ) -> NDArray[np.floating]:
-        """
-        Solve the equation Eta = U @ Prec_u for unknown U.
-
-        The suppose we wish to solve the matrix equation N = P @ U,
-        but only some of the rows in U are to be solved for. Call these "s".
-        Partitioning the matrix, we obtain
-          | P_1s  P_1 | @ | u_s |    =  | n_s |
-          | P_2s  P_2 |   | u   |       | n   |
-        Focusing on the values u_s, we obtain the system
-          P_1s @ u_s + P_1 @ u = n_s
-        Which we solve for u_s:
-            P_1s @ u_s = n_s - P_1 @ u
-
-        In other words, this method uses selective updates for specified indices,
-        taking into account previously calculated values of U_prior.
+        *,
+        X: npt.NDArray[np.floating],
+        linearized_model: npt.NDArray[np.floating],
+        residual_covariance: npt.NDArray[np.floating],
+    ) -> npt.NDArray[np.floating]:
+        """Assimilate parameters against all observations.
 
         Parameters
         ----------
-        updated_canonical : NDArray[np.floating]
-            The eta-matrix of shape (realizations, parameters).
-        update_indices : NDArray[np.integer] | None, optional
-            Indices to update (columns/params in U). The default is None (update all).
-        U_prior : NDArray[np.floating] | None, optional
-            Values in U used for indices that are not updated. The default is None.
-        iterative : bool, optional
-            Whether to use iterative solver or not. The default is False.
+        X : np.ndarray
+            A 2D array of shape (num_parameters, ensemble_size). Each row
+            corresponds to a parameter in the model, and each column corresponds
+            to an ensemble member (realization).
+        linearized_model : np.ndarray or None
+            A 2D sparse array of shape (num_observations, num_parameters) that
+            represents a linearization of the forward model. Sometimes called H.
+            Created by regressing Y on X, such that Y = H @ X.
+        residual_covariance : np.ndarray or None
+            A 2D array of shape (num_observations, num_observations) that
+            represents the covariance of the residuals of the linearized model.
+            If r = Y - H @ X, then the residual covariance is cov(r).
+            If a 1D array is passed, the residual covariance is assumed linear,
+            e.g. np.var(Y - H @ X, axis=1, ddof=1).
 
         Returns
         -------
-        U : NDArray[np.floating]
-            Array of shape (realizations, parameters), updated in columns
-            `update_indices`. The remaining columns are copied from `U_prior`.
+        X_posterior : np.ndarray
+            2D array of shape (num_parameters, ensemble_size).
+
         """
-        assert self.Prec_u is not None, "Prec_u must exist"
-        assert update_indices is None or np.issubdtype(update_indices.dtype, np.integer)
-        assert (update_indices is None) >= (U_prior is None), (
-            "Must pass U_prior if update_indices"
-        )
+        if not self.prepared:
+            raise Exception("Must call .prepare_assimilation()")
+        self.prepared = False
 
-        from sksparse.cholmod import cholesky  # noqa: PLC0415
+        # Switch from API notation to more dense mathematical notation
+        H = linearized_model
+        Cov_r = residual_covariance
+        Cov_eps = self.alpha[self.iteration] * self.C_D
+        innovation = self.D_obs_minus_D
 
-        log.info(
-            "Mapping canonical-scaled realizations (Eta) to moment realization (U)"
-        )
-
-        # Indices to solve for 's' and complementary set 'not_s'
-        all_indices = np.arange(updated_canonical.shape[1], dtype=int)
-        s = all_indices if (update_indices is None) else update_indices
-        assert s is not None
-        not_s = np.setdiff1d(all_indices, s)
-
-        U = np.zeros(updated_canonical.shape) if (U_prior is None) else U_prior.copy()
-        if s.size == 0:
-            return U
-
-        P_ss = self.Prec_u[np.ix_(s, s)]
-        P_s_not_s = self.Prec_u[np.ix_(s, not_s)]
-
-        # === Iterative solution ===
-        if iterative:
-            desc = "Mapping data to moment parametrisation realization-by-realization"
-
-            for i in tqdm(range(U.shape[0]), desc=desc):
-                if not_s.size > 0:
-                    rhs = updated_canonical[i, s] - P_s_not_s @ U[i, not_s]
-                else:
-                    rhs = updated_canonical[i, s]
-
-                x_updated, _ = bicgstab(P_ss, rhs)
-                U[i, s] = x_updated
-
-            return U
-
-        # === Cholesky solution ===
-        chol_LLT = cholesky(P_ss, ordering_method="metis")
-        if not_s.size > 0:
-            rhs = updated_canonical[:, s].T - P_s_not_s @ U[:, not_s].T
+        # Compute right-hand side of equation:
+        if Cov_r.ndim == 1 and Cov_eps.ndim == 1:
+            Prec_eps_r = 1 / (Cov_r + Cov_eps)
+            RHS = (H.T * Prec_eps_r) @ innovation
         else:
-            rhs = updated_canonical[:, s].T
+            Cov_r = Cov_r if Cov_r.ndim == 2 else np.diag(Cov_r)
+            Cov_eps = Cov_eps if Cov_eps.ndim == 2 else np.diag(Cov_eps)
+            # TODO: Here we can avoid forming inverse, but so far in all
+            # use-cases Cov_r and Cov_eps are 1D (diagonal), so not prioritized
+            Prec_eps_r = np.linalg.inv(Cov_r + Cov_eps)
+            RHS = H.T @ Prec_eps_r @ innovation
 
-        U[:, s] = chol_LLT.solve_A(rhs).T
-        return U
+        # Add terms to the left hand side
+        self.spd_solver.add(H=H, Prec_eps_r=Prec_eps_r)
 
-    def get_update_indices(
-        self,
-        neighbor_propagation_order: int = 10,
-    ) -> NDArray[np.integer]:
-        """
-        Determine indices to update based on the order of neighbor propagation.
-
-        Parameters:
-        - neighbor_propagation_order: Levels of neighbors to include.
-
-        Returns:
-        - update_indices: Array of indices that includes the initial
-            predictors and their neighbors up to the specified order.
-        """
-        assert self.H is not None, "H must exist"
-        assert self.Prec_u is not None, "Prec_u must exist"
-
-        _, cols = self.H.nonzero()
-        predictors = set(cols)
-        adjacency = self.Prec_u.copy()
-        all_nodes = set(predictors)  # Start with predictors
-
-        # Initialize sets to manage nodes
-        current_nodes = predictors.copy()
-        new_nodes = set()
-
-        # Iteratively find neighbors up to the specified order
-        for _ in range(neighbor_propagation_order):
-            temp_nodes = set()
-            for col in current_nodes:
-                neighbors = adjacency[:, col].nonzero()[0]
-                temp_nodes.update(neighbors)
-
-            # Update new_nodes with newly discovered nodes
-            new_nodes = temp_nodes.difference(all_nodes)
-            all_nodes.update(new_nodes)
-            current_nodes = new_nodes.copy()
-
-        param_num, tot_num = len(all_nodes), adjacency.shape[0]
-        log.info("Retrieving %d parameters out of %d", param_num, tot_num)
-
-        return np.array(list(all_nodes), dtype=int)
+        # Solve for change in X
+        delta_X = self.spd_solver.solve(RHS)
+        X_posterior: npt.NDArray[np.floating] = X + delta_X
+        return X_posterior
 
 
 if __name__ == "__main__":
     import pytest
 
-    pytest.main(args=[__file__, "--doctest-modules", "-v"])
+    pytest.main(
+        args=[
+            __file__,
+            "--doctest-modules",
+            "-v",
+        ]
+    )
