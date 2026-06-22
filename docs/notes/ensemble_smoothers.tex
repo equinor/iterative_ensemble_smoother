@@ -82,7 +82,7 @@
     \noindent
 
 Ensemble smoother algorithms are used to approximate a posterior distribution.
-Given a prior over parameters, a forward model (e.g. a petroleum reservoir model) and real-world observations; what is the posterior over the parameters?
+Given a prior over parameters, a forward model (e.g. a petroleum reservoir model) and real-world observations: what is the posterior over the parameters?
 Ensemble-based algorithms describe the posterior with a set of samples, and the most common use-case is when the forward model is black-box and expensive to evaluate.
 
 The notes are organized as follows: first we examine the Gauss-linear case, where we can compute an analytical posterior in arbitrarily high dimensions.
@@ -109,7 +109,7 @@ Either way, the core idea is that linearizing, taking a small step, re-linearizi
 
 In high dimensions with few samples, empirical correlations are mostly noise and very little signal.
 This phenomenon is called \emph{spurious correlations}, and all the methods above suffer from it.
-Many procedures have been proposed to alleviate it, such as, e.g., setting all correlations that are below a $3 / \sqrt{r}$ to zero \citep{vossepoel2025adaptive}.
+Many procedures have been proposed to alleviate it, such as setting all correlations that are below $3 / \sqrt{r}$ to zero \citep{vossepoel2025adaptive}.
 Another idea is to look towards the statistics of high-dimensional models, see for instance \citet[Chapter~18]{hastie2009elements}.
 This is what \citet{lunde2025ensemble} does in the Ensemble Information Filter (EnIF), which uses graph properties to estimate sparse precision matrices and high-dimensional regression to estimate a sparse linearization of the forward model.
 
@@ -139,7 +139,7 @@ The forward model $h$ is a reservoir flow simulator.
 It solves the fluid flow equations over the grid and reports predicted production data $\bm{y}$, for instance oil production at a well.
 A single evaluation of $h$ may take hours of compute, and we only have access to its inputs and outputs.
 The match is never exact, so the real-world observation $\bm{d}$ departs from the simulator response by a noise term $\bm{\epsilon}_d$.
-The inverse problem of \emph{history matching} problem is: given the observed production $\bm{d}$, how can we update our knowledge of the parameters $\bm{x}$?
+The inverse problem, called \emph{history matching}, is: given the observed production $\bm{d}$, how can we update our knowledge of the parameters $\bm{x}$?
 Characterizing the posterior distribution of $\bm{x}$ given $\bm{d}$ is the subject of the rest of these notes.
 
 \subsection{Exact posterior distribution $p(\bm{x} \mid \bm{d})$}
@@ -205,7 +205,7 @@ The posterior mean and covariance are:
     \left( \Sigma_x^{-1} + H^T \Sigma_\epsilon^{-1} H  \right)^{-1}
         \label{eqn:posterior_cov_precision}
 \end{align}
-The equations above are well known, and can for instance be found in \citet[Section~2.3.3]{BISH11}.\footnote{We can derive the posterior mean $\bm{\mu}_{x \mid d}$ by maximizing the log-posterior $\log ( p(\bm{x} \mid \bm{d}))$, which is proportional to  $\log ( p(\bm{d} \mid \bm{x}) \, p(\bm{x}))$ by Bayes' theorem.
+The equations above are well known, and can for instance be found in \citet[Section~2.3.3]{BISH11}.\footnote{We can derive the posterior mean $\bm{\mu}_{x \mid d}$ by maximizing the log-posterior $\log ( p(\bm{x} \mid \bm{d}))$, which is equal to  $\log ( p(\bm{d} \mid \bm{x}) \, p(\bm{x}))$ (up to a constant) by Bayes' theorem.
 Simply take the gradient of
 $(\bm{d} - H \bm{x})^T \Sigma_\epsilon^{-1} (\bm{d} - H \bm{x})
 +
@@ -294,7 +294,7 @@ In summary then, the Kalman-style update equations are:
     \\
     \Sigma_{x \mid d} &= (I - KH) \Sigma_x
 \end{align*}
-We have seen that there are different way to express the update equations: the precision form of \cref{eqn:posterior_cov_precision}, the Schur form of \cref{remark:posterior_covariance} and the Kalman form in \cref{eqn:posterior_mean_kalman}.
+We have seen that there are different ways to express the update equations: the precision form of \cref{eqn:posterior_cov_precision}, the Schur form of \cref{remark:posterior_covariance} and the Kalman form in \cref{eqn:posterior_mean_kalman}.
 Which one should we use?
 It depends on what we wish to show or prove, or how we want to structure our computations.
 For instance, the Ensemble Smoother---which we discuss next---uses a Kalman style update with covariances.
@@ -414,7 +414,7 @@ First we show that the posterior mean equals \cref{eqn:posterior_mean_kalman}:
 
 Second we show that the posterior covariance equals \cref{eqn:posterior_cov_precision}.
 More specifically, we show it to be equal to the Schur complement form derived in \cref{remark:posterior_covariance}.
-Below we use the fact that $K\bm{d}$ is constant and that that $\operatorname{Cov} \left[ \bm{x}_{\text{prior}},  \bm{\epsilon}_d \right] = 0$ when we distribute the covariance over the terms.
+Below we use the fact that $K\bm{d}$ is constant and that $\operatorname{Cov} \left[ \bm{x}_{\text{prior}},  \bm{\epsilon}_d \right] = 0$ when we distribute the covariance over the terms.
 \begin{align*}
     \operatorname{Cov} \left[ \bm{x}_{\text{posterior}}  \right]
     &= \operatorname{Cov} \left[ \bm{x}_{\text{prior}} +
@@ -465,13 +465,13 @@ Substituting empirical population estimates for $\hat{\Sigma}_{xy}$ and $\hat{\S
     \nonumber
     X_{\text{posterior}}
     = X_{\text{prior}} +
-    \frac{XY^T}{r-1}
+    \frac{\bar{X}\bar{Y}^T}{r-1}
     \left(
-    \Sigma_\epsilon + \frac{YY^T}{r-1}
+    \Sigma_\epsilon + \frac{\bar{Y}\bar{Y}^T}{r-1}
     \right)^{-1} \left( \bm{d} \bm{1}^T - (Y + E) \right).
 \end{equation}
 This equation should never be implemented naïvely.
-For instance, the inverse should not be explicitly formed and neither should the huge cross-covariance matrix $XY^T$ (order of matrix multiplication matters).
+For instance, the inverse should not be explicitly formed and neither should the huge cross-covariance matrix $\bar{X}\bar{Y}^T$ (order of matrix multiplication matters).
 
 \citet[Appendix~A]{emerick2012esmda} write about computation, and explain two tricks: (1) scaling the system of equations and (2) subspace inversion.
 \citet[Appendix~B]{emerick2016analysis} also discusses computation.
@@ -507,10 +507,10 @@ The \emph{information} terminology means that we parametrize in terms of precisi
 We're discussing smoothers, so the \emph{filter} does not exactly match this document---but we'll stick with EnIF rather than inventing a new abbreviation.
 
 Let us approximate $\bm{y} = h(\bm{x})$ as $\bm{y} = H \bm{x} + \bm{r}$.
-Here $\bm{r}$ is the residual (the non-linear part of $h$) and $H$ is a sparse matrix.\footnote{You might be wondering why we do not include a bias term in the approximation? It's not needed, since it will cancel in the innovation term in ES-style updates like \eqref{eqn:ensemble_smoother_update} anyway.}
+Here $\bm{r}$ is the residual (the non-linear part of $h$) and $H$ is a sparse matrix.\footnote{You might be wondering why we do not include a bias term in the approximation. It's not needed, since it will cancel in the innovation term in ES-style updates like \eqref{eqn:ensemble_smoother_update} anyway.}
 % We do assume that the forward model $h$ is deterministic; running it on the identical inputs (parameters) produces identical outputs (responses).
 % In that sense $\bm{r}$ is not a random variable, but we will treat it as random because it allows us to capture and model the quality of $H$ and adjust updates accordingly.
-Assuming $\bm{r} \sim \mathcal{N}(\bm{0}, \Sigma_{r})$, then if $\Sigma_{r}$ is large the linear model is poor.
+If we model $\bm{r} \sim \mathcal{N}(\bm{0}, \Sigma_{r})$, then a large $\Sigma_{r}$ means the linear model is poor.
 \footnote{The reason we did not include residuals $\bm{r}$ in the ES derivation is that they become part of $\Sigma_{y}$ in \eqref{eqn:ensemble_smoother_update} anyway.
 Under the assumption $\bm{y} = H \bm{x}$ we have
 $\Sigma_{y}
@@ -581,79 +581,67 @@ At this point it's quite easy to mimic the proof for the ES update equation, to 
     \qquad
     \operatorname{Cov} \left[ \bm{x}_{\text{posterior}}  \right] = \Sigma_{x \mid d}
 \end{equation*}
-The two differences between EnIF and ES, under the gauss-Linear assumption, are that (1) the Kalman gain relies on precision and $H$ instead of covariance and (2) the covariance of $\bm{r}$ is accounted for.
+The two differences between EnIF and ES, under the Gauss-linear assumption, are that (1) the Kalman gain relies on precision and $H$ instead of covariance and (2) the covariance of $\bm{r}$ is accounted for.
 We have no theoretical guarantees that EnIF is better than ES, in the sense that the update equation is equivalent but written in a different form.
-The hope is that if we are able to compute high-quality estimates of $H$ and $\Lambda_x^{-1}$, the resulting update will also have high quality.
+The hope is that if we are able to compute high-quality estimates of $H$ and $\Lambda_x$, the resulting update will also have high quality.
 
 \subsection{Computation}
 Here are some notes on computation of the EnIF update.
 
 \textbf{Subproblem 1 (Estimate $\Lambda_x$)}
 \begin{itemize}
-    \item If $X_\text{prior}$ is known to be multivariate Gaussian, e.g. $\bm{x}_\text{prior} \sim \mathcal{N}\left( \bm{x} \mid \bm{\mu}_x, \Sigma_x \right)$ with a known $\Sigma_x$, then $\Lambda_x = \Sigma_x^{-1}$ and no estimation is needed. % Often $\Sigma_x$ is diagonal.
-    \item Sometimes $X_\text{prior}$ is given without any information about its distribution, but the adjacency matrix $G$ is given ($G_{ij} = 1$ iff $(\Lambda_x)_{ij} \neq 0$) (e.g. a 5-point stencil).
-    Then we have to solve the problem ``estimate $\Lambda_x$, given $X_\text{prior}$ and $G$''.
+    \item If the realizations in $X_\text{prior}$ are known to be multivariate Gaussian, e.g. $\bm{x}_\text{prior} \sim \mathcal{N}\left( \bm{x} \mid \bm{\mu}_x, \Sigma_x \right)$ with a known $\Sigma_x$, then $\Lambda_x = \Sigma_x^{-1}$ and no estimation is needed. % Often $\Sigma_x$ is diagonal.
+    \item If $X_\text{prior}$ is given without information about its distribution, but the adjacency matrix $G$ is given ($G_{ij} = 1$ iff $(\Lambda_x)_{ij} \neq 0$), then we have to solve the problem ``estimate $\Lambda_x$, given $X_\text{prior}$ and $G$.''
     This can for instance be done with the algorithm given in \citet[Chapter~17.3.1]{hastie2009elements} or the triangular transport approach given in \citet*{lunde2025ensemble}.
-    \item If $X_\text{prior}$ is given but no information about the graph structure $G$ is given, then the graph structure should be estimated.
+    \item If $X_\text{prior}$ is given but no information about the graph structure $G$ is given, then the graph structure can be estimated.
     A good starting point for information about this problem is \citet[Chapter~17.3.2]{hastie2009elements}.
 \end{itemize}
 
 \textbf{Subproblem 2 (Estimate $H$)}
 
+The problem is to find $H \in \mathbb{R}^{n \times m}$ such that $Y \approx H X$.
+This can be formulated as $n$ regressions, one for each response: $X^T H^T \approx Y^T$ in matrix notation or $X^T \bm{h}_{i, \cdot} \approx \bm{y}_{i, \cdot}$ in vector notation.
+For each response $i$, we solve the regression problem to obtain $\bm{h}_{i, \cdot}$, the $i$'th row in $H$.
 
-Three cases are relevant.
-Case one:
-If $X_\text{prior}$ is multivariate Gaussian, e.g. $\bm{x}_\text{prior} \sim \mathcal{N}\left( \bm{x} \mid \bm{\mu}_x, \Sigma_x \right)$ with a known $\Sigma_x$, then $\Lambda_x = \Sigma_x^{-1}$ and no estimation is needed.
-If $X_\text{prior}$ is given without any information about distribution, but the adjacency matrix $G$ is given ($G_{ij} = 1$ iff $(\Lambda_x)_{ij} \neq 0$)
+This regression should be
+\begin{itemize}
+    \item Sparse, since then the posterior precision $\Lambda_x + H^T \tilde{\Lambda} H$ will retain most of the sparsity of the prior $\Lambda_x$.
+    Sparsity also means a more interpretable model.
+    \item Fast, since both $m$ and $n$ can be huge.
+    \item High dimensional, since $r$ is small compared to $m$ and $n$.
+\end{itemize}
+Some kind of Lasso or boosted linear regression is a good choice.
+See \citet[Appendix~E]{lunde2025ensemble} for more details.
+The information criterion in \citet{boosting2006buhlman} could perhaps be used.
 
+\textbf{Main computation}
 
+The algorithm inputs are $X_{\text{prior}}$, an estimated $H$, the observation noise covariance matrix $\Sigma_{\epsilon}$ and responses $Y := h(X_\text{prior})$.
 
+\begin{enumerate}
+    \item Compute the residual matrix $R = Y - HX_{\text{prior}}$ and estimate
+    $\Sigma_r$ from it. For instance by choosing $\Sigma_r$ to be diagonal, i.e., taking the variance over each row (response-residual) in $R$.
 
-TODO: This section is still a sketch...
+    \item Compute $\tilde{\Lambda} = \left( \Sigma_{\epsilon} + \Sigma_{r} \right)^{-1}$.
+    If either $\Sigma_{\epsilon}$ or $\Sigma_{r}$ is dense, then do not explicitly compute the inverse like this, but instead use e.g. Cholesky factorization to solve systems of equations.
+    If they are both diagonal, then exploit that fact in computation instead of actually forming the diagonal matrix.
 
-Step 1:
-Given $X_\text{prior}$ and possibly a sparsity pattern $G$, estimate the (possibly sparse) precision matrix $\Lambda_x$.
-
-Step 2:
-Compute $Y = h(X_\text{prior})$.
-Then find a sparse $H$ so that $Y \sim HX$.
-Compute the residual matrix $R = Y - HX$ and form it estimate
-$\Sigma_r$, for instance by taking the variance over each row (response-residual) in $R$.
-
-Step 3:
-Solve
-\begin{equation*}
-( \Lambda_x + H^T \tilde{\Lambda} H ) X = H^T \tilde{\Lambda}
-(D - Y )
-\end{equation*}
-or, equivalently, the column version for each column $j$
-\begin{equation*}
-    ( \Lambda_x + H^T \tilde{\Lambda} H ) \bm{x}_j = H^T \tilde{\Lambda}
-    ((\bm{d} + \bm{\epsilon}_d) - \bm{y}_j )
-\end{equation*}
-If $\tilde{\Lambda}$ is diagonal, then exploit that fact.
-Since $( \Lambda_x + H^T \tilde{\Lambda} H )$ is sparse, large and symmetric positive definite,
-it can be solved with Cholesky or with Conjugate gradients.
-% TODO: which one is better? any other good alternatives?
-% if i do cholesky i can re-use the factorization for each column x_j.
-% can i do this with conjugate gradients?
-
-Step 4:
-
-Set $X_{\text{posterior}}
-= X_{\text{prior}} + X$
-
-\begin{statement}
-    content...
-\end{statement}
-
-
-\subsection{Extensions}
-
-TODO: here i could write about estimating H and prec
-
-
-
+    \item Solve
+    \begin{equation*}
+        ( \Lambda_x + H^T \tilde{\Lambda} H ) Z = H^T \tilde{\Lambda}
+        (\bm{d} \bm{1}^T - (Y + E))
+    \end{equation*}
+    or, equivalently, the column version for each column $j$
+    \begin{equation*}
+        ( \Lambda_x + H^T \tilde{\Lambda} H ) \bm{z}_j = H^T \tilde{\Lambda}
+        (\bm{d} - (\bm{y}_j + \bm{\epsilon}_d))
+    \end{equation*}
+    If $\tilde{\Lambda}$ is diagonal, then exploit that fact.
+    Since $( \Lambda_x + H^T \tilde{\Lambda} H )$ is sparse, large and symmetric positive definite,
+    it can be solved with Cholesky or with Conjugate gradients.
+    \item Set $X_{\text{posterior}}
+    = X_{\text{prior}} + Z$.
+\end{enumerate}
 
 % BIBLIOGRAPHY
 \bibliography{references}
