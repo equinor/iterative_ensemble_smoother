@@ -178,3 +178,8 @@ max-complexity = 10
 [tool.uv]
 fork-strategy = "requires-python"
 exclude-newer = "7 days"
+
+[tool.codespell]
+skip = "*.pyc,*.gif,*.png,*.jpg,*.ply, ./bibliography.bib,*.ipynb"
+ignore-words-list = "lod,byteorder,flem,parm,doubleclick,revered,inout,fro,nd,sies,hist,ans"
+quiet-level = 3
