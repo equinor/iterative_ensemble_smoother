@@ -41,7 +41,6 @@ References
 
 import numbers
 from abc import ABC
-from typing import Union
 
 import numpy as np
 import numpy.typing as npt
@@ -65,8 +64,8 @@ class BaseESMDA(ABC):
         self,
         covariance: npt.NDArray[np.floating],
         observations: npt.NDArray[np.floating],
-        alpha: Union[int, npt.NDArray[np.floating]] = 5,
-        seed: Union[np.random.Generator, int, None] = None,
+        alpha: int | npt.NDArray[np.floating] = 5,
+        seed: np.random.Generator | int | None = None,
     ) -> None:
         """
         Parameters
@@ -214,7 +213,7 @@ class BaseESMDA(ABC):
         Y: npt.NDArray[np.floating],
         truncation: float = 0.99,
         overwrite: bool = False,
-        observation_perturbations: Union[npt.NDArray[np.floating], None] = None,
+        observation_perturbations: npt.NDArray[np.floating] | None = None,
     ) -> None:
         r"""Prepare assimilation of one or several batches of parameters.
 
@@ -326,7 +325,7 @@ class BaseESMDA(ABC):
         self,
         *,
         X: npt.NDArray[np.floating],
-        missing: Union[npt.NDArray[np.bool_], None] = None,
+        missing: npt.NDArray[np.bool_] | None = None,
     ) -> npt.NDArray[np.floating]:
         """Prepare delta_M := X - center(X), dealing with missing values
         as needed."""
@@ -386,7 +385,7 @@ class ESMDA(BaseESMDA):
         self,
         *,
         X: npt.NDArray[np.floating],
-        missing: Union[npt.NDArray[np.bool_], None] = None,
+        missing: npt.NDArray[np.bool_] | None = None,
         overwrite: bool = False,
     ) -> npt.NDArray[np.floating]:
         """Assimilate a batch of parameters against all observations.

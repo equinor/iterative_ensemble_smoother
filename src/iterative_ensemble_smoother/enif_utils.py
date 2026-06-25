@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Union
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
@@ -67,9 +67,9 @@ class SPDSolver:
     def __init__(
         self,
         *,
-        Prec_x: Union[npt.NDArray[np.floating], sp.sparse.sparray],
+        Prec_x: npt.NDArray[np.floating] | sp.sparse.sparray,
         solver: str = "dense",
-        solver_options: Union[dict[str, object], None] = None,
+        solver_options: dict[str, object] | None = None,
     ) -> None:
         assert solver in ("dense", "cg", "cholesky")
         self.solver = solver
@@ -95,7 +95,7 @@ class SPDSolver:
             self.first = Prec_x.copy()
             self.rest = []
 
-    def left_hand_side(self) -> Union[npt.NDArray[np.floating], sp.sparse.sparray]:
+    def left_hand_side(self) -> npt.NDArray[np.floating] | sp.sparse.sparray:
         """Returns the left hand side, which is the posterior precision matrix."""
         # Depending on the solver, we keep different state
         if self.solver == "cholesky":
@@ -111,8 +111,8 @@ class SPDSolver:
     def add(
         self,
         *,
-        H: Union[npt.NDArray[np.floating], sp.sparse.sparray],
-        Prec_eps_r: Union[npt.NDArray[np.floating], sp.sparse.sparray],
+        H: npt.NDArray[np.floating] | sp.sparse.sparray,
+        Prec_eps_r: npt.NDArray[np.floating] | sp.sparse.sparray,
     ) -> None:
         """Add H.T @ Prec_eps_r @ H to the left-hand side of the equation."""
         if self.solver == "cholesky":
@@ -143,7 +143,7 @@ class SPDSolver:
             self.rest.append((H.copy(), Prec_eps_r.copy()))
 
     def solve(
-        self, b: Union[npt.NDArray[np.floating], sp.sparse.sparray]
+        self, b: npt.NDArray[np.floating] | sp.sparse.sparray
     ) -> npt.NDArray[np.floating]:
         """Solve (Prec_x + H.T @ Prec_eps_r @ H + ...) X = b for unknown X."""
 
@@ -156,7 +156,7 @@ class SPDSolver:
         raise ValueError(f"Unknown solver: {self.solver=}")
 
     def _solve_dense(
-        self, b: Union[npt.NDArray[np.floating], sp.sparse.sparray]
+        self, b: npt.NDArray[np.floating] | sp.sparse.sparray
     ) -> npt.NDArray[np.floating]:
         """Solve by forming dense matrices. Consumes a lot of memory, but
         is surprisingly fast for small problems."""
@@ -176,7 +176,7 @@ class SPDSolver:
         return result
 
     def _solve_cholesky(
-        self, b: Union[npt.NDArray[np.floating], sp.sparse.sparray]
+        self, b: npt.NDArray[np.floating] | sp.sparse.sparray
     ) -> npt.NDArray[np.floating]:
         """Solve using sparse Cholesky factorization."""
         b = sp.sparse.csc_array(b)
@@ -186,7 +186,7 @@ class SPDSolver:
         return result
 
     def _solve_cg(
-        self, b: Union[npt.NDArray[np.floating], sp.sparse.sparray]
+        self, b: npt.NDArray[np.floating] | sp.sparse.sparray
     ) -> npt.NDArray[np.floating]:
         """Solve using conjugate gradients on each column in the
         right-hand-side b."""

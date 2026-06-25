@@ -81,8 +81,6 @@ Assimilate data:
 ...                         residual_covariance=residual_covariance)
 """
 
-from typing import Union
-
 import numpy as np
 import numpy.typing as npt
 import scipy as sp
@@ -135,10 +133,10 @@ class EnIF(BaseESMDA):
         covariance: npt.NDArray[np.floating],
         observations: npt.NDArray[np.floating],
         parameter_precision: npt.NDArray[np.floating],
-        alpha: Union[int, npt.NDArray[np.floating]] = 5,
-        seed: Union[np.random.Generator, int, None] = None,
+        alpha: int | npt.NDArray[np.floating] = 5,
+        seed: np.random.Generator | int | None = None,
         solver: str = "dense",
-        solver_options: Union[dict["str", object], None] = None,
+        solver_options: dict["str", object] | None = None,
     ) -> None:
         """
         Parameters
@@ -209,7 +207,7 @@ class EnIF(BaseESMDA):
         self,
         *,
         Y: npt.NDArray[np.floating],
-        observation_perturbations: Union[npt.NDArray[np.floating], None] = None,
+        observation_perturbations: npt.NDArray[np.floating] | None = None,
     ) -> None:
         r"""Prepare assimilation of parameters.
 

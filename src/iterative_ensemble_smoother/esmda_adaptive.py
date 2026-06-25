@@ -26,7 +26,7 @@ that share the same correlation pattern with the responses.
 """
 
 import logging
-from typing import Callable, Union
+from collections.abc import Callable
 
 import numpy as np
 import numpy.typing as npt
@@ -175,7 +175,7 @@ class AdaptiveESMDA(BaseESMDA):
     @staticmethod
     def three_over_sqrt_ensemble_members(
         corr_XY: npt.NDArray[np.floating],
-        ensemble_members_per_parameter: Union[npt.NDArray[np.int_], int],
+        ensemble_members_per_parameter: npt.NDArray[np.int_] | int,
     ) -> npt.NDArray[np.bool_]:
         """Use the correlation threshold 3 / sqrt(n). Note that unless
         the number of ensemble members is > 9, all responses are removed
@@ -201,9 +201,9 @@ class AdaptiveESMDA(BaseESMDA):
         self,
         *,
         X: npt.NDArray[np.floating],
-        missing: Union[npt.NDArray[np.bool_], None] = None,
+        missing: npt.NDArray[np.bool_] | None = None,
         correlation_callback: Callable[
-            [npt.NDArray[np.floating], Union[npt.NDArray[np.int_], int]],
+            [npt.NDArray[np.floating], npt.NDArray[np.int_] | int],
             npt.NDArray[np.bool_],
         ]
         | str = "three_over_sqrt_ensemble_members",
@@ -403,7 +403,7 @@ class TaperedAdaptiveESMDA(BaseESMDA):
     @staticmethod
     def exponential_scale(
         corr_XY: npt.NDArray[np.floating],
-        ensemble_members_per_parameter: Union[npt.NDArray[np.int_], int],
+        ensemble_members_per_parameter: npt.NDArray[np.int_] | int,
     ) -> npt.NDArray[np.floating]:
         """Equation (9) from the paper http://doi.org/10.1175/MWR-D-24-0269.1
 
@@ -440,7 +440,7 @@ class TaperedAdaptiveESMDA(BaseESMDA):
         self,
         *,
         X: npt.NDArray[np.floating],
-        missing: Union[npt.NDArray[np.bool_], None] = None,
+        missing: npt.NDArray[np.bool_] | None = None,
         correlation_callback: Callable[
             [npt.NDArray[np.floating], npt.NDArray[np.int_]], npt.NDArray[np.floating]
         ]
