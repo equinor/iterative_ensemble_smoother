@@ -78,7 +78,7 @@ Comments
 
 """
 
-from typing import Callable, Union
+from collections.abc import Callable
 
 import numpy as np
 import numpy.typing as npt
@@ -144,7 +144,7 @@ class LocalizedESMDA(BaseESMDA):
         self,
         *,
         X: npt.NDArray[np.floating],
-        missing: Union[npt.NDArray[np.bool_], None] = None,
+        missing: npt.NDArray[np.bool_] | None = None,
         localization_callback: Callable[
             [npt.NDArray[np.floating]], npt.NDArray[np.floating]
         ]

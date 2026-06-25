@@ -4,11 +4,13 @@ import collections
 import logging
 import numbers
 import warnings
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     import numpy.typing as npt
 
 logger = logging.getLogger(__name__)
@@ -154,8 +156,7 @@ def groupby_rows_float(
     # Group row indices using argsort instead of a Python loop
     order = np.argsort(inverse, kind="stable")
     splits = np.flatnonzero(np.diff(inverse[order])) + 1
-    for group in np.split(order, splits):
-        yield group
+    yield from np.split(order, splits)
 
 
 def masked_std(

@@ -533,7 +533,7 @@ class TestESMDA:
             (X_i - np.mean(X_i, axis=1, keepdims=True)) @ X_i.T / (X_i.shape[1] - 1)
         )
 
-        relative_error_covariance = np.linalg.norm((covariance - COV)) / np.linalg.norm(
+        relative_error_covariance = np.linalg.norm(covariance - COV) / np.linalg.norm(
             COV
         )
         print("relative_error_covariance", relative_error_covariance)
