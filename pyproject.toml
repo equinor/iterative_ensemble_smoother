@@ -163,6 +163,7 @@ exclude = [
     "dist",
     "node_modules",
     "venv",
+    "src/iterative_ensemble_smoother/_version.py",
 ]
 
 # Allow unused variables when underscore-prefixed.
