@@ -15,7 +15,13 @@ classifiers=[
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
-dependencies = ["numpy", "scipy", "joblib", "networkx", "scikit-learn"]
+dependencies = [
+    "joblib",
+    "networkx",
+    "numpy",
+    "scikit-learn",
+    "scipy",
+]
 dynamic=["version"] # setuptools_scm extracts Python package versions from git
 
 authors = [
@@ -37,6 +43,16 @@ text = "GPL-3.0"
 "Documentation" = "https://iterative_ensemble_smoother.readthedocs.io/en/stable/"
 
 [project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-snapshot",
+    "pytest-memray",
+    "pre-commit",
+    "matplotlib",
+    "mypy",
+    "pandas",
+    "p_tqdm",
+]
 doc = [
     "sphinx",
     "setuptools",
@@ -53,24 +69,9 @@ doc = [
     "ipykernel",
     "ipywidgets",
     "numpydoc",
-    "scipy",
     "jinja2",
     "myst_nb",
     "lxml_html_clean"
-]
-dev = [
-    "pytest",
-    "pytest-snapshot",
-    "pytest-memray",
-    "tox",
-    "pre-commit",
-    "matplotlib",
-    "scipy",
-    "mypy",
-    "pandas",
-    "p_tqdm",
-    "pylint",
-    "gaussianfft"
 ]
 # 'scikit-sparse' version and SuiteSparse must match (depends on Ubuntu)
 sparse = ["scikit-sparse==0.4.16"]
@@ -162,6 +163,7 @@ exclude = [
     "dist",
     "node_modules",
     "venv",
+    "src/iterative_ensemble_smoother/_version.py",
 ]
 
 # Allow unused variables when underscore-prefixed.
