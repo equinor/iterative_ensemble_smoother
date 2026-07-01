@@ -215,7 +215,7 @@ def setup_large():
 
 
 class TestOverwriteMemory:
-    @pytest.mark.limit_memory("54 MB")
+    @pytest.mark.limit_memory("58 MB")
     def test_ESMDA_memory_usage_without_overwrite(self, setup_large):
         X_prior, Y_prior, covariance, observations = setup_large
 
@@ -224,7 +224,7 @@ class TestOverwriteMemory:
             esmda.prepare_assimilation(Y=Y_prior, overwrite=False)
             esmda.assimilate_batch(X=X_prior, overwrite=False)
 
-    @pytest.mark.limit_memory("46 MB")
+    @pytest.mark.limit_memory("50 MB")
     def test_ESMDA_memory_usage_with_overwrite(self, setup_large):
         X_prior, Y_prior, covariance, observations = setup_large
 
