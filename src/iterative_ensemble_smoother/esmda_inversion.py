@@ -248,6 +248,8 @@ To summarize subspace inversion:
   are nearly identical. This can happen if columns are highly correlated.
 """
 
+import warnings
+
 import numpy as np
 import numpy.typing as npt
 import scipy as sp  # type: ignore
@@ -413,7 +415,18 @@ def invert_subspace(
         G = delta_D / (alpha**0.5 * C_D_L[:, np.newaxis])
 
     # Take the SVD and truncate it. N_r is the number of values to keep
-    U, w, _ = sp.linalg.svd(G, overwrite_a=True, full_matrices=False)
+    try:
+        U, w, _ = sp.linalg.svd(G, full_matrices=False)
+    except np.linalg.LinAlgError as exc:
+        # gesdd (divide-and-conquer) occasionally fails to converge on
+        # ill-conditioned input; retry with the slower but more robust
+        # QR-iteration driver.
+        warnings.warn(
+            f"gesdd failed on shape {G.shape} dtype {G.dtype}: {exc}. "
+            "Falling back to gesvd.",
+            stacklevel=2,
+        )
+        U, w, _ = sp.linalg.svd(G, full_matrices=False, lapack_driver="gesvd")
     idx = singular_values_to_keep(w, truncation=truncation)
     N_r = min(N_n, N_e - 1, idx)  # Number of values in SVD to keep
     U_r, w_r = U[:, :N_r], w[:N_r]
