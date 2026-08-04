@@ -423,13 +423,19 @@ class ESMDA(BaseESMDA):
         N_m, N_e = X.shape  # (num_parameters, ensemble_size)
         assert N_e == self.delta_DT.shape[0], "Dimension mismatch"
 
-        # Compute the product in a good order
-        input_dtype = X.dtype
+        # Cast before multiplication to avoid a parameter-sized temporary
+        # in the observation dtype.
         delta_M = self._compute_delta_M(X=X, missing=missing)
-        ensemble_update = np.linalg.multi_dot(
-            [delta_M, self.delta_DT, self.term_diag, self.termT, self.D_obs_minus_D]
+        factors = (
+            delta_M,
+            self.delta_DT,
+            self.term_diag,
+            self.termT,
+            self.D_obs_minus_D,
         )
-        X += ensemble_update.astype(input_dtype)
+        X += np.linalg.multi_dot(
+            [factor.astype(X.dtype, copy=False) for factor in factors]
+        )
         return X
 
 

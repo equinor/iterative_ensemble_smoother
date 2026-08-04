@@ -640,6 +640,35 @@ def test_that_float_dtypes_are_preserved(dtype, diagonal):
     assert X_posterior.dtype == dtype
 
 
+def test_that_assimilation_update_uses_parameter_dtype(monkeypatch):
+    """Do not create a parameter-sized float64 update for float32 parameters."""
+    rng = np.random.default_rng(42)
+    num_inputs, num_outputs, num_ensemble = 500, 10, 8
+
+    covariance = np.exp(rng.normal(size=num_outputs))
+    observations = rng.normal(size=num_outputs, loc=1)
+    Y_prior = rng.normal(size=(num_outputs, num_ensemble))
+    X_prior = rng.normal(size=(num_inputs, num_ensemble)).astype(np.float32)
+
+    esmda = ESMDA(covariance, observations, alpha=1, seed=1)
+    esmda.prepare_assimilation(Y=Y_prior)
+
+    real_multi_dot = np.linalg.multi_dot
+    update_dtypes = []
+
+    def spy(arrays, **kwargs):
+        result = real_multi_dot(arrays, **kwargs)
+        if result.shape == X_prior.shape:
+            update_dtypes.append(result.dtype)
+        return result
+
+    monkeypatch.setattr(np.linalg, "multi_dot", spy)
+    X_posterior = esmda.assimilate_batch(X=X_prior)
+
+    assert update_dtypes == [X_prior.dtype]
+    assert X_posterior.dtype == X_prior.dtype
+
+
 def test_row_by_row_assimilation():
     # Create problem instance
     rng = np.random.default_rng(42)
