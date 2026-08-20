@@ -30,3 +30,14 @@ updates:
           - "*"
     cooldown:
       default-days: 7
+
+  - package-ecosystem: "pre-commit"
+    directory: "/"
+    schedule:
+      interval: "quarterly"
+    groups:
+      all-hooks:
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 7
