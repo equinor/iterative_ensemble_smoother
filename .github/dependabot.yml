@@ -20,7 +20,7 @@ updates:
   - package-ecosystem: "uv"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "quarterly"
     allow:
       - dependency-type: "all"
     versioning-strategy: "lockfile-only"
