@@ -33,10 +33,13 @@ Examples
 
 import logging
 import time
+from collections import defaultdict
 
 import networkx as nx
+import numba as nb
 import numpy as np
 import scipy.sparse as sp
+from heapdict import heapdict
 from numpy.typing import NDArray
 from scipy.sparse import csc_array, tril
 
@@ -98,6 +101,232 @@ def reverse_cholesky(
     #   C = cholesky(A[::-1, ::-1]).T[::-1, ::-1]
     C = L[::-1, ::-1].T
     return C, permutation_idx[::-1]
+
+
+# ---------------------------------------------------------------------
+# 1.  Numba helpers for reverse maximin ordering
+# ---------------------------------------------------------------------
+@nb.njit(inline="always")
+def _manhattan(p: np.ndarray, q: np.ndarray) -> float:
+    """L1 or Manhattan distance"""
+    s = 0.0
+    for i in range(len(p)):
+        s += abs(p[i] - q[i])
+    return s
+
+
+@nb.njit
+def _argsort_by_manhat(
+    xk: np.ndarray, idx: np.ndarray, coords: np.ndarray
+) -> np.ndarray:
+    """Return the indices `idx` sorted by L1-distance to `xk`."""
+    d = np.empty(len(idx), dtype=np.float64)
+    for t, j in enumerate(idx):
+        d[t] = _manhattan(xk, coords[j])
+    order = np.argsort(d)
+    return idx[order]
+
+
+# ----------------------------------------------------------------------
+
+
+def reverse_maxmin_ordering(
+    grid_points: np.ndarray,
+    dist_to_boundary: np.ndarray,
+    rho: float = 2.0,
+) -> tuple[list[int], dict[int, set[int]]]:
+    """
+    Efficient implementation of the Reverse Maximin Ordering and Sparsity Pattern
+    Construction from Schäfer et al. (2021), "Sparse Cholesky Factorization by
+    Kullback-Leibler Minimization".
+
+    This function computes a sparsity-preserving, reverse-maximin ordering of variables
+    suitable for fast and scalable approximate Cholesky factorization.
+
+    The intuition of the algorithm is found in Section 3 of the reference paper.
+    The implementation follows Algorithm C.1 from Appendix C.
+
+    References:
+    - F. Schäfer, M. Katzfuss, and H. Owhadi, 2021.
+    "Sparse Cholesky Factorization by Kullback-Leibler Minimization".
+    https://arxiv.org/abs/2004.14455
+
+    Example to build intuition around the maximin ordering
+    --------------------------------------------------------
+    The maximin ordering starts by selecting the point furthest from the
+    user-defined boundary, then the ordering selects among the remaining
+    points, the point with the largest minimum distance to the boundary and
+    the already selected points. This creates a coarse-to-fine ordering: early
+    points are well separated, and later points fill smaller gaps.
+
+    Here is a 7x7 example where the boundary is the sides of the rectangular
+    parameter grid:
+
+    >>> import numpy as np
+    >>> grid_points = np.indices((7, 7)).reshape(2, -1).T
+    >>> dist_to_boundary = []
+    >>> for point in grid_points:
+    ...     dist = min(point[0], point[1], 6 - point[0], 6 - point[1])
+    ...     dist_to_boundary.append(dist)
+    >>> dist_to_boundary = np.array(dist_to_boundary)
+    >>> ordering, _ = reverse_maxmin_ordering(grid_points, dist_to_boundary)
+
+    The center is furthest from the boundary and is selected first:
+
+    >>> grid_points[ordering[0]]
+    array([3, 3])
+
+    Points on the edges ``x = 0`` or ``y = 0`` have zero distance to the
+    boundary. Unselected interior points with ``x = 1`` or ``y = 1``have a
+    positive distance to both the boundary and to the already selected center
+    point, so they are chosen first. The check below confirms that at least
+    one point on ``x = 1`` or ``y = 1`` is selected before the first point on
+    either of the boundary edges:
+
+    >>> middle_mask = np.any(grid_points[ordering[1:]] == 1, axis=1)
+    >>> outer_mask = np.any(grid_points[ordering[1:]] == 0, axis=1)
+    >>> bool(np.flatnonzero(middle_mask).min() < np.flatnonzero(outer_mask).min())
+    True
+    """
+    N = len(grid_points)
+    coords = grid_points.astype(np.float64, copy=False)
+
+    l = dist_to_boundary.copy()
+    selected = np.zeros(N, dtype=np.bool_)
+    not_selected = set(range(N))
+    ordering_idx = []
+    children = defaultdict(list)
+    parents = defaultdict(list)
+    children_sorted = np.zeros(N, dtype=np.bool_)
+
+    heap = heapdict({i: -l_i for i, l_i in enumerate(l)})
+
+    # ------------------ first (seed) node ----------------------------
+    i0, neg_li = heap.popitem()
+    selected[i0] = True
+    not_selected.remove(i0)
+
+    xi = coords[i0]
+    li = -neg_li
+    ordering_idx.append(i0)
+
+    # everybody is initially child of i0
+    for j in range(N):
+        parents[j].append(i0)
+        children[i0].append(j)
+        if j == i0:
+            continue
+        # Update the heap
+        # In algorithm C.1 there is a sort on dij.
+        # We moved to conditional sorting. If j is selected as a parent k
+        dij = _manhattan(xi, coords[j])
+        if dij < l[j]:
+            l[j] = dij
+            heap[j] = -dij
+
+    l_trunc = li  # current truncation radius
+
+    # ------------------ main loop -----------------------------------
+    while heap:
+        i, neg_li = heap.popitem()
+        if selected[i]:
+            continue
+        li = -neg_li
+        xi = coords[i]
+        selected[i] = True
+        not_selected.remove(i)
+        ordering_idx.append(i)
+
+        # ---- choose parent k (Alg. C.1 lines 28-29) ----------------
+        k = i0
+        distik = np.inf
+        for j in parents[i]:
+            dij = _manhattan(xi, coords[j])
+            if ((j == i0) or (dij + rho * li <= rho * min(l[j], l_trunc))) and (
+                dij < distik
+            ):
+                distik = dij
+                k = j
+
+        xk = coords[k]
+
+        # ---- ensure children[k] sorted once ------------------------
+        # Slightly different form paper implementation
+        # We sort children of k (once) only if the parent is selected as k
+        if not children_sorted[k]:
+            arr = np.asarray(children[k], dtype=np.int64)
+            children[k] = _argsort_by_manhat(xk, arr, coords).tolist()
+            children_sorted[k] = True
+
+        r_li = rho * li  # only once
+        for j in children[k]:
+            if j == i:
+                continue
+            djk = _manhattan(coords[j], xk)
+            # triangle inequality pruning. exit early. slightly different form paper,
+            # but otherwise the sorting does not make a lot of sense.
+            if djk > distik + r_li:
+                break
+
+            dij = _manhattan(xi, coords[j])
+
+            if (not selected[j]) and dij < l[j]:
+                l[j] = dij
+                heap[j] = -dij
+
+            if dij <= r_li:
+                children[i].append(j)
+                parents[j].append(i)
+
+        # ---- truncation test (lines 42-49) ----
+        # This ensures linear space complexity
+        # Modification of reference algorithm Schäfer 2020 Algorithm 4.1
+        cond = True
+        half_ltr = 0.5 * l_trunc
+        for j in not_selected:
+            if _manhattan(xi, coords[j]) >= half_ltr:
+                cond = False
+                break
+
+        if cond:
+            l_trunc *= 0.5
+            rho_ltr = rho * l_trunc
+            keep = []
+            for j in children[i]:
+                if (j not in not_selected) or (_manhattan(xi, coords[j]) <= rho_ltr):
+                    keep.append(j)
+                else:
+                    parents[j].remove(i)
+            children[i] = keep
+
+    # --------------- build sparsity sets ----------------------------
+    sparsity = defaultdict(set)
+    for i, kids in children.items():
+        sparsity[i].update(kids)
+        sparsity[i].add(i)
+
+    return ordering_idx, sparsity
+
+
+def kr_graph_from_revmaximin(sparsity: dict, ordering_revmaxmin_chol: list):
+    """
+    Builds a directed graph for the KR map from the reverse-maximin ordering and
+    sparsity pattern.
+
+    Returns
+    -------
+    networkx.DiGraph
+    """
+    reverse_ordering = {value: ind for ind, value in enumerate(ordering_revmaxmin_chol)}
+    Graph_kr = nx.DiGraph()
+    Graph_kr.add_nodes_from(range(len(ordering_revmaxmin_chol)))
+    for row, cols in sparsity.items():
+        row_idx = reverse_ordering[row]
+        for col in cols:
+            col_idx = reverse_ordering[col]
+            if row_idx >= col_idx:  # only lower triangle
+                Graph_kr.add_edge(row_idx, col_idx)
+    return Graph_kr
 
 
 def solve_row_closed_form(
@@ -391,7 +620,7 @@ def fit_precision_cholesky_approximate(
     ----------
     U : np.ndarray
         The data matrix with shape (samples, parameters)
-    G : networkx.Graph
+    Graph_u : networkx.Graph
         Graph representing non-zero structure in the precision matrix.
     neighbourhood_expansion: int, optional
         The number of hops to the new neighbourhood set
@@ -411,6 +640,48 @@ def fit_precision_cholesky_approximate(
     )
     Prec_approx = C.T @ C
     return Prec_approx.tocsc()
+
+
+def fit_precision_cholesky_maximin(
+    U: NDArray[np.floating],
+    grid_points: np.ndarray,
+    dist_to_boundary: np.ndarray | float = np.inf,
+    rho: float = 2.0,
+) -> csc_array:
+    """Estimate the precision matrix using a reverse-maximin Cholesky pattern.
+
+    Parameters
+    ----------
+    U : np.ndarray
+        The data matrix with shape (samples, parameters).
+    grid_points : np.ndarray
+        Coordinates with shape (parameters, dimensions), ordered like the
+        columns of U.
+    dist_to_boundary : np.ndarray or float, optional
+        Distance from each point to the boundary, with shape (parameters,),
+        or a scalar applied to every point. Defaults to np.inf, which ignores
+        the boundary.
+    rho : float, optional
+        Neighborhood radius multiplier used to construct the sparsity pattern.
+        Larger values allow more entries in the Cholesky factor.
+
+    Returns
+    -------
+    scipy.sparse.csc_array
+        Estimated precision matrix in the original parameter order.
+    """
+    assert len(grid_points) == U.shape[1], "grid points equal columns of data"
+    if np.isscalar(dist_to_boundary):
+        dist_to_boundary = np.full(len(grid_points), dist_to_boundary)
+    assert dist_to_boundary.shape == (len(grid_points),), (
+        "one boundary distance per grid point"
+    )
+
+    ordering, sparsity = reverse_maxmin_ordering(grid_points, dist_to_boundary, rho=rho)
+    graph = kr_graph_from_revmaximin(sparsity, ordering)
+    factor = optimize_sparse_affine_kr_map(U=U[:, ordering], G=graph)
+    factor_original = factor[:, np.argsort(ordering)]
+    return (factor_original.T @ factor_original).tocsc()
 
 
 if __name__ == "__main__":
