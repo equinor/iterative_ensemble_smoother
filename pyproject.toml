@@ -179,6 +179,11 @@ max-complexity = 10
 fork-strategy = "requires-python"
 exclude-newer = "7 days"
 
+[tool.uv.exclude-newer-package]
+certifi = false # Needed until 2026-11-03
+virtualenv = false # Needed until 2026-11-03
+setuptools = false # Needed until 2026-11-03
+
 [tool.codespell]
 skip = "*.pyc,*.gif,*.png,*.jpg,*.ply, ./bibliography.bib,*.ipynb"
 ignore-words-list = "lod,byteorder,flem,parm,doubleclick,revered,inout,fro,nd,sies,hist,ans"
