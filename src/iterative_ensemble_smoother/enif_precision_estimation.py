@@ -106,7 +106,7 @@ def reverse_cholesky(
 # ---------------------------------------------------------------------
 # 1.  Numba helpers for reverse maximin ordering
 # ---------------------------------------------------------------------
-@nb.njit(inline="always")
+@nb.njit(inline="always")  # type: ignore[untyped-decorator]
 def _manhattan(p: np.ndarray, q: np.ndarray) -> float:
     """L1 or Manhattan distance"""
     s = 0.0
@@ -115,7 +115,7 @@ def _manhattan(p: np.ndarray, q: np.ndarray) -> float:
     return s
 
 
-@nb.njit
+@nb.njit  # type: ignore[untyped-decorator]
 def _argsort_by_manhat(
     xk: np.ndarray, idx: np.ndarray, coords: np.ndarray
 ) -> np.ndarray:
@@ -308,7 +308,10 @@ def reverse_maxmin_ordering(
     return ordering_idx, sparsity
 
 
-def kr_graph_from_revmaximin(sparsity: dict, ordering_revmaxmin_chol: list):
+def kr_graph_from_revmaximin(
+    sparsity: dict[int, set[int]],
+    ordering_revmaxmin_chol: list[int],
+) -> nx.DiGraph:
     """
     Builds a directed graph for the KR map from the reverse-maximin ordering and
     sparsity pattern.
