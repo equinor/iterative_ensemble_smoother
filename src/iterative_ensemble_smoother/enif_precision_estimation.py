@@ -191,7 +191,7 @@ def reverse_maxmin_ordering(
     N = len(grid_points)
     coords = grid_points.astype(np.float64, copy=False)
 
-    l = dist_to_boundary.copy()
+    dist = dist_to_boundary.copy()
     selected = np.zeros(N, dtype=np.bool_)
     not_selected = set(range(N))
     ordering_idx = []
@@ -199,7 +199,7 @@ def reverse_maxmin_ordering(
     parents = defaultdict(list)
     children_sorted = np.zeros(N, dtype=np.bool_)
 
-    heap = heapdict({i: -l_i for i, l_i in enumerate(l)})
+    heap = heapdict({i: -l_i for i, l_i in enumerate(dist)})
 
     # ------------------ first (seed) node ----------------------------
     i0, neg_li = heap.popitem()
@@ -220,8 +220,8 @@ def reverse_maxmin_ordering(
         # In algorithm C.1 there is a sort on dij.
         # We moved to conditional sorting. If j is selected as a parent k
         dij = _manhattan(xi, coords[j])
-        if dij < l[j]:
-            l[j] = dij
+        if dij < dist[j]:
+            dist[j] = dij
             heap[j] = -dij
 
     l_trunc = li  # current truncation radius
@@ -242,7 +242,7 @@ def reverse_maxmin_ordering(
         distik = np.inf
         for j in parents[i]:
             dij = _manhattan(xi, coords[j])
-            if ((j == i0) or (dij + rho * li <= rho * min(l[j], l_trunc))) and (
+            if ((j == i0) or (dij + rho * li <= rho * min(dist[j], l_trunc))) and (
                 dij < distik
             ):
                 distik = dij
@@ -270,8 +270,8 @@ def reverse_maxmin_ordering(
 
             dij = _manhattan(xi, coords[j])
 
-            if (not selected[j]) and dij < l[j]:
-                l[j] = dij
+            if (not selected[j]) and dij < dist[j]:
+                dist[j] = dij
                 heap[j] = -dij
 
             if dij <= r_li:
