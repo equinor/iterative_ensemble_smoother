@@ -15,7 +15,15 @@ classifiers=[
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
-dependencies = ["numpy", "scipy", "joblib", "networkx", "scikit-learn"]
+dependencies = [
+    "numpy",
+    "scipy",
+    "joblib",
+    "networkx",
+    "scikit-learn",
+    "numba",
+    "heapdict",
+]
 dynamic=["version"] # setuptools_scm extracts Python package versions from git
 
 authors = [
