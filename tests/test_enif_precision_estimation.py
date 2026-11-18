@@ -247,6 +247,42 @@ def _compare_over_seeds(name, make_case, ordering_method="natural"):
     return _report_mean_comparison(name, method_metrics)
 
 
+@pytest.mark.parametrize("empty_boundary", [True, False])
+def test_reverse_maxmin_sparsity_matches_brute_force(empty_boundary):
+    points = np.indices((4, 4), dtype=float).reshape(2, -1).T
+    boundary = (
+        np.full(len(points), np.inf)
+        if empty_boundary
+        else np.minimum(points, 3 - points).min(axis=1)
+    )
+    rho = 2.0
+    ordering, sparsity = precest.reverse_maxmin_ordering(points, boundary, rho)
+    graph = precest.kr_graph_from_revmaximin(sparsity, ordering)
+
+    distances = cdist(points, points, metric="cityblock")
+    expected_edges = set()
+    for row, point in enumerate(ordering):
+        scale = boundary[point]
+        if row:
+            scale = min(scale, distances[point, ordering[:row]].min())
+        for col, previous in enumerate(ordering[: row + 1]):
+            if distances[point, previous] <= rho * scale:
+                expected_edges.add((row, col))
+
+    # Our current implementation generates a slightly smaller
+    # sparsity pattern than the logic of the Schäfer paper.
+    assert set(graph.edges) <= expected_edges
+
+
+def test_reverse_maxmin_ordering_retains_diagonal_only_rows():
+    points = np.array([[0.0], [1.0], [10.0]])
+    ordering, sparsity = precest.reverse_maxmin_ordering(
+        points, np.full(len(points), np.inf)
+    )
+    for point in ordering:
+        assert point in sparsity[point]
+
+
 @pytest.mark.suitesparse
 def test_reverse_maximin_vs_cholesky_tridiagonal():
     """Compare the three methods
