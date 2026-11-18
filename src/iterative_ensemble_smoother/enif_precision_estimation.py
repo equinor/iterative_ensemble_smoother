@@ -279,8 +279,11 @@ def reverse_maxmin_ordering(
                 parents[j].append(i)
 
         # ---- truncation test (lines 42-49) ----
-        # This ensures linear space complexity
-        # Modification of reference algorithm Schäfer 2020 Algorithm 4.1
+        if l_trunc == np.inf:
+            # Retain diagonal-only rows without scanning any distances.
+            children.setdefault(i, [])
+            continue
+
         cond = True
         half_ltr = 0.5 * l_trunc
         for j in not_selected:
