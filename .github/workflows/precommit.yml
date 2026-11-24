@@ -2,7 +2,11 @@ name: Pre-commit tests
 permissions:
   contents: read
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
 
 env:
   UV_FROZEN: true # https://docs.astral.sh/uv/configuration/environment/#uv_frozen
